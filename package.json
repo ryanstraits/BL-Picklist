@@ -1,0 +1,12 @@
+{
+  "name": "bl-picklist",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Phone/tablet-friendly BrickLink pick-list app backed by Netlify Functions.",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "oauth-1.0a": "^2.2.6"
+  }
+}

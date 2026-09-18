@@ -1,0 +1,21 @@
+[build]
+  functions = "netlify/functions"
+  publish = "public"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/orders/:id/items"
+  to = "/.netlify/functions/order-items?id=:id"
+  status = 200
+
+[[redirects]]
+  from = "/api/orders"
+  to = "/.netlify/functions/orders"
+  status = 200
+
+[[redirects]]
+  from = "/api/colors"
+  to = "/.netlify/functions/colors"
+  status = 200
