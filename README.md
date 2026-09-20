@@ -46,8 +46,11 @@ Token Secret as sensitive as an API key that can move money.
 
 ## Notes
 
-- Order status filter defaults to `pending,processing`; override with
-  `/api/orders?status=...` if you file "ready to pick" differently.
+- `/api/orders` calls BrickLink with `direction=in` (orders where you're
+  the seller) and returns every order status except `COMPLETED` by
+  default. Override with `/api/orders?status=paid,packed` etc. if you want
+  a narrower set. Order cards and the detail view show a color-coded
+  status badge (fresh/paid, packed, shipped/received, cancelled/problem).
 - Item photos hotlink directly from `img.bricklink.com` (undocumented but
   widely used pattern); each `<img>` falls back to a placeholder icon on
   load failure.

@@ -195,7 +195,24 @@
     align-items: baseline;
   }
   .order-id { font-weight: 600; font-size: 15px; }
-  .order-date { font-size: 12px; color: var(--text-secondary); }
+  .order-id-group { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .order-date { font-size: 12px; color: var(--text-secondary); flex: none; }
+
+  .status-badge {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    flex: none;
+  }
+  .status-badge.tone-fresh { color: var(--accent); background: var(--accent-soft); }
+  .status-badge.tone-packed { color: var(--success); background: var(--success-bg); }
+  .status-badge.tone-done { color: var(--text-secondary); background: var(--surface-alt); }
+  .status-badge.tone-waiting { color: var(--text-secondary); background: var(--surface-alt); }
+  .status-badge.tone-problem { color: var(--danger); background: var(--surface-alt); }
   .order-buyer { font-size: 13.5px; color: var(--text-secondary); margin-top: 3px; }
   .order-progress-row {
     display: flex;
@@ -464,6 +481,30 @@
     });
   }
 
+  // tone: fresh = needs picking, packed = picked & boxed, done = shipped/received,
+  // waiting = before payment, problem = cancelled/non-paying/etc.
+  var STATUS_META = {
+    PENDING: { label: "Pending", tone: "waiting" },
+    UPDATED: { label: "Updated", tone: "waiting" },
+    PROCESSING: { label: "Processing", tone: "waiting" },
+    READY: { label: "Ready", tone: "waiting" },
+    PAID: { label: "Paid", tone: "fresh" },
+    PACKED: { label: "Packed", tone: "packed" },
+    SHIPPED: { label: "Shipped", tone: "done" },
+    RECEIVED: { label: "Received", tone: "done" },
+    CANCELLED: { label: "Cancelled", tone: "problem" },
+    PURGED: { label: "Purged", tone: "problem" },
+    NPB: { label: "NPB", tone: "problem" },
+    NRS: { label: "NRS", tone: "problem" },
+    NSS: { label: "NSS", tone: "problem" }
+  };
+
+  function statusBadgeHtml(status) {
+    if (!status) return "";
+    var meta = STATUS_META[status] || { label: status, tone: "waiting" };
+    return '<span class="status-badge tone-' + meta.tone + '">' + escapeHtml(meta.label) + '</span>';
+  }
+
   async function fetchJSON(url) {
     var res = await fetch(url);
     var body = null;
@@ -518,7 +559,10 @@
       html += ""
         + '<button class="order-card" data-order="' + escapeHtml(order.orderId) + '">'
         + '<div class="order-top-row">'
+        + '<span class="order-id-group">'
         + '<span class="order-id mono">#' + escapeHtml(order.orderId) + '</span>'
+        + statusBadgeHtml(order.status)
+        + '</span>'
         + '<span class="order-date">' + escapeHtml(order.date || "") + '</span>'
         + '</div>'
         + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + lineCount + ' lines · ' + total + ' pcs</div>'
@@ -638,7 +682,10 @@
 
     orderView.innerHTML = ""
       + '<div class="order-summary">'
+      + '<div class="order-id-group">'
       + '<div class="order-id mono">Order #' + escapeHtml(order.orderId) + '</div>'
+      + statusBadgeHtml(order.status)
+      + '</div>'
       + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(order.date || "") + '</div>'
       + '<div class="picked-count"><strong>' + picked + ' of ' + items.length + '</strong> lines picked' + (allDone ? ' — ready to pack' : '') + '</div>'
       + '</div>'
