@@ -645,9 +645,7 @@
 
   function catalogImageUrl(item) {
     var letter = TYPE_LETTERS[item.type] || "P";
-    var nu = item.newOrUsed === "U" ? "U" : "N";
-    return "https://img.bricklink.com/ItemImage/" + letter + nu + "/"
-      + (item.colorId || 0) + "/" + encodeURIComponent(item.itemNo) + ".png";
+    return "https://img.bricklink.com/" + letter + "/" + encodeURIComponent(item.itemNo) + ".jpg";
   }
 
   function thumbHtml(item) {

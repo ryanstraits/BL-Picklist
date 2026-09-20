@@ -51,9 +51,11 @@ Token Secret as sensitive as an API key that can move money.
   default. Override with `/api/orders?status=paid,packed` etc. if you want
   a narrower set. Order cards and the detail view show a color-coded
   status badge (fresh/paid, packed, shipped/received, cancelled/problem).
-- Item photos hotlink directly from `img.bricklink.com` (undocumented but
-  widely used pattern); each `<img>` falls back to a placeholder icon on
-  load failure.
+- Item photos hotlink directly from `img.bricklink.com/{TYPE_LETTER}/{item_no}.jpg`
+  (e.g. `img.bricklink.com/M/njo0168.jpg` for a minifig) — an older,
+  undocumented pattern that's not color-specific, but is confirmed still
+  live (other BrickLink seller tools use it). Each `<img>` falls back to a
+  placeholder icon on load failure.
 - Colors are fetched once from `/api/colors` and cached indefinitely in
   `localStorage`, since BrickLink color IDs essentially never change.
 - "Picked" state is stored per-order in `localStorage` on the device —
