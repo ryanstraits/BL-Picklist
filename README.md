@@ -9,6 +9,7 @@ public/index.html                     → the app (order list → checklist)
 netlify/functions/orders.js           → GET /api/orders
 netlify/functions/order-items.js      → GET /api/orders/:id/items (flattened)
 netlify/functions/colors.js           → GET /api/colors (cached)
+netlify/functions/item-image.js       → GET /api/item-image?type=&no= (proxied photo)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 ```
 
@@ -51,11 +52,15 @@ Token Secret as sensitive as an API key that can move money.
   default. Override with `/api/orders?status=paid,packed` etc. if you want
   a narrower set. Order cards and the detail view show a color-coded
   status badge (fresh/paid, packed, shipped/received, cancelled/problem).
-- Item photos hotlink directly from `img.bricklink.com/{TYPE_LETTER}/{item_no}.jpg`
-  (e.g. `img.bricklink.com/M/njo0168.jpg` for a minifig) — an older,
-  undocumented pattern that's not color-specific, but is confirmed still
-  live (other BrickLink seller tools use it). Each `<img>` falls back to a
-  placeholder icon on load failure.
+- Item photos come from `img.bricklink.com/{TYPE_LETTER}/{item_no}.jpg` (an
+  older, undocumented pattern that's not color-specific, but confirmed
+  still live). BrickLink's hotlink protection blocks this when a browser
+  requests it directly as an `<img>` subresource (even with no `Referer`
+  sent — it appears to key off the `Sec-Fetch-*` request metadata, which
+  can't be suppressed client-side), so `/api/item-image` proxies the
+  fetch server-side and streams the bytes back under our own origin.
+  Each `<img>` still falls back to a placeholder icon on load failure,
+  and tapping a photo opens the proxied URL directly.
 - Colors are fetched once from `/api/colors` and cached indefinitely in
   `localStorage`, since BrickLink color IDs essentially never change.
 - "Picked" state is stored per-order in `localStorage` on the device —

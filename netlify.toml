@@ -20,3 +20,8 @@
   from = "/api/colors"
   to = "/.netlify/functions/colors"
   status = 200
+
+[[redirects]]
+  from = "/api/item-image"
+  to = "/.netlify/functions/item-image"
+  status = 200

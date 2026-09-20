@@ -1,0 +1,47 @@
+const TYPE_LETTERS = {
+  PART: "P", SET: "S", MINIFIG: "M", BOOK: "B", GEAR: "G",
+  CATALOG: "C", INSTRUCTION: "I", ORIGINAL_BOX: "O", UNSORTED_LOT: "U"
+};
+
+// Requests made directly from a browser <img> tag carry Sec-Fetch-* metadata
+// that BrickLink's hotlink protection blocks, even with no Referer sent —
+// but a plain server-side fetch (no such headers) goes through fine. So we
+// fetch the image here and stream the bytes back under our own origin.
+exports.handler = async (event) => {
+  const params = event.queryStringParameters || {};
+  const itemNo = params.no;
+  if (!itemNo) {
+    return { statusCode: 400, body: "Missing item number" };
+  }
+
+  const letter = TYPE_LETTERS[params.type] || "P";
+  const url = `https://img.bricklink.com/${letter}/${encodeURIComponent(itemNo)}.jpg`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; BL-Picklist/1.0)",
+      },
+    });
+
+    if (!res.ok) {
+      return { statusCode: 404, body: "Image not found" };
+    }
+
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const buffer = Buffer.from(await res.arrayBuffer());
+
+    return {
+      statusCode: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=604800, immutable",
+      },
+      body: buffer.toString("base64"),
+      isBase64Encoded: true,
+    };
+  } catch (err) {
+    console.error(err);
+    return { statusCode: 502, body: "Upstream error" };
+  }
+};

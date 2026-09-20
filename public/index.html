@@ -645,14 +645,8 @@
       + '</svg>';
   }
 
-  var TYPE_LETTERS = {
-    PART: "P", SET: "S", MINIFIG: "M", BOOK: "B", GEAR: "G",
-    CATALOG: "C", INSTRUCTION: "I", ORIGINAL_BOX: "O", UNSORTED_LOT: "U"
-  };
-
   function catalogImageUrl(item) {
-    var letter = TYPE_LETTERS[item.type] || "P";
-    return "https://img.bricklink.com/" + letter + "/" + encodeURIComponent(item.itemNo) + ".jpg";
+    return "/api/item-image?type=" + encodeURIComponent(item.type) + "&no=" + encodeURIComponent(item.itemNo);
   }
 
   function thumbHtml(item) {
