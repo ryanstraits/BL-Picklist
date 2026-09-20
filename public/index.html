@@ -650,7 +650,7 @@
 
   function thumbHtml(item) {
     return '<span class="thumb-fallback">' + thumbSvg(item.type) + '</span>'
-      + '<img src="' + catalogImageUrl(item) + '" alt="" loading="lazy" style="display:none" '
+      + '<img src="' + catalogImageUrl(item) + '" alt="" loading="lazy" referrerpolicy="no-referrer" style="display:none" '
       + 'onload="this.previousElementSibling.style.display=\'none\'; this.style.display=\'block\';" '
       + 'onerror="this.remove();">';
   }
