@@ -3,6 +3,10 @@ const TYPE_LETTERS = {
   CATALOG: "C", INSTRUCTION: "I", ORIGINAL_BOX: "O", UNSORTED_LOT: "U"
 };
 
+const FETCH_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; BL-Picklist/1.0)",
+};
+
 // Requests made directly from a browser <img> tag carry Sec-Fetch-* metadata
 // that BrickLink's hotlink protection blocks, even with no Referer sent —
 // but a plain server-side fetch (no such headers) goes through fine. So we
@@ -15,14 +19,20 @@ exports.handler = async (event) => {
   }
 
   const letter = TYPE_LETTERS[params.type] || "P";
-  const url = `https://img.bricklink.com/${letter}/${encodeURIComponent(itemNo)}.jpg`;
+  const colorId = params.color || "0";
+  const newOrUsed = params.nu === "U" ? "U" : "N";
+
+  // Try the larger, color-specific catalog photo first; fall back to the
+  // small generic one (no color variants, but reliably present) if that
+  // particular item/color combo has no hi-res photo.
+  const hiResUrl = `https://img.bricklink.com/ItemImage/${letter}${newOrUsed}/${encodeURIComponent(colorId)}/${encodeURIComponent(itemNo)}.png`;
+  const fallbackUrl = `https://img.bricklink.com/${letter}/${encodeURIComponent(itemNo)}.jpg`;
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; BL-Picklist/1.0)",
-      },
-    });
+    let res = await fetch(hiResUrl, { headers: FETCH_HEADERS });
+    if (!res.ok) {
+      res = await fetch(fallbackUrl, { headers: FETCH_HEADERS });
+    }
 
     if (!res.ok) {
       return { statusCode: 404, body: "Image not found" };

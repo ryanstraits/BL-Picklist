@@ -715,7 +715,10 @@
   }
 
   function catalogImageUrl(item) {
-    return "/api/item-image?type=" + encodeURIComponent(item.type) + "&no=" + encodeURIComponent(item.itemNo);
+    return "/api/item-image?type=" + encodeURIComponent(item.type)
+      + "&no=" + encodeURIComponent(item.itemNo)
+      + "&color=" + encodeURIComponent(item.colorId || 0)
+      + "&nu=" + encodeURIComponent(item.newOrUsed === "U" ? "U" : "N");
   }
 
   function thumbHtml(item) {
