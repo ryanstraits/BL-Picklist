@@ -410,11 +410,26 @@
     align-items: center;
     justify-content: center;
     padding: 32px 20px;
+    overflow: hidden;
+    touch-action: none;
   }
   .lightbox img {
     max-width: 100%;
     max-height: 100%;
     border-radius: 10px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  .lightbox-hint {
+    position: absolute;
+    bottom: 18px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 12px;
+    pointer-events: none;
   }
   .lightbox-close {
     position: absolute;
@@ -469,6 +484,7 @@
 <div class="lightbox hidden" id="lightbox">
   <button class="lightbox-close" id="lightboxClose" aria-label="Close photo">&times;</button>
   <img id="lightboxImg" src="" alt="">
+  <div class="lightbox-hint">Pinch or double-tap to zoom</div>
 </div>
 
 <script>
@@ -589,22 +605,106 @@
   var lightbox = document.getElementById("lightbox");
   var lightboxImg = document.getElementById("lightboxImg");
   var lightboxClose = document.getElementById("lightboxClose");
-  var viewportMeta = document.getElementById("viewportMeta");
-  var normalViewportContent = viewportMeta.getAttribute("content");
-  var zoomableViewportContent = "width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover";
+
+  // Custom pinch/pan/double-tap zoom, independent of the browser's native
+  // zoom — the page disables native pinch-zoom site-wide (to avoid
+  // accidental zooming while picking), and toggling that dynamically to
+  // re-enable it is unreliable on iOS, which only honors the viewport
+  // meta tag's zoom bounds as computed at initial page load.
+  var zoomScale = 1;
+  var zoomX = 0;
+  var zoomY = 0;
+  var pointers = {};
+  var pinchStartDist = 0;
+  var pinchStartScale = 1;
+  var lastTapTime = 0;
+  var MAX_ZOOM = 4;
+
+  function applyZoomTransform() {
+    lightboxImg.style.transform = "translate(" + zoomX + "px, " + zoomY + "px) scale(" + zoomScale + ")";
+  }
+
+  function resetZoom() {
+    zoomScale = 1;
+    zoomX = 0;
+    zoomY = 0;
+    applyZoomTransform();
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function pointerDistance(a, b) {
+    var dx = a.x - b.x;
+    var dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  lightboxImg.addEventListener("pointerdown", function (e) {
+    pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    try { lightboxImg.setPointerCapture(e.pointerId); } catch (err) { /* best-effort */ }
+    var ids = Object.keys(pointers);
+
+    if (ids.length === 2) {
+      var p1 = pointers[ids[0]];
+      var p2 = pointers[ids[1]];
+      pinchStartDist = pointerDistance(p1, p2);
+      pinchStartScale = zoomScale;
+    } else if (ids.length === 1) {
+      var now = Date.now();
+      if (now - lastTapTime < 300) {
+        if (zoomScale > 1) {
+          resetZoom();
+        } else {
+          zoomScale = 2.5;
+          applyZoomTransform();
+        }
+      }
+      lastTapTime = now;
+    }
+  });
+
+  lightboxImg.addEventListener("pointermove", function (e) {
+    if (!pointers[e.pointerId]) return;
+    var ids = Object.keys(pointers);
+
+    if (ids.length === 2) {
+      pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var p1 = pointers[ids[0]];
+      var p2 = pointers[ids[1]];
+      var dist = pointerDistance(p1, p2);
+      if (pinchStartDist > 0) {
+        zoomScale = clamp(pinchStartScale * (dist / pinchStartDist), 1, MAX_ZOOM);
+        applyZoomTransform();
+      }
+    } else if (ids.length === 1 && zoomScale > 1) {
+      var prev = pointers[e.pointerId];
+      zoomX += e.clientX - prev.x;
+      zoomY += e.clientY - prev.y;
+      pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      applyZoomTransform();
+    }
+  });
+
+  function endPointer(e) {
+    delete pointers[e.pointerId];
+    if (Object.keys(pointers).length < 2) pinchStartDist = 0;
+  }
+  lightboxImg.addEventListener("pointerup", endPointer);
+  lightboxImg.addEventListener("pointercancel", endPointer);
+  lightboxImg.addEventListener("pointerleave", endPointer);
 
   function openLightbox(url) {
+    resetZoom();
     lightboxImg.src = url;
     lightbox.classList.remove("hidden");
-    // Allow pinch-zoom while inspecting a photo — disabled site-wide the
-    // rest of the time so it can't be triggered accidentally while picking.
-    viewportMeta.setAttribute("content", zoomableViewportContent);
   }
 
   function closeLightbox() {
     lightbox.classList.add("hidden");
     lightboxImg.src = "";
-    viewportMeta.setAttribute("content", normalViewportContent);
+    resetZoom();
   }
 
   lightbox.addEventListener("click", function (e) {
