@@ -401,6 +401,39 @@
   .reset-btn:active, .bottom-back-btn:active { background: var(--surface-alt); }
   .bottom-back-btn { color: var(--text); font-weight: 600; }
 
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(0, 0, 0, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+  }
+  .lightbox img {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 10px;
+  }
+  .lightbox-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    color: #fff;
+    font-size: 22px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
   .hidden { display: none !important; }
 </style>
 </head>
@@ -431,6 +464,11 @@
     <section id="view-orders"></section>
     <section id="view-order" class="hidden"></section>
   </main>
+</div>
+
+<div class="lightbox hidden" id="lightbox">
+  <button class="lightbox-close" id="lightboxClose" aria-label="Close photo">&times;</button>
+  <img id="lightboxImg" src="" alt="">
 </div>
 
 <script>
@@ -548,6 +586,37 @@
   var refreshBtn = document.getElementById("refreshBtn");
   var currentView = "orders";
 
+  var lightbox = document.getElementById("lightbox");
+  var lightboxImg = document.getElementById("lightboxImg");
+  var lightboxClose = document.getElementById("lightboxClose");
+
+  function openLightbox(url) {
+    lightboxImg.src = url;
+    lightbox.classList.remove("hidden");
+  }
+
+  function closeLightbox() {
+    lightbox.classList.add("hidden");
+    lightboxImg.src = "";
+  }
+
+  lightbox.addEventListener("click", function (e) {
+    if (e.target === lightbox) closeLightbox();
+  });
+  lightboxClose.addEventListener("click", closeLightbox);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeLightbox();
+  });
+
+  function wireThumbLinks(container) {
+    container.querySelectorAll(".thumb-link").forEach(function (el) {
+      el.addEventListener("click", function (e) {
+        e.stopPropagation();
+        openLightbox(el.getAttribute("data-img-url"));
+      });
+    });
+  }
+
   function renderOrdersList() {
     if (!orders.length) {
       ordersView.innerHTML = '<div class="state-block">No open orders right now.</div>';
@@ -651,12 +720,12 @@
 
   function thumbHtml(item) {
     var url = catalogImageUrl(item);
-    return '<a class="thumb-link" href="' + url + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">'
+    return '<span class="thumb-link" data-img-url="' + escapeHtml(url) + '">'
       + '<span class="thumb-fallback">' + thumbSvg(item.type) + '</span>'
-      + '<img src="' + url + '" alt="" referrerpolicy="no-referrer" style="display:none" '
+      + '<img src="' + escapeHtml(url) + '" alt="" referrerpolicy="no-referrer" style="display:none" '
       + 'onload="this.previousElementSibling.style.display=\'none\'; this.style.display=\'block\';" '
       + 'onerror="this.remove();">'
-      + '</a>';
+      + '</span>';
   }
 
   function renderOrderDetail(order, items) {
@@ -696,6 +765,8 @@
       + '<button class="bottom-back-btn" id="bottomBackBtn">&#8592; All orders</button>'
       + '<button class="reset-btn" id="resetBtn">Clear picks for this order</button>'
       + '</div>';
+
+    wireThumbLinks(orderView);
 
     orderView.querySelectorAll(".item-row").forEach(function (row) {
       row.addEventListener("click", function () {
