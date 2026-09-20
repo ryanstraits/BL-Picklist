@@ -653,7 +653,7 @@
     var url = catalogImageUrl(item);
     return '<a class="thumb-link" href="' + url + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">'
       + '<span class="thumb-fallback">' + thumbSvg(item.type) + '</span>'
-      + '<img src="' + url + '" alt="" loading="lazy" referrerpolicy="no-referrer" style="display:none" '
+      + '<img src="' + url + '" alt="" referrerpolicy="no-referrer" style="display:none" '
       + 'onload="this.previousElementSibling.style.display=\'none\'; this.style.display=\'block\';" '
       + 'onerror="this.remove();">'
       + '</a>';
