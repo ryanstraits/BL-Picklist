@@ -286,6 +286,13 @@
     overflow: visible;
   }
   .item-thumb svg { width: 28px; height: 28px; color: var(--text-secondary); }
+  .thumb-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+  }
   .item-thumb img {
     width: 100%;
     height: 100%;
@@ -649,10 +656,13 @@
   }
 
   function thumbHtml(item) {
-    return '<span class="thumb-fallback">' + thumbSvg(item.type) + '</span>'
-      + '<img src="' + catalogImageUrl(item) + '" alt="" loading="lazy" referrerpolicy="no-referrer" style="display:none" '
+    var url = catalogImageUrl(item);
+    return '<a class="thumb-link" href="' + url + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">'
+      + '<span class="thumb-fallback">' + thumbSvg(item.type) + '</span>'
+      + '<img src="' + url + '" alt="" loading="lazy" referrerpolicy="no-referrer" style="display:none" '
       + 'onload="this.previousElementSibling.style.display=\'none\'; this.style.display=\'block\';" '
-      + 'onerror="this.remove();">';
+      + 'onerror="this.remove();">'
+      + '</a>';
   }
 
   function renderOrderDetail(order, items) {
