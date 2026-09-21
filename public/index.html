@@ -104,10 +104,21 @@
   .back-btn:active { background: var(--surface-alt); }
   .back-btn svg { width: 14px; height: 14px; flex: none; }
   .brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
     font-weight: 700;
     font-size: 19px;
     letter-spacing: -0.01em;
     flex: 1;
+    min-width: 0;
+  }
+  .brand-logo {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: block;
   }
   .brand small {
     display: block;
@@ -449,8 +460,11 @@
         All orders
       </button>
       <div class="brand" id="brandBlock">
-        Brick Stud Pick List
-        <small id="brandSub">Open BrickLink orders</small>
+        <img class="brand-logo" src="/logo.png" alt="" width="32" height="32">
+        <div class="brand-text">
+          Brick Stud Pick List
+          <small id="brandSub">Open BrickLink orders</small>
+        </div>
       </div>
       <button class="refresh-btn" id="refreshBtn" aria-label="Refresh orders">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3.3h-3.3"/></svg>
