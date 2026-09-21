@@ -179,6 +179,19 @@
   .state-block .retry-btn:active { background: var(--surface-alt); }
 
   /* ---- Orders list ---- */
+  .order-stats {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .order-stats strong { color: var(--text); }
   .order-card {
     display: block;
     width: 100%;
@@ -811,7 +824,13 @@
       return;
     }
 
-    var html = "";
+    var toPickCount = orders.filter(function (o) { return o.status === "PAID"; }).length;
+    var toShipCount = orders.filter(function (o) { return o.status === "PACKED"; }).length;
+    var html = ""
+      + '<div class="order-stats">'
+      + '<div>Total orders to be picked: <strong>' + toPickCount + '</strong></div>'
+      + '<div>Total orders to be shipped: <strong>' + toShipCount + '</strong></div>'
+      + '</div>';
     orders.forEach(function (order) {
       var total = order.totalCount || 0;
       var lineCount = order.uniqueCount || 0;
@@ -831,7 +850,7 @@
         + '</span>'
         + '<span class="order-date">' + escapeHtml(formatDate(order.date)) + '</span>'
         + '</div>'
-        + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + lineCount + ' lines · ' + total + ' pcs</div>'
+        + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + lineCount + ' lots · ' + total + ' items</div>'
         + '<div class="order-progress-row">'
         + '<div class="progress-track"><div class="progress-fill' + (done ? ' done' : '') + '" style="width:' + pct + '%"></div></div>'
         + '<span class="progress-label">' + picked + '/' + knownTotal + '</span>'
@@ -951,7 +970,7 @@
       + statusBadgeHtml(order.status)
       + '</div>'
       + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + '</div>'
-      + '<div class="picked-count"><strong>' + picked + ' of ' + items.length + '</strong> lines picked' + (allDone ? ' — ready to pack' : '') + '</div>'
+      + '<div class="picked-count"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>'
       + (items.length ? '<div class="order-actions">'
         + '<button class="select-all-btn">Select all as picked</button>'
         + '<button class="reset-btn">Clear picks for this order</button>'
