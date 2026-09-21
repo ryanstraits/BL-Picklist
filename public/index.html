@@ -388,13 +388,15 @@
   .item-row.picked .checkmark svg { display: block; }
   .checkmark svg path { stroke: #fff; }
 
-  .reset-row {
-    margin-top: 18px;
+  .reset-row, .order-actions {
     display: flex;
     justify-content: center;
+    flex-wrap: wrap;
     gap: 10px;
   }
-  .reset-btn, .bottom-back-btn {
+  .reset-row { margin-top: 18px; }
+  .order-actions { margin-top: 12px; }
+  .reset-btn, .bottom-back-btn, .select-all-btn {
     background: none;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -404,8 +406,9 @@
     border-radius: 6px;
     cursor: pointer;
   }
-  .reset-btn:active, .bottom-back-btn:active { background: var(--surface-alt); }
+  .reset-btn:active, .bottom-back-btn:active, .select-all-btn:active { background: var(--surface-alt); }
   .bottom-back-btn { color: var(--text); font-weight: 600; }
+  .select-all-btn { color: var(--success); border-color: var(--success); }
 
   .lightbox {
     position: fixed;
@@ -530,6 +533,13 @@
 
   function resetOrder(orderId) {
     state[orderId] = {};
+    saveState();
+  }
+
+  function selectAllOrder(orderId, items) {
+    var picks = {};
+    items.forEach(function (item, idx) { picks[idx] = true; });
+    state[orderId] = picks;
     saveState();
   }
 
@@ -942,11 +952,16 @@
       + '</div>'
       + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + '</div>'
       + '<div class="picked-count"><strong>' + picked + ' of ' + items.length + '</strong> lines picked' + (allDone ? ' — ready to pack' : '') + '</div>'
+      + (items.length ? '<div class="order-actions">'
+        + '<button class="select-all-btn">Select all as picked</button>'
+        + '<button class="reset-btn">Clear picks for this order</button>'
+        + '</div>' : '')
       + '</div>'
       + (items.length ? rows : '<div class="state-block">This order has no line items.</div>')
       + '<div class="reset-row">'
       + '<button class="bottom-back-btn" id="bottomBackBtn">&#8592; All orders</button>'
-      + '<button class="reset-btn" id="resetBtn">Clear picks for this order</button>'
+      + (items.length ? '<button class="select-all-btn">Select all as picked</button>'
+        + '<button class="reset-btn">Clear picks for this order</button>' : '')
       + '</div>';
 
     wireThumbLinks(orderView);
@@ -959,10 +974,20 @@
       });
     });
 
-    document.getElementById("resetBtn").addEventListener("click", function (e) {
-      e.stopPropagation();
-      resetOrder(order.orderId);
-      renderOrderDetail(order, items);
+    orderView.querySelectorAll(".reset-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        resetOrder(order.orderId);
+        renderOrderDetail(order, items);
+      });
+    });
+
+    orderView.querySelectorAll(".select-all-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        selectAllOrder(order.orderId, items);
+        renderOrderDetail(order, items);
+      });
     });
 
     document.getElementById("bottomBackBtn").addEventListener("click", function (e) {
