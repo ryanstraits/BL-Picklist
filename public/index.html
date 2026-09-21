@@ -850,6 +850,24 @@
     });
   }
 
+  var THUMB_MIN = 65;
+  var THUMB_MAX = 108;
+
+  // Grows each row's square thumbnail to (almost) match the height of its
+  // text block, so longer descriptions/remarks get a bigger, easier-to-see
+  // photo instead of the same small fixed box. Clamped so a very long
+  // remarks line can't balloon the photo and crowd out the text column.
+  function sizeThumbsToRows(container) {
+    container.querySelectorAll(".item-row").forEach(function (row) {
+      var body = row.querySelector(".item-body");
+      var thumb = row.querySelector(".item-thumb");
+      if (!body || !thumb) return;
+      var size = Math.max(THUMB_MIN, Math.min(THUMB_MAX, body.offsetHeight));
+      thumb.style.width = size + "px";
+      thumb.style.height = size + "px";
+    });
+  }
+
   function renderOrdersList() {
     if (!orders.length) {
       ordersView.innerHTML = '<div class="state-block">No open orders right now.</div>';
@@ -1040,6 +1058,7 @@
       + '</div>';
 
     wireThumbLinks(orderView);
+    sizeThumbsToRows(orderView);
 
     orderView.querySelectorAll(".item-row").forEach(function (row) {
       row.addEventListener("click", function () {
