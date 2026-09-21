@@ -24,6 +24,8 @@ exports.handler = async (event) => {
         date: o.date_ordered,
         totalCount: o.total_count,
         uniqueCount: o.unique_count,
+        orderTotal: (o.cost && (o.cost.grand_total || o.cost.subtotal)) || null,
+        currencyCode: (o.cost && o.cost.currency_code) || null,
       }));
 
     return json(200, orders);
