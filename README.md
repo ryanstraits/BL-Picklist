@@ -10,6 +10,7 @@ netlify/functions/orders.js           → GET /api/orders
 netlify/functions/order-items.js      → GET /api/orders/:id/items (flattened)
 netlify/functions/colors.js           → GET /api/colors (cached)
 netlify/functions/item-image.js       → GET /api/item-image?type=&no= (proxied photo)
+netlify/functions/update-order-status.js → POST /api/update-order-status (writes to BrickLink)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 ```
 
@@ -80,3 +81,14 @@ Token Secret as sensitive as an API key that can move money.
   sync option if that's wanted later.
 - There's no auto-refresh; tap "Refresh" in the header to re-pull orders,
   which keeps usage well under BrickLink's 5,000 requests/day limit.
+- The orders list can push a real status change back to BrickLink: a
+  "Mark as packed" button on PAID orders and "Mark as shipped" on PACKED
+  ones. `/api/update-order-status` only accepts those two target
+  statuses (`PUT /orders/{id}` on BrickLink's side with
+  `{"field":"status","value":...}`) — no free-form status picker, so a
+  bad request can't push an order into an unexpected state. Each tap
+  requires a confirm dialog first, since — unlike everything else in the
+  app — this writes to a live, buyer-visible order. BrickLink's optional
+  "drive thru" shipping-notification email isn't sent automatically; it
+  just becomes available in BrickLink's own UI once an order is SHIPPED,
+  same as changing status there directly.

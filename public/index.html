@@ -204,6 +204,26 @@
   .order-card:active { background: var(--surface-alt); }
   .order-card.needs-pick { background: var(--accent-soft); }
   .order-card.needs-pick:active { background: var(--accent-soft); filter: brightness(0.94); }
+
+  .order-status-row {
+    display: flex;
+    margin-top: 10px;
+  }
+  .status-action-btn {
+    width: 100%;
+    background: none;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .status-action-btn:active { background: var(--surface-alt); }
+  .status-action-btn:disabled { opacity: 0.6; cursor: default; }
+  .status-action-btn.to-packed { color: var(--info); border-color: var(--info); }
+  .status-action-btn.to-shipped { color: var(--success); border-color: var(--success); }
   .order-top-row {
     display: flex;
     justify-content: space-between;
@@ -655,6 +675,20 @@
     return body;
   }
 
+  async function postJSON(url, payload) {
+    var res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    var body = null;
+    try { body = await res.json(); } catch (e) { /* non-JSON error body */ }
+    if (!res.ok) {
+      throw new Error((body && body.error) || ("Request failed (" + res.status + ")"));
+    }
+    return body;
+  }
+
   function getColors() {
     if (colorsMap) return Promise.resolve(colorsMap);
     try {
@@ -910,8 +944,14 @@
       var pct = knownTotal > 0 ? Math.round((picked / knownTotal) * 100) : 0;
       var meta = STATUS_META[order.status];
       var needsPick = meta && meta.tone === "fresh";
+      var statusAction = "";
+      if (order.status === "PAID") {
+        statusAction = '<button class="status-action-btn to-packed" data-order="' + escapeHtml(order.orderId) + '" data-target-status="PACKED">Mark as packed</button>';
+      } else if (order.status === "PACKED") {
+        statusAction = '<button class="status-action-btn to-shipped" data-order="' + escapeHtml(order.orderId) + '" data-target-status="SHIPPED">Mark as shipped</button>';
+      }
       html += ""
-        + '<button class="order-card' + (needsPick ? ' needs-pick' : '') + '" data-order="' + escapeHtml(order.orderId) + '">'
+        + '<div class="order-card' + (needsPick ? ' needs-pick' : '') + '" role="button" tabindex="0" data-order="' + escapeHtml(order.orderId) + '">'
         + '<div class="order-top-row">'
         + '<span class="order-id-group">'
         + '<span class="order-id mono">#' + escapeHtml(order.orderId) + '</span>'
@@ -927,7 +967,8 @@
         + '<div class="progress-track"><div class="progress-fill' + (done ? ' done' : '') + '" style="width:' + pct + '%"></div></div>'
         + '<span class="progress-label">' + picked + '/' + knownTotal + '</span>'
         + '</div>'
-        + '</button>';
+        + (statusAction ? '<div class="order-status-row">' + statusAction + '</div>' : '')
+        + '</div>';
     });
     ordersView.innerHTML = html;
 
@@ -935,7 +976,44 @@
       card.addEventListener("click", function () {
         openOrder(card.getAttribute("data-order"));
       });
+      card.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openOrder(card.getAttribute("data-order"));
+        }
+      });
     });
+
+    ordersView.querySelectorAll(".status-action-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        handleStatusChange(btn);
+      });
+    });
+  }
+
+  function handleStatusChange(btn) {
+    var orderId = btn.getAttribute("data-order");
+    var targetStatus = btn.getAttribute("data-target-status");
+    var label = targetStatus === "PACKED" ? "Packed" : "Shipped";
+
+    if (!window.confirm("Mark order #" + orderId + " as " + label + " on BrickLink?")) return;
+
+    var originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Updating…";
+
+    postJSON("/api/update-order-status", { orderId: orderId, status: targetStatus })
+      .then(function () {
+        var order = orders.find(function (o) { return o.orderId === orderId; });
+        if (order) order.status = targetStatus;
+        renderOrdersList();
+      })
+      .catch(function (err) {
+        window.alert("Couldn't update order #" + orderId + ": " + err.message);
+        btn.disabled = false;
+        btn.textContent = originalText;
+      });
   }
 
   function setOrdersLoading() {

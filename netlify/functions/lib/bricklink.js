@@ -22,16 +22,23 @@ function getOAuthClient() {
   });
 }
 
-// Signs and issues a GET request against the BrickLink Store API and
-// returns the parsed `data` payload, throwing on transport or API errors.
-async function blGet(path) {
+// Signs and issues a request against the BrickLink Store API and returns
+// the parsed `data` payload, throwing on transport or API errors. `payload`
+// (if given) is sent as a raw JSON body — OAuth 1.0a only signs the method
+// and URL here, not the body, matching how blGet's signing already works.
+async function blRequest(method, path, payload) {
   const oauth = getOAuthClient();
   const token = { key: process.env.BL_TOKEN, secret: process.env.BL_TOKEN_SECRET };
   const url = `${API_BASE}${path}`;
 
-  const headers = oauth.toHeader(oauth.authorize({ url, method: 'GET' }, token));
+  const headers = oauth.toHeader(oauth.authorize({ url, method }, token));
+  const options = { method, headers };
+  if (payload !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(payload);
+  }
 
-  const res = await fetch(url, { method: 'GET', headers });
+  const res = await fetch(url, options);
 
   let body;
   try {
@@ -49,7 +56,15 @@ async function blGet(path) {
     throw err;
   }
 
-  return body.data;
+  return body && body.data;
 }
 
-module.exports = { blGet };
+function blGet(path) {
+  return blRequest('GET', path);
+}
+
+function blPut(path, payload) {
+  return blRequest('PUT', path, payload);
+}
+
+module.exports = { blGet, blPut };
