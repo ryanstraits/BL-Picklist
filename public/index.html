@@ -853,16 +853,20 @@
   var THUMB_MIN = 65;
   var THUMB_MAX = 108;
 
-  // Grows each row's square thumbnail to (almost) match the height of its
-  // text block, so longer descriptions/remarks get a bigger, easier-to-see
-  // photo instead of the same small fixed box. Clamped so a very long
-  // remarks line can't balloon the photo and crowd out the text column.
+  // Sizes every thumbnail in the order to one shared size — the tallest
+  // row's text block wins (clamped) — so photos line up consistently
+  // instead of each row getting its own size based on its own text length.
   function sizeThumbsToRows(container) {
-    container.querySelectorAll(".item-row").forEach(function (row) {
+    var rows = container.querySelectorAll(".item-row");
+    var tallest = 0;
+    rows.forEach(function (row) {
       var body = row.querySelector(".item-body");
+      if (body) tallest = Math.max(tallest, body.offsetHeight);
+    });
+    var size = Math.max(THUMB_MIN, Math.min(THUMB_MAX, tallest));
+    rows.forEach(function (row) {
       var thumb = row.querySelector(".item-thumb");
-      if (!body || !thumb) return;
-      var size = Math.max(THUMB_MIN, Math.min(THUMB_MAX, body.offsetHeight));
+      if (!thumb) return;
       thumb.style.width = size + "px";
       thumb.style.height = size + "px";
     });
