@@ -858,10 +858,25 @@
 
     var toPickCount = orders.filter(function (o) { return o.status === "PAID"; }).length;
     var toShipCount = orders.filter(function (o) { return o.status === "PACKED"; }).length;
+
+    var inProcessOrders = orders.filter(function (o) {
+      var meta = STATUS_META[o.status];
+      return o.orderTotal && (!meta || meta.tone !== "problem");
+    });
+    var inProcessCurrency = inProcessOrders.length ? inProcessOrders[0].currencyCode : null;
+    var inProcessTotal = null;
+    if (inProcessOrders.length) {
+      inProcessTotal = inProcessOrders.reduce(function (sum, o) {
+        if (o.currencyCode !== inProcessCurrency) return sum;
+        return sum + Number(o.orderTotal);
+      }, 0);
+    }
+
     var html = ""
       + '<div class="order-stats">'
       + '<div>Total orders to be picked: <strong>' + toPickCount + '</strong></div>'
       + '<div>Total orders to be shipped: <strong>' + toShipCount + '</strong></div>'
+      + (inProcessTotal !== null ? '<div>Total value of orders in process: <strong>' + escapeHtml(formatCurrency(inProcessTotal, inProcessCurrency)) + '</strong></div>' : '')
       + '</div>';
     orders.forEach(function (order) {
       var total = order.totalCount || 0;
@@ -1007,7 +1022,10 @@
       + '<div class="order-id mono">Order #' + escapeHtml(order.orderId) + '</div>'
       + statusBadgeHtml(order.status)
       + '</div>'
-      + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + '</div>'
+      + '<div class="order-buyer">'
+      + '<span>' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + '</span>'
+      + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
+      + '</div>'
       + '<div class="picked-count"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>'
       + (items.length ? '<div class="order-actions">'
         + '<button class="select-all-btn">Select all as picked</button>'
