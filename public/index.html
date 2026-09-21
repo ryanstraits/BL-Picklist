@@ -734,7 +734,9 @@
         currentObjectUrl = URL.createObjectURL(blob);
         lightboxImg.src = currentObjectUrl;
         var sizeLabel = bytes ? Math.round(bytes / 1024) + "KB" : "";
-        lightboxHint.textContent = DEFAULT_HINT + " · " + (tier === "fallback" ? "low-res photo" : "hi-res photo") + (sizeLabel ? " (" + sizeLabel + ")" : "");
+        var TIER_LABELS = { "catalog-api": "official catalog photo", "hires": "hi-res photo", "fallback": "low-res photo" };
+        var tierLabel = TIER_LABELS[tier] || "photo";
+        lightboxHint.textContent = DEFAULT_HINT + " · " + tierLabel + (sizeLabel ? " (" + sizeLabel + ")" : "");
       });
     }).catch(function () {
       lightboxHint.textContent = "Couldn't load this photo";
