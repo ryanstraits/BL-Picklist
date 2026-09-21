@@ -193,6 +193,8 @@
     color: inherit;
   }
   .order-card:active { background: var(--surface-alt); }
+  .order-card.needs-pick { background: var(--accent-soft); }
+  .order-card.needs-pick:active { background: var(--accent-soft); filter: brightness(0.94); }
   .order-top-row {
     display: flex;
     justify-content: space-between;
@@ -560,8 +562,8 @@
     PROCESSING: { label: "Processing", tone: "waiting" },
     READY: { label: "Ready", tone: "waiting" },
     PAID: { label: "Paid", tone: "fresh" },
-    PACKED: { label: "Packed", tone: "packed" },
-    SHIPPED: { label: "Shipped", tone: "done" },
+    PACKED: { label: "Packed", tone: "done" },
+    SHIPPED: { label: "Shipped", tone: "packed" },
     RECEIVED: { label: "Received", tone: "done" },
     CANCELLED: { label: "Cancelled", tone: "problem" },
     PURGED: { label: "Purged", tone: "problem" },
@@ -796,8 +798,10 @@
       var knownTotal = items ? items.length : lineCount;
       var done = knownTotal > 0 && picked === knownTotal;
       var pct = knownTotal > 0 ? Math.round((picked / knownTotal) * 100) : 0;
+      var meta = STATUS_META[order.status];
+      var needsPick = meta && meta.tone === "fresh";
       html += ""
-        + '<button class="order-card" data-order="' + escapeHtml(order.orderId) + '">'
+        + '<button class="order-card' + (needsPick ? ' needs-pick' : '') + '" data-order="' + escapeHtml(order.orderId) + '">'
         + '<div class="order-top-row">'
         + '<span class="order-id-group">'
         + '<span class="order-id mono">#' + escapeHtml(order.orderId) + '</span>'
