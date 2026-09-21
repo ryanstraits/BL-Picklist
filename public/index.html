@@ -547,6 +547,18 @@
     });
   }
 
+  // BrickLink's catalog text (item names, descriptions, remarks) sometimes
+  // has HTML entities already baked in verbatim (e.g. "&#40;" for "("), a
+  // quirk of their data source. Decoding them first means escapeHtml can
+  // safely re-escape from there without turning "&#40;" into the literal
+  // text "&amp;#40;" in the page.
+  var entityDecoder = document.createElement("textarea");
+  function decodeHtmlEntities(s) {
+    if (!s) return s;
+    entityDecoder.innerHTML = s;
+    return entityDecoder.value;
+  }
+
   function formatDate(iso) {
     if (!iso) return "";
     var d = new Date(iso);
@@ -1004,6 +1016,9 @@
       var items = await fetchJSON("/api/orders/" + encodeURIComponent(orderId) + "/items");
       items.forEach(function (item) {
         item.colorName = item.colorId ? (colors[item.colorId] || null) : null;
+        item.name = decodeHtmlEntities(item.name);
+        item.description = decodeHtmlEntities(item.description);
+        item.remarks = decodeHtmlEntities(item.remarks);
       });
       itemsCache[orderId] = items;
       if (currentView === "order" && order.orderId === orderId) {
