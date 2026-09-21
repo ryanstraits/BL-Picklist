@@ -88,7 +88,7 @@ exports.handler = async (event) => {
       statusCode: 200,
       headers: {
         "Content-Type": best.contentType,
-        "Cache-Control": "public, max-age=604800, immutable",
+        "Cache-Control": "public, max-age=3600",
         // Lets the frontend show whether it got the official Catalog API
         // photo, the color-specific hotlink, or the small generic one,
         // and its actual byte size — no devtools needed to check.

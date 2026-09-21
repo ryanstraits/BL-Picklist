@@ -725,7 +725,7 @@
     // diagnostic headers item-image.js sets — tells us whether this photo
     // is the larger color-specific one or the small fallback, and its
     // actual byte size, without needing device devtools to check.
-    fetch(url).then(function (res) {
+    fetch(url, { cache: "no-store" }).then(function (res) {
       if (!res.ok) throw new Error("image request failed");
       var tier = res.headers.get("X-Image-Tier");
       var bytes = res.headers.get("X-Image-Bytes");
