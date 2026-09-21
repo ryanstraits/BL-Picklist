@@ -21,6 +21,8 @@
     --success: #2F8F5B;
     --success-bg: #E3F3EA;
     --danger: #B4483A;
+    --info: #2E5FA3;
+    --info-bg: #E3EAF5;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -36,6 +38,8 @@
       --success: #4FAE7B;
       --success-bg: #1C3327;
       --danger: #E0685A;
+      --info: #7BB0FA;
+      --info-bg: #1C2A40;
     }
   }
   :root[data-theme="dark"] {
@@ -51,6 +55,8 @@
     --success: #4FAE7B;
     --success-bg: #1C3327;
     --danger: #E0685A;
+    --info: #7BB0FA;
+    --info-bg: #1C2A40;
   }
 
   * { box-sizing: border-box; }
@@ -208,7 +214,7 @@
   }
   .status-badge.tone-fresh { color: var(--accent); background: var(--accent-soft); }
   .status-badge.tone-packed { color: var(--success); background: var(--success-bg); }
-  .status-badge.tone-done { color: var(--text-secondary); background: var(--surface-alt); }
+  .status-badge.tone-done { color: var(--info); background: var(--info-bg); }
   .status-badge.tone-waiting { color: var(--text-secondary); background: var(--surface-alt); }
   .status-badge.tone-problem { color: var(--danger); background: var(--surface-alt); }
   .order-buyer { font-size: 13.5px; color: var(--text-secondary); margin-top: 3px; }
