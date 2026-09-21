@@ -22,7 +22,7 @@ async function tryFetch(url) {
 }
 
 // The official, documented Catalog API — may return a different (and
-// possibly larger) photo than either undocumented hotlink pattern below.
+// possibly larger) photo than any of the undocumented hotlink patterns.
 async function tryCatalogApiImage(itemType, itemNo) {
   if (!itemType) return null;
   try {
@@ -49,44 +49,36 @@ exports.handler = async (event) => {
   const letter = TYPE_LETTERS[itemType] || "P";
   const colorId = params.color || "0";
   const newOrUsed = params.nu === "U" ? "U" : "N";
+  const no = encodeURIComponent(itemNo);
+  const color = encodeURIComponent(colorId);
 
-  const hiResUrl = `https://img.bricklink.com/ItemImage/${letter}${newOrUsed}/${encodeURIComponent(colorId)}/${encodeURIComponent(itemNo)}.png`;
-  // BrickLink's own item pages link to this "large" size variant directly
-  // (e.g. bricklink.com/ML/njo0168.jpg for a minifig) — on the main site
-  // domain, not the img.bricklink.com CDN, and not color-specific.
-  const largeUrl = `https://www.bricklink.com/${letter}L/${encodeURIComponent(itemNo)}.jpg`;
-  const fallbackUrl = `https://img.bricklink.com/${letter}/${encodeURIComponent(itemNo)}.jpg`;
+  // BrickLink's undocumented photo URLs aren't consistent across item
+  // types — e.g. minifigs' "large" photo is a .jpg with no color segment,
+  // while parts' is a .gif and the small thumbnail needs a color segment
+  // parts don't need for minifigs. Rather than guess one fixed shape per
+  // tier, try every plausible variant and let the biggest surviving file
+  // win — same idea as picking between the Catalog API and hotlink CDN.
+  const urlCandidates = [
+    { tier: "hires", url: `https://img.bricklink.com/ItemImage/${letter}${newOrUsed}/${color}/${no}.png` },
+    { tier: "large", url: `https://www.bricklink.com/${letter}L/${no}.jpg` },
+    { tier: "large", url: `https://www.bricklink.com/${letter}L/${no}.gif` },
+    { tier: "small", url: `https://img.bricklink.com/${letter}/${color}/${no}.jpg` },
+    { tier: "small", url: `https://img.bricklink.com/${letter}/${no}.jpg` },
+  ];
 
   try {
-    // Try every independent, potentially-different-resolution source
-    // concurrently, then use whichever actually has more detail (bigger
-    // file) rather than guessing at a fixed priority.
-    const [catalogResult, hiResResult, largeResult] = await Promise.all([
-      tryCatalogApiImage(itemType, itemNo),
-      tryFetch(hiResUrl),
-      tryFetch(largeUrl),
-    ]);
+    const fetches = urlCandidates
+      .map((c) => tryFetch(c.url).then((result) => ({ result, tier: c.tier })))
+      .concat([tryCatalogApiImage(itemType, itemNo).then((result) => ({ result, tier: "catalog-api" }))]);
 
-    const candidates = [
-      { result: catalogResult, tier: "catalog-api" },
-      { result: hiResResult, tier: "hires" },
-      { result: largeResult, tier: "large" },
-    ];
+    const settled = await Promise.all(fetches);
 
     let best = null;
     let tier = null;
-    for (const c of candidates) {
-      if (c.result && (!best || c.result.buffer.length > best.buffer.length)) {
-        best = c.result;
-        tier = c.tier;
-      }
-    }
-
-    if (!best) {
-      const fallbackResult = await tryFetch(fallbackUrl);
-      if (fallbackResult) {
-        best = fallbackResult;
-        tier = "fallback";
+    for (const { result, tier: t } of settled) {
+      if (result && (!best || result.buffer.length > best.buffer.length)) {
+        best = result;
+        tier = t;
       }
     }
 
@@ -99,9 +91,8 @@ exports.handler = async (event) => {
       headers: {
         "Content-Type": best.contentType,
         "Cache-Control": "public, max-age=86400",
-        // Lets the frontend show whether it got the official Catalog API
-        // photo, the color-specific hotlink, or the small generic one,
-        // and its actual byte size — no devtools needed to check.
+        // Lets the frontend show which source/size actually won — no
+        // devtools needed to check.
         "X-Image-Tier": tier,
         "X-Image-Bytes": String(best.buffer.length),
       },
