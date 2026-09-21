@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>Pick List</title>
+<title>Brick Stud Pick List</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -135,18 +135,6 @@
   .refresh-btn svg { width: 13px; height: 13px; }
   .refresh-btn.spinning svg { animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-
-  .notice {
-    margin: 12px 16px 0;
-    padding: 10px 12px;
-    background: var(--accent-soft);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 12.5px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-  }
-  .notice strong { color: var(--text); }
 
   main { flex: 1; padding: 4px 16px 32px; }
 
@@ -461,7 +449,7 @@
         All orders
       </button>
       <div class="brand" id="brandBlock">
-        Pick List
+        Brick Stud Pick List
         <small id="brandSub">Open BrickLink orders</small>
       </div>
       <button class="refresh-btn" id="refreshBtn" aria-label="Refresh orders">
@@ -470,10 +458,6 @@
       </button>
     </div>
   </header>
-
-  <div class="notice">
-    <strong>Live BrickLink orders.</strong> Pulled through a Netlify Function that signs requests with your store's API keys, so credentials never reach this page. Tap "Refresh" to pull the latest orders — this app doesn't poll automatically, to stay well under BrickLink's daily rate limit.
-  </div>
 
   <main>
     <section id="view-orders"></section>
@@ -540,6 +524,13 @@
     return String(s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
+  }
+
+  function formatDate(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   }
 
   // tone: fresh = needs picking, packed = picked & boxed, done = shipped/received,
@@ -793,7 +784,7 @@
         + '<span class="order-id mono">#' + escapeHtml(order.orderId) + '</span>'
         + statusBadgeHtml(order.status)
         + '</span>'
-        + '<span class="order-date">' + escapeHtml(order.date || "") + '</span>'
+        + '<span class="order-date">' + escapeHtml(formatDate(order.date)) + '</span>'
         + '</div>'
         + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + lineCount + ' lines · ' + total + ' pcs</div>'
         + '<div class="order-progress-row">'
@@ -914,7 +905,7 @@
       + '<div class="order-id mono">Order #' + escapeHtml(order.orderId) + '</div>'
       + statusBadgeHtml(order.status)
       + '</div>'
-      + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(order.date || "") + '</div>'
+      + '<div class="order-buyer">' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + '</div>'
       + '<div class="picked-count"><strong>' + picked + ' of ' + items.length + '</strong> lines picked' + (allDone ? ' — ready to pack' : '') + '</div>'
       + '</div>'
       + (items.length ? rows : '<div class="state-block">This order has no line items.</div>')
