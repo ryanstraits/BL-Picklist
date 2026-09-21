@@ -51,25 +51,35 @@ exports.handler = async (event) => {
   const newOrUsed = params.nu === "U" ? "U" : "N";
 
   const hiResUrl = `https://img.bricklink.com/ItemImage/${letter}${newOrUsed}/${encodeURIComponent(colorId)}/${encodeURIComponent(itemNo)}.png`;
+  // BrickLink's own item pages link to this "large" size variant directly
+  // (e.g. bricklink.com/ML/njo0168.jpg for a minifig) — on the main site
+  // domain, not the img.bricklink.com CDN, and not color-specific.
+  const largeUrl = `https://www.bricklink.com/${letter}L/${encodeURIComponent(itemNo)}.jpg`;
   const fallbackUrl = `https://img.bricklink.com/${letter}/${encodeURIComponent(itemNo)}.jpg`;
 
   try {
-    // Try the two independent, potentially-different-resolution sources
-    // concurrently, then pick whichever actually has more detail (bigger
+    // Try every independent, potentially-different-resolution source
+    // concurrently, then use whichever actually has more detail (bigger
     // file) rather than guessing at a fixed priority.
-    const [catalogResult, hiResResult] = await Promise.all([
+    const [catalogResult, hiResResult, largeResult] = await Promise.all([
       tryCatalogApiImage(itemType, itemNo),
       tryFetch(hiResUrl),
+      tryFetch(largeUrl),
     ]);
+
+    const candidates = [
+      { result: catalogResult, tier: "catalog-api" },
+      { result: hiResResult, tier: "hires" },
+      { result: largeResult, tier: "large" },
+    ];
 
     let best = null;
     let tier = null;
-    if (catalogResult && (!hiResResult || catalogResult.buffer.length >= hiResResult.buffer.length)) {
-      best = catalogResult;
-      tier = "catalog-api";
-    } else if (hiResResult) {
-      best = hiResResult;
-      tier = "hires";
+    for (const c of candidates) {
+      if (c.result && (!best || c.result.buffer.length > best.buffer.length)) {
+        best = c.result;
+        tier = c.tier;
+      }
     }
 
     if (!best) {
