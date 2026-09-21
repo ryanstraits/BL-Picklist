@@ -52,17 +52,27 @@ Token Secret as sensitive as an API key that can move money.
   default. Override with `/api/orders?status=paid,packed` etc. if you want
   a narrower set. Order cards and the detail view show a color-coded
   status badge (fresh/paid, packed, shipped/received, cancelled/problem).
-- `/api/item-image?type=&no=&color=&nu=` tries the larger, color-specific
-  catalog photo first (`img.bricklink.com/ItemImage/{TYPE}{N|U}/{color_id}/{no}.png`)
-  and falls back to a smaller generic one (`img.bricklink.com/{TYPE}/{no}.jpg`,
-  no color variants) if that particular item/color has no hi-res photo.
-  BrickLink's hotlink protection blocks both when a browser requests them
-  directly as an `<img>` subresource (even with no `Referer` sent — it
-  appears to key off `Sec-Fetch-*` request metadata, which can't be
-  suppressed client-side), so this function fetches server-side and
-  streams the bytes back under our own origin. Each `<img>` falls back to
-  a placeholder icon on load failure; tapping a photo opens it full-size
-  in an in-page lightbox.
+- `/api/item-image?type=&no=&color=&nu=` fetches up to three independent
+  BrickLink photo sources concurrently — the official Catalog API's
+  `image_url`, the color-specific catalog photo
+  (`img.bricklink.com/ItemImage/{TYPE}{N|U}/{color_id}/{no}.png`), and
+  BrickLink's own "large" size variant (`www.bricklink.com/{TYPE}L/{no}.jpg`,
+  the same one linked from BrickLink's own item pages) — and uses
+  whichever comes back with the most bytes, since which source actually
+  has the most detail varies by item. Falls back to a small generic photo
+  (`img.bricklink.com/{TYPE}/{no}.jpg`, no color variants) only if all
+  three fail. BrickLink's hotlink protection blocks these when a browser
+  requests them directly as an `<img>` subresource (even with no
+  `Referer` sent — it appears to key off `Sec-Fetch-*` request metadata,
+  which can't be suppressed client-side), so this function fetches
+  server-side and streams the bytes back under our own origin. The
+  response carries `X-Image-Tier` and `X-Image-Bytes` headers; the
+  lightbox fetches via JS (rather than a plain `<img src>`, which can't
+  read headers) to show which source and size it got. Each `<img>` falls
+  back to a placeholder icon on load failure; tapping a photo opens it
+  full-size in an in-page lightbox with pinch/pan/double-tap zoom (built
+  on Touch Events, not the browser's native pinch-zoom, which is
+  disabled site-wide to avoid accidental zooming while picking).
 - Colors are fetched once from `/api/colors` and cached indefinitely in
   `localStorage`, since BrickLink color IDs essentially never change.
 - "Picked" state is stored per-order in `localStorage` on the device —
