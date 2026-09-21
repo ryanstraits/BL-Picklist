@@ -645,19 +645,31 @@
   // browser, including Chrome, runs on) has a history of unreliable
   // multi-touch handling via Pointer Events — Touch Events are the
   // long-standing, battle-tested API there.
-  lightboxImg.addEventListener("touchstart", function (e) {
-    e.preventDefault();
+  //
+  // Listeners are on the full-screen overlay, not the (possibly small,
+  // native-resolution) image itself — a pinch's two fingers often won't
+  // both land within a small image's bounds, and a touch that starts
+  // outside it would never reach a listener attached to the image.
+  // preventDefault is only called once we've recognized an actual pinch,
+  // pan, or double-tap gesture — a plain single tap falls through so the
+  // browser's synthesized click still closes the lightbox on backdrop
+  // taps (see the click listener below).
+  lightbox.addEventListener("touchstart", function (e) {
+    if (e.target === lightboxClose) return;
+
     for (var i = 0; i < e.changedTouches.length; i++) {
       var t = e.changedTouches[i];
       pointers[t.identifier] = { x: t.clientX, y: t.clientY };
     }
 
     if (e.touches.length === 2) {
+      e.preventDefault();
       pinchStartDist = touchDistance(e.touches[0], e.touches[1]);
       pinchStartScale = zoomScale;
     } else if (e.touches.length === 1) {
       var now = Date.now();
       if (now - lastTapTime < 300) {
+        e.preventDefault();
         if (zoomScale > 1) {
           resetZoom();
         } else {
@@ -669,16 +681,16 @@
     }
   }, { passive: false });
 
-  lightboxImg.addEventListener("touchmove", function (e) {
-    e.preventDefault();
-
+  lightbox.addEventListener("touchmove", function (e) {
     if (e.touches.length === 2) {
+      e.preventDefault();
       var dist = touchDistance(e.touches[0], e.touches[1]);
       if (pinchStartDist > 0) {
         zoomScale = clamp(pinchStartScale * (dist / pinchStartDist), 1, MAX_ZOOM);
         applyZoomTransform();
       }
     } else if (e.touches.length === 1 && zoomScale > 1) {
+      e.preventDefault();
       var t = e.touches[0];
       var prev = pointers[t.identifier];
       if (prev) {
@@ -696,8 +708,8 @@
     }
     if (e.touches.length < 2) pinchStartDist = 0;
   }
-  lightboxImg.addEventListener("touchend", endTouch);
-  lightboxImg.addEventListener("touchcancel", endTouch);
+  lightbox.addEventListener("touchend", endTouch);
+  lightbox.addEventListener("touchcancel", endTouch);
 
   function openLightbox(url) {
     resetZoom();
