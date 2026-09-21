@@ -484,7 +484,7 @@
 <div class="lightbox hidden" id="lightbox">
   <button class="lightbox-close" id="lightboxClose" aria-label="Close photo">&times;</button>
   <img id="lightboxImg" src="" alt="">
-  <div class="lightbox-hint">Pinch or double-tap to zoom</div>
+  <div class="lightbox-hint" id="lightboxHint">Pinch or double-tap to zoom</div>
 </div>
 
 <script>
@@ -711,15 +711,44 @@
   lightbox.addEventListener("touchend", endTouch);
   lightbox.addEventListener("touchcancel", endTouch);
 
+  var lightboxHint = document.getElementById("lightboxHint");
+  var currentObjectUrl = null;
+  var DEFAULT_HINT = "Pinch or double-tap to zoom";
+
   function openLightbox(url) {
     resetZoom();
-    lightboxImg.src = url;
+    lightboxImg.src = "";
+    lightboxHint.textContent = "Loading…";
     lightbox.classList.remove("hidden");
+
+    // Fetch via JS (rather than a plain <img src>) so we can read the
+    // diagnostic headers item-image.js sets — tells us whether this photo
+    // is the larger color-specific one or the small fallback, and its
+    // actual byte size, without needing device devtools to check.
+    fetch(url).then(function (res) {
+      if (!res.ok) throw new Error("image request failed");
+      var tier = res.headers.get("X-Image-Tier");
+      var bytes = res.headers.get("X-Image-Bytes");
+      return res.blob().then(function (blob) {
+        if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = URL.createObjectURL(blob);
+        lightboxImg.src = currentObjectUrl;
+        var sizeLabel = bytes ? Math.round(bytes / 1024) + "KB" : "";
+        lightboxHint.textContent = DEFAULT_HINT + " · " + (tier === "fallback" ? "low-res photo" : "hi-res photo") + (sizeLabel ? " (" + sizeLabel + ")" : "");
+      });
+    }).catch(function () {
+      lightboxHint.textContent = "Couldn't load this photo";
+    });
   }
 
   function closeLightbox() {
     lightbox.classList.add("hidden");
     lightboxImg.src = "";
+    if (currentObjectUrl) {
+      URL.revokeObjectURL(currentObjectUrl);
+      currentObjectUrl = null;
+    }
+    lightboxHint.textContent = DEFAULT_HINT;
     resetZoom();
   }
 

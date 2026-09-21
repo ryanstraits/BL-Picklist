@@ -30,8 +30,10 @@ exports.handler = async (event) => {
 
   try {
     let res = await fetch(hiResUrl, { headers: FETCH_HEADERS });
+    let tier = "hires";
     if (!res.ok) {
       res = await fetch(fallbackUrl, { headers: FETCH_HEADERS });
+      tier = "fallback";
     }
 
     if (!res.ok) {
@@ -46,6 +48,10 @@ exports.handler = async (event) => {
       headers: {
         "Content-Type": contentType,
         "Cache-Control": "public, max-age=604800, immutable",
+        // Lets the frontend tell whether it got the larger, color-specific
+        // photo or had to fall back to the small generic one.
+        "X-Image-Tier": tier,
+        "X-Image-Bytes": String(buffer.length),
       },
       body: buffer.toString("base64"),
       isBase64Encoded: true,
