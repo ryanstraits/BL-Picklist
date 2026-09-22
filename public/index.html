@@ -1521,10 +1521,9 @@
       });
   }
 
-  // The response shape for GET /members/{username}/ratings isn't confirmed
-  // against live BrickLink docs, so this reads a few plausible field names
-  // defensively and simply shows nothing if none match, rather than risk
-  // displaying a wrong or misleading number.
+  // Confirmed against a live response: GET /members/{username}/ratings
+  // returns { user_name, rating: { PRAISE, NEUTRAL, COMPLAINT } } — counts,
+  // not an overall score — e.g. {"PRAISE":1,"NEUTRAL":0,"COMPLAINT":0}.
   function fetchAndShowBuyerRating(username) {
     var badge = document.getElementById("buyerRatingBadge");
     if (!badge || !username) return;
@@ -1544,17 +1543,17 @@
   }
 
   function renderRatingBadge(badge, rating) {
-    if (!rating) return;
-    var score = rating.rating != null ? rating.rating
-      : rating.score != null ? rating.score
-      : rating.feedback_rating != null ? rating.feedback_rating
-      : null;
-    // Confirmed against a real response: this field can itself be a
-    // nested object (not a plain number), which used to render as the
-    // literal text "[object Object]". Only show it when it's actually
-    // a number or string we can print safely.
-    if (typeof score !== "number" && typeof score !== "string") return;
-    badge.textContent = "★ " + score;
+    if (!rating || !rating.rating || typeof rating.rating !== "object") return;
+    var counts = rating.rating;
+    var praise = Number(counts.PRAISE) || 0;
+    var neutral = Number(counts.NEUTRAL) || 0;
+    var complaint = Number(counts.COMPLAINT) || 0;
+    var total = praise + neutral + complaint;
+    if (total === 0) return;
+    // One decimal place so e.g. 1835/1842 shows as 99.6%, not a
+    // misleadingly-rounded 100% when there are some non-praise ratings.
+    var pct = Math.round((praise / total) * 1000) / 10;
+    badge.textContent = "★ " + total + " (" + pct + "%)";
   }
 
   function setOrderLoading(order) {

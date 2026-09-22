@@ -128,11 +128,11 @@ Token Secret as sensitive as an API key that can move money.
     under the item list when an order has any. Fetched alongside items;
     a failure here doesn't block the rest of the order view.
   - **Buyer feedback rating** — `GET /members/{username}/ratings`, shown
-    as a small `★ score` next to the buyer's name. The response shape
-    isn't confirmed against live BrickLink docs (couldn't reach them from
-    the sandbox this was built in), so it reads a few plausible field
-    names defensively and just shows nothing if none match, rather than
-    risk a wrong number — worth checking against a real order.
+    as a small `★ total (praise %)` next to the buyer's name (e.g.
+    `★ 1842 (99.6%)`). Confirmed against a live response: the endpoint
+    returns `{"rating": {"PRAISE": n, "NEUTRAL": n, "COMPLAINT": n}}`
+    (counts, not an overall score), so the badge is a total feedback
+    count and the praise percentage computed from those three.
   - **Leave feedback for buyer** — shown once an order is SHIPPED,
     RECEIVED, or COMPLETED: pick Praise/Neutral/Complaint, write a
     comment, confirm (this posts public feedback visible to the buyer
