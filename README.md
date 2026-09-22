@@ -84,7 +84,7 @@ Token Secret as sensitive as an API key that can move money.
 - The orders list can push a real status change back to BrickLink: a
   "Mark as packed" button on PAID orders and "Mark as shipped" on PACKED
   ones. `/api/update-order-status` only accepts those two target
-  statuses (`PUT /orders/{id}` on BrickLink's side with
+  statuses (`PUT /orders/{id}/status` on BrickLink's side with
   `{"field":"status","value":...}`) — no free-form status picker, so a
   bad request can't push an order into an unexpected state. Each tap
   requires a confirm dialog first, since — unlike everything else in the

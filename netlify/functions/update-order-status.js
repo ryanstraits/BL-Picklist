@@ -25,9 +25,9 @@ exports.handler = async (event) => {
   }
 
   try {
-    // Updates the order's overall status (not /orders/{id}/status, which
-    // is BrickLink's separate payment-status endpoint).
-    await blPut(`/orders/${encodeURIComponent(orderId)}`, { field: 'status', value: status });
+    // /orders/{id}/status updates order status; the separate
+    // /orders/{id}/payment_status endpoint is for payment status instead.
+    await blPut(`/orders/${encodeURIComponent(orderId)}/status`, { field: 'status', value: status });
     return json(200, { orderId, status });
   } catch (err) {
     return errorResponse(err);
