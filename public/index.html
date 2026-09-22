@@ -740,10 +740,16 @@
       .then(function (remote) {
         if (remote && typeof remote === "object") {
           var merged = mergeStates(state, remote);
-          var changed = JSON.stringify(merged) !== JSON.stringify(state);
+          // Compare against what the REMOTE has, not what local had a
+          // moment ago — that's the real question here. Comparing to the
+          // old local value missed the exact case that mattered: remote
+          // has nothing (e.g. it was crashing until just now) and local
+          // already has everything, so the merge doesn't change local at
+          // all but the remote still desperately needs that push.
+          var remoteNeedsUpdate = JSON.stringify(merged) !== JSON.stringify(remote);
           state = merged;
           try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
-          if (changed) pushRemoteState(); // let the remote catch up to anything it was missing
+          if (remoteNeedsUpdate) pushRemoteState();
           if (currentView === "orders") renderOrdersList();
         }
       })
