@@ -1364,7 +1364,7 @@
         + '<button class="reset-btn">Clear picks for this order</button>'
         + '</div>' : '')
       + (canSendDriveThru ? '<div class="drive-thru-row">'
-        + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Thank You (Drive Thru)") + '</button>'
+        + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>'
         + '</div>' : '')
       + '</div>'
       + (items.length ? rows : '<div class="state-block">This order has no line items.</div>')
@@ -1517,7 +1517,7 @@
       .catch(function (err) {
         window.alert("Couldn't send Drive Thru: " + err.message);
         btn.disabled = false;
-        btn.textContent = "Send Thank You (Drive Thru)";
+        btn.textContent = "Send Drive Thru";
       });
   }
 
@@ -1549,7 +1549,11 @@
       : rating.score != null ? rating.score
       : rating.feedback_rating != null ? rating.feedback_rating
       : null;
-    if (score == null) return;
+    // Confirmed against a real response: this field can itself be a
+    // nested object (not a plain number), which used to render as the
+    // literal text "[object Object]". Only show it when it's actually
+    // a number or string we can print safely.
+    if (typeof score !== "number" && typeof score !== "string") return;
     badge.textContent = "★ " + score;
   }
 
