@@ -1,19 +1,22 @@
-const { getStore } = require('@netlify/blobs');
+const { getStore, connectLambda } = require('@netlify/blobs');
 const { json, errorResponse } = require('./lib/http');
 
 const STORE_NAME = 'pick-state';
 const STATE_KEY = 'state';
 
-// Always the global store: this site only ever runs one real deploy
-// context (production, straight from this branch — confirmed via the
-// deploy metadata), so there's no separate preview/staging usage to
-// protect against here. An earlier version branched to getDeployStore()
-// for "non-production", which crashed the function outright
-// (MissingBlobsEnvironmentError, thrown synchronously outside any
-// try/catch) because that mode needs deploy-scoped environment wiring
-// this runtime doesn't provide — every write silently failed as a
-// result, since the frontend's push is fire-and-forget.
+// This project's functions use the classic AWS Lambda-compatible handler
+// signature (exports.handler = async (event) => {...}), not the newer
+// Netlify-native one — for that style, Blobs' per-request context arrives
+// in event.blobs and has to be registered via connectLambda(event) before
+// getStore() can find it. Without this call, getStore() has nothing to
+// read and throws MissingBlobsEnvironmentError — which is what was
+// actually happening on every single request (both GET and POST) since
+// this function was added; the earlier getDeployStore() branching and
+// bad push-comparison logic were both real bugs, but neither was the
+// actual blocker.
 exports.handler = async (event) => {
+  connectLambda(event);
+
   let store;
   try {
     store = getStore(STORE_NAME);
