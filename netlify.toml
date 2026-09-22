@@ -25,3 +25,8 @@
   from = "/api/item-image"
   to = "/.netlify/functions/item-image"
   status = 200
+
+[[redirects]]
+  from = "/api/update-order-status"
+  to = "/.netlify/functions/update-order-status"
+  status = 200
