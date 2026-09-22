@@ -2,7 +2,13 @@ const { getStore, connectLambda } = require('@netlify/blobs');
 const { json, errorResponse } = require('./lib/http');
 
 const STORE_NAME = 'pick-state';
-const STATE_KEY = 'state';
+const DEFAULT_KEY = 'state';
+// Which blob key to read/write — 'state' (picks, the default, for
+// backward compatibility with existing callers) or 'actions'
+// (driveThruSent/feedbackSent). Same store, same GET/POST shape, just a
+// different named slot, so this one small function covers both instead
+// of duplicating the whole Blobs-wiring dance a second time.
+const ALLOWED_KEYS = new Set(['state', 'actions']);
 
 // This project's functions use the classic AWS Lambda-compatible handler
 // signature (exports.handler = async (event) => {...}), not the newer
@@ -17,6 +23,11 @@ const STATE_KEY = 'state';
 exports.handler = async (event) => {
   connectLambda(event);
 
+  const requestedKey = (event.queryStringParameters && event.queryStringParameters.key) || DEFAULT_KEY;
+  if (!ALLOWED_KEYS.has(requestedKey)) {
+    return { statusCode: 400, body: 'Unsupported key' };
+  }
+
   let store;
   try {
     store = getStore(STORE_NAME);
@@ -26,8 +37,8 @@ exports.handler = async (event) => {
 
   if (event.httpMethod === 'GET') {
     try {
-      const state = await store.get(STATE_KEY, { type: 'json' });
-      return json(200, state || {});
+      const data = await store.get(requestedKey, { type: 'json' });
+      return json(200, data || {});
     } catch (err) {
       return errorResponse(err);
     }
@@ -45,7 +56,7 @@ exports.handler = async (event) => {
     }
 
     try {
-      await store.setJSON(STATE_KEY, payload);
+      await store.setJSON(requestedKey, payload);
       return json(200, { ok: true });
     } catch (err) {
       return errorResponse(err);

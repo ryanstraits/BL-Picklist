@@ -757,6 +757,42 @@
     return remoteSyncPromise;
   }
 
+  // Same durability story as picks, for "Send Drive Thru" / "Leave
+  // feedback" — these used to just live in memory for the current page
+  // load, so a reload showed the button/form again even though BrickLink
+  // already had the action on record. Reuses /api/pick-state's Blobs
+  // store under a second key ("actions") since it's the same small
+  // per-order boolean-map shape, just two maps instead of one.
+  function mergeActionMap(a, b) {
+    var merged = {};
+    Object.keys(a || {}).forEach(function (k) { if (a[k]) merged[k] = true; });
+    Object.keys(b || {}).forEach(function (k) { if (b[k]) merged[k] = true; });
+    return merged;
+  }
+
+  function pushOrderActions() {
+    postJSON("/api/pick-state?key=actions", { driveThruSent: driveThruSent, feedbackSent: feedbackSent })
+      .catch(function () { /* offline — ignore, same as picks */ });
+  }
+
+  var orderActionsSyncPromise = null;
+  function syncOrderActionsFromRemote() {
+    orderActionsSyncPromise = fetchJSON("/api/pick-state?key=actions")
+      .then(function (remote) {
+        if (remote && typeof remote === "object") {
+          var mergedDriveThru = mergeActionMap(driveThruSent, remote.driveThruSent);
+          var mergedFeedback = mergeActionMap(feedbackSent, remote.feedbackSent);
+          var remoteNeedsUpdate = JSON.stringify(mergedDriveThru) !== JSON.stringify(remote.driveThruSent || {})
+            || JSON.stringify(mergedFeedback) !== JSON.stringify(remote.feedbackSent || {});
+          driveThruSent = mergedDriveThru;
+          feedbackSent = mergedFeedback;
+          if (remoteNeedsUpdate) pushOrderActions();
+        }
+      })
+      .catch(function () { /* offline or first run — keep whatever's local */ });
+    return orderActionsSyncPromise;
+  }
+
   function isPicked(orderId, key) {
     return !!(state[orderId] && state[orderId][key]);
   }
@@ -1500,6 +1536,7 @@
       postJSON("/api/feedback", { orderId: order.orderId, rating: selectedRating, comment: comment })
         .then(function () {
           feedbackSent[order.orderId] = true;
+          pushOrderActions();
           renderOrderDetail(order, items, messages);
         })
         .catch(function (err) {
@@ -1520,6 +1557,7 @@
     postJSON("/api/send-drive-thru", { orderId: order.orderId })
       .then(function () {
         driveThruSent[order.orderId] = true;
+        pushOrderActions();
         renderOrderDetail(order, items, messages);
       })
       .catch(function (err) {
@@ -1595,13 +1633,16 @@
     backBtn.style.display = "inline-flex";
     brandSub.textContent = "Order #" + order.orderId;
 
-    // Make sure picks reflect the durable remote state (not a stale local
-    // copy) before showing anything — this is what makes a force-quit not
-    // look like a reset. Usually already resolved by the time someone taps
-    // in, so this rarely adds a visible delay.
+    // Make sure picks (and Drive Thru/feedback completion) reflect the
+    // durable remote state before showing anything — this is what makes
+    // a force-quit not look like a reset. Usually already resolved by
+    // the time someone taps in, so this rarely adds a visible delay.
     setOrderLoading(order);
     if (remoteSyncPromise) {
       try { await remoteSyncPromise; } catch (e) { /* keep going with local state */ }
+    }
+    if (orderActionsSyncPromise) {
+      try { await orderActionsSyncPromise; } catch (e) { /* keep going with local state */ }
     }
     if (currentView !== "order" || order.orderId !== orderId) return;
 
@@ -1662,11 +1703,13 @@
     itemsCache = {};
     loadOrders();
     syncStateFromRemote();
+    syncOrderActionsFromRemote();
   });
 
   loadState();
   loadOrders();
   syncStateFromRemote();
+  syncOrderActionsFromRemote();
 })();
 </script>
 </body>

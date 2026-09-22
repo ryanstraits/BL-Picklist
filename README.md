@@ -11,7 +11,7 @@ netlify/functions/order-items.js      → GET /api/orders/:id/items (flattened)
 netlify/functions/colors.js           → GET /api/colors (cached)
 netlify/functions/item-image.js       → GET /api/item-image?type=&no= (proxied photo)
 netlify/functions/update-order-status.js → POST /api/update-order-status (writes to BrickLink)
-netlify/functions/pick-state.js       → GET/POST /api/pick-state (durable "picked" state)
+netlify/functions/pick-state.js       → GET/POST /api/pick-state (durable "picked" state + Drive Thru/feedback completion, via ?key=state|actions)
 netlify/functions/order-messages.js   → GET /api/orders/:id/messages
 netlify/functions/send-drive-thru.js  → POST /api/send-drive-thru (writes to BrickLink)
 netlify/functions/member-rating.js    → GET /api/member-rating?username=
@@ -115,15 +115,15 @@ Token Secret as sensitive as an API key that can move money.
 - The order detail page also has three more BrickLink writes/reads, added
   so logging into BrickLink directly (blocked on at least one of Ryan's
   work networks, since it goes through lego.com) is needed less often:
-  - **Send Thank You (Drive Thru)** — shown once an order is SHIPPED.
+  - **Send Drive Thru** — shown once an order is SHIPPED.
     `POST /orders/{id}/drive_thru?mail_me=false` (a query param, not a
     JSON body, unlike the other writes here). Confirm dialog first, same
     reasoning as the status buttons. There's no way to ask BrickLink
-    whether one's already been sent for an order, so the app just
-    disables the button in memory after a successful send — that only
-    lasts for the current page load; a fresh reload of the app shows the
-    button as sendable again even though BrickLink already has it on
-    record.
+    whether one's already been sent for an order, so the app tracks it
+    itself — "sent" state lives in `/api/pick-state?key=actions`, the
+    same durable Blobs store picks use (second key, same store), so
+    the button correctly shows "Drive Thru Sent" (disabled) on every
+    device and after a reload, not just for the current page load.
   - **Order messages** — `GET /orders/{id}/messages`, shown read-only
     under the item list when an order has any. Fetched alongside items;
     a failure here doesn't block the rest of the order view.
@@ -135,9 +135,13 @@ Token Secret as sensitive as an API key that can move money.
     count and the praise percentage computed from those three.
   - **Leave feedback for buyer** — shown once an order is SHIPPED,
     RECEIVED, or COMPLETED: pick Praise/Neutral/Complaint, write a
-    comment, confirm (this posts public feedback visible to the buyer
+    comment (pre-filled with Ryan's own standard feedback text, still
+    editable), confirm (this posts public feedback visible to the buyer
     and everyone on BrickLink), `POST /feedback` with
-    `{order_id, rating, comment}`. Like Drive Thru, a successful post
-    just hides the form in memory for the current page load — no local
-    record survives a reload, so the form can reappear even though
-    BrickLink will reject a second submission for the same order.
+    `{order_id, rating, comment}` — `rating` is sent as BrickLink's
+    numeric code (Praise=0/Neutral=1/Complaint=2), confirmed against a
+    real client library's source, since sending the word itself gets
+    `PARAMETER_MISSING_OR_INVALID`. Like Drive Thru, "already posted"
+    state is tracked durably via `/api/pick-state?key=actions`, so the
+    form correctly shows "Feedback sent" everywhere once it's been
+    posted from any device.
