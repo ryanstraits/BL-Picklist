@@ -67,4 +67,8 @@ function blPut(path, payload) {
   return blRequest('PUT', path, payload);
 }
 
-module.exports = { blGet, blPut };
+function blPost(path, payload) {
+  return blRequest('POST', path, payload);
+}
+
+module.exports = { blGet, blPut, blPost };

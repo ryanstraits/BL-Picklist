@@ -464,6 +464,120 @@
   .bottom-back-btn { color: var(--text); font-weight: 600; }
   .select-all-btn { color: var(--success); border-color: var(--success); }
 
+  .buyer-rating {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  /* ---- Drive Thru ---- */
+  .drive-thru-row { margin-top: 12px; }
+  .drive-thru-btn {
+    width: 100%;
+    background: none;
+    border: 1px solid var(--info);
+    color: var(--info);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .drive-thru-btn:active { background: var(--surface-alt); }
+  .drive-thru-btn:disabled { opacity: 0.6; cursor: default; }
+
+  /* ---- Order messages ---- */
+  .messages-section { margin-top: 16px; }
+  .messages-heading {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 8px;
+  }
+  .message-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-top: 8px;
+  }
+  .message-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+  .message-subject { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .message-body { font-size: 13px; color: var(--text); white-space: pre-wrap; }
+
+  /* ---- Feedback ---- */
+  .feedback-section {
+    margin-top: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .feedback-heading {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 10px;
+  }
+  .feedback-rating-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .rating-btn {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .rating-btn.selected.praise { color: var(--success); border-color: var(--success); background: var(--success-bg); }
+  .rating-btn.selected.neutral { color: var(--info); border-color: var(--info); background: var(--info-bg); }
+  .rating-btn.selected.complaint { color: var(--danger); border-color: var(--danger); background: var(--surface-alt); }
+  .feedback-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    resize: vertical;
+    min-height: 60px;
+    margin-bottom: 10px;
+  }
+  .feedback-submit-btn {
+    width: 100%;
+    background: none;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .feedback-submit-btn:disabled { opacity: 0.5; cursor: default; }
+  .feedback-sent-msg { font-size: 13px; color: var(--success); font-weight: 600; }
+
   .lightbox {
     position: fixed;
     inset: 0;
@@ -556,6 +670,10 @@
   var state = {};
   var orders = [];
   var itemsCache = {};
+  var messagesCache = {};
+  var ratingsCache = {};
+  var driveThruSent = {};
+  var feedbackSent = {};
   var colorsMap = null;
 
   function loadState() {
@@ -1200,10 +1318,13 @@
       + '</span>';
   }
 
-  function renderOrderDetail(order, items) {
+  function renderOrderDetail(order, items, messages) {
+    messages = messages || [];
     var picked = pickedCount(order.orderId, items);
     var allDone = items.length > 0 && picked === items.length;
     var itemKeys = computeItemKeys(items);
+    var canSendDriveThru = order.status === "SHIPPED";
+    var canLeaveFeedback = ["SHIPPED", "RECEIVED", "COMPLETED"].indexOf(order.status) !== -1;
 
     var rows = items.map(function (item, idx) {
       var isDone = isPicked(order.orderId, itemKeys[idx]);
@@ -1234,7 +1355,7 @@
       + statusBadgeHtml(order.status)
       + '</div>'
       + '<div class="order-buyer">'
-      + '<span>' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + '</span>'
+      + '<span>' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + ' <span class="buyer-rating" id="buyerRatingBadge"></span></span>'
       + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
       + '</div>'
       + '<div class="picked-count"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>'
@@ -1242,8 +1363,13 @@
         + '<button class="select-all-btn">Select all as picked</button>'
         + '<button class="reset-btn">Clear picks for this order</button>'
         + '</div>' : '')
+      + (canSendDriveThru ? '<div class="drive-thru-row">'
+        + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Thank You (Drive Thru)") + '</button>'
+        + '</div>' : '')
       + '</div>'
       + (items.length ? rows : '<div class="state-block">This order has no line items.</div>')
+      + renderMessagesSection(messages)
+      + (canLeaveFeedback ? renderFeedbackSection(order) : '')
       + '<div class="reset-row">'
       + '<button class="bottom-back-btn" id="bottomBackBtn">&#8592; All orders</button>'
       + (items.length ? '<button class="select-all-btn">Select all as picked</button>'
@@ -1256,7 +1382,7 @@
     orderView.querySelectorAll(".item-row").forEach(function (row) {
       row.addEventListener("click", function () {
         togglePicked(order.orderId, row.getAttribute("data-key"));
-        renderOrderDetail(order, items);
+        renderOrderDetail(order, items, messages);
       });
     });
 
@@ -1264,7 +1390,7 @@
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         resetOrder(order.orderId);
-        renderOrderDetail(order, items);
+        renderOrderDetail(order, items, messages);
       });
     });
 
@@ -1272,14 +1398,159 @@
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         selectAllOrder(order.orderId, items);
-        renderOrderDetail(order, items);
+        renderOrderDetail(order, items, messages);
       });
     });
+
+    var driveThruBtn = document.getElementById("driveThruBtn");
+    if (driveThruBtn) {
+      driveThruBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        handleSendDriveThru(order, items, messages);
+      });
+    }
+
+    wireFeedbackForm(order, items, messages);
+    fetchAndShowBuyerRating(order.buyer);
 
     document.getElementById("bottomBackBtn").addEventListener("click", function (e) {
       e.stopPropagation();
       goToOrders();
     });
+  }
+
+  function renderMessagesSection(messages) {
+    if (!messages || !messages.length) return "";
+    var cards = messages.map(function (m) {
+      return ""
+        + '<div class="message-card">'
+        + '<div class="message-meta"><span>' + escapeHtml(m.from || "") + '</span><span>' + escapeHtml(formatDate(m.dateSent)) + '</span></div>'
+        + (m.subject ? '<div class="message-subject">' + escapeHtml(m.subject) + '</div>' : '')
+        + '<div class="message-body">' + escapeHtml(m.body || "") + '</div>'
+        + '</div>';
+    }).join("");
+    return '<div class="messages-section"><div class="messages-heading">Messages</div>' + cards + '</div>';
+  }
+
+  var RATING_OPTIONS = [
+    { value: "Praise", label: "Praise", cls: "praise" },
+    { value: "Neutral", label: "Neutral", cls: "neutral" },
+    { value: "Complaint", label: "Complaint", cls: "complaint" }
+  ];
+
+  function renderFeedbackSection(order) {
+    if (feedbackSent[order.orderId]) {
+      return '<div class="feedback-section"><div class="feedback-sent-msg">Feedback sent — thanks!</div></div>';
+    }
+    var ratingBtns = RATING_OPTIONS.map(function (opt) {
+      return '<button type="button" class="rating-btn ' + opt.cls + '" data-rating="' + opt.value + '">' + opt.label + '</button>';
+    }).join("");
+    return ""
+      + '<div class="feedback-section">'
+      + '<div class="feedback-heading">Leave feedback for buyer</div>'
+      + '<div class="feedback-rating-row">' + ratingBtns + '</div>'
+      + '<textarea class="feedback-textarea" id="feedbackComment" placeholder="Great buyer, fast payment!" maxlength="500"></textarea>'
+      + '<button class="feedback-submit-btn" id="feedbackSubmitBtn" disabled>Submit feedback</button>'
+      + '</div>';
+  }
+
+  function wireFeedbackForm(order, items, messages) {
+    var section = orderView.querySelector(".feedback-section");
+    if (!section || feedbackSent[order.orderId]) return;
+
+    var selectedRating = null;
+    var ratingBtns = section.querySelectorAll(".rating-btn");
+    var commentEl = section.querySelector("#feedbackComment");
+    var submitBtn = section.querySelector("#feedbackSubmitBtn");
+
+    function updateSubmitState() {
+      submitBtn.disabled = !selectedRating || !commentEl.value.trim();
+    }
+
+    ratingBtns.forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        selectedRating = btn.getAttribute("data-rating");
+        ratingBtns.forEach(function (b) { b.classList.remove("selected"); });
+        btn.classList.add("selected");
+        updateSubmitState();
+      });
+    });
+
+    commentEl.addEventListener("click", function (e) { e.stopPropagation(); });
+    commentEl.addEventListener("input", updateSubmitState);
+
+    submitBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var comment = commentEl.value.trim();
+      if (!selectedRating || !comment) return;
+      if (!window.confirm("Post " + selectedRating + " feedback for order #" + order.orderId + "? This is public and visible to the buyer.")) return;
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Sending…";
+
+      postJSON("/api/feedback", { orderId: order.orderId, rating: selectedRating, comment: comment })
+        .then(function () {
+          feedbackSent[order.orderId] = true;
+          renderOrderDetail(order, items, messages);
+        })
+        .catch(function (err) {
+          window.alert("Couldn't post feedback: " + err.message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Submit feedback";
+        });
+    });
+  }
+
+  function handleSendDriveThru(order, items, messages) {
+    if (!window.confirm('Send the "Thank You, Drive Thru!" email for order #' + order.orderId + "?")) return;
+
+    var btn = document.getElementById("driveThruBtn");
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+
+    postJSON("/api/send-drive-thru", { orderId: order.orderId })
+      .then(function () {
+        driveThruSent[order.orderId] = true;
+        renderOrderDetail(order, items, messages);
+      })
+      .catch(function (err) {
+        window.alert("Couldn't send Drive Thru: " + err.message);
+        btn.disabled = false;
+        btn.textContent = "Send Thank You (Drive Thru)";
+      });
+  }
+
+  // The response shape for GET /members/{username}/ratings isn't confirmed
+  // against live BrickLink docs, so this reads a few plausible field names
+  // defensively and simply shows nothing if none match, rather than risk
+  // displaying a wrong or misleading number.
+  function fetchAndShowBuyerRating(username) {
+    var badge = document.getElementById("buyerRatingBadge");
+    if (!badge || !username) return;
+
+    if (ratingsCache[username]) {
+      renderRatingBadge(badge, ratingsCache[username]);
+      return;
+    }
+
+    fetchJSON("/api/member-rating?username=" + encodeURIComponent(username))
+      .then(function (rating) {
+        ratingsCache[username] = rating;
+        var stillThere = document.getElementById("buyerRatingBadge");
+        if (stillThere) renderRatingBadge(stillThere, rating);
+      })
+      .catch(function () { /* rating just won't show */ });
+  }
+
+  function renderRatingBadge(badge, rating) {
+    if (!rating) return;
+    var score = rating.rating != null ? rating.rating
+      : rating.score != null ? rating.score
+      : rating.feedback_rating != null ? rating.feedback_rating
+      : null;
+    if (score == null) return;
+    badge.textContent = "★ " + score;
   }
 
   function setOrderLoading(order) {
@@ -1323,11 +1594,11 @@
     }
     if (currentView !== "order" || order.orderId !== orderId) return;
 
-    if (forceReload) delete itemsCache[orderId];
+    if (forceReload) { delete itemsCache[orderId]; delete messagesCache[orderId]; }
 
     var cached = itemsCache[orderId];
     if (cached) {
-      renderOrderDetail(order, cached);
+      renderOrderDetail(order, cached, messagesCache[orderId] || []);
       return;
     }
 
@@ -1343,8 +1614,21 @@
       });
       itemsCache[orderId] = items;
       migrateOrderState(orderId, items);
+
+      // Messages are a nice-to-have, not core to picking — a failure here
+      // shouldn't block the order view from showing.
+      var messages = [];
+      try {
+        messages = await fetchJSON("/api/orders/" + encodeURIComponent(orderId) + "/messages");
+        messages.forEach(function (m) {
+          m.subject = decodeHtmlEntities(m.subject);
+          m.body = decodeHtmlEntities(m.body);
+        });
+      } catch (e) { /* ignore — just show the order without messages */ }
+      messagesCache[orderId] = messages;
+
       if (currentView === "order" && order.orderId === orderId) {
-        renderOrderDetail(order, items);
+        renderOrderDetail(order, items, messages);
       }
     } catch (err) {
       if (currentView === "order" && order.orderId === orderId) {

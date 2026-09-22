@@ -12,6 +12,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/orders/:id/messages"
+  to = "/.netlify/functions/order-messages?id=:id"
+  status = 200
+
+[[redirects]]
   from = "/api/orders"
   to = "/.netlify/functions/orders"
   status = 200
@@ -34,4 +39,19 @@
 [[redirects]]
   from = "/api/pick-state"
   to = "/.netlify/functions/pick-state"
+  status = 200
+
+[[redirects]]
+  from = "/api/send-drive-thru"
+  to = "/.netlify/functions/send-drive-thru"
+  status = 200
+
+[[redirects]]
+  from = "/api/member-rating"
+  to = "/.netlify/functions/member-rating"
+  status = 200
+
+[[redirects]]
+  from = "/api/feedback"
+  to = "/.netlify/functions/post-feedback"
   status = 200

@@ -12,8 +12,17 @@ netlify/functions/colors.js           → GET /api/colors (cached)
 netlify/functions/item-image.js       → GET /api/item-image?type=&no= (proxied photo)
 netlify/functions/update-order-status.js → POST /api/update-order-status (writes to BrickLink)
 netlify/functions/pick-state.js       → GET/POST /api/pick-state (durable "picked" state)
+netlify/functions/order-messages.js   → GET /api/orders/:id/messages
+netlify/functions/send-drive-thru.js  → POST /api/send-drive-thru (writes to BrickLink)
+netlify/functions/member-rating.js    → GET /api/member-rating?username=
+netlify/functions/post-feedback.js    → POST /api/feedback (writes to BrickLink)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 ```
+
+A branch/commit checkpoint, `fork-point-pre-api-expansion`, marks the app
+right before the four functions below were added (order messages, Drive
+Thru, buyer rating, feedback) — see `CLAUDE.md` for how to roll back to it
+if they end up making the app feel more complicated than useful.
 
 ## Setup
 
@@ -101,8 +110,34 @@ Token Secret as sensitive as an API key that can move money.
   statuses (`PUT /orders/{id}/status` on BrickLink's side with
   `{"field":"status","value":...}`) — no free-form status picker, so a
   bad request can't push an order into an unexpected state. Each tap
-  requires a confirm dialog first, since — unlike everything else in the
-  app — this writes to a live, buyer-visible order. BrickLink's optional
-  "drive thru" shipping-notification email isn't sent automatically; it
-  just becomes available in BrickLink's own UI once an order is SHIPPED,
-  same as changing status there directly.
+  requires a confirm dialog first, since — unlike most of the app — this
+  writes to a live, buyer-visible order.
+- The order detail page also has three more BrickLink writes/reads, added
+  so logging into BrickLink directly (blocked on at least one of Ryan's
+  work networks, since it goes through lego.com) is needed less often:
+  - **Send Thank You (Drive Thru)** — shown once an order is SHIPPED.
+    `POST /orders/{id}/drive_thru?mail_me=false` (a query param, not a
+    JSON body, unlike the other writes here). Confirm dialog first, same
+    reasoning as the status buttons. There's no way to ask BrickLink
+    whether one's already been sent for an order, so the app just
+    disables the button in memory after a successful send — that only
+    lasts for the current page load; a fresh reload of the app shows the
+    button as sendable again even though BrickLink already has it on
+    record.
+  - **Order messages** — `GET /orders/{id}/messages`, shown read-only
+    under the item list when an order has any. Fetched alongside items;
+    a failure here doesn't block the rest of the order view.
+  - **Buyer feedback rating** — `GET /members/{username}/ratings`, shown
+    as a small `★ score` next to the buyer's name. The response shape
+    isn't confirmed against live BrickLink docs (couldn't reach them from
+    the sandbox this was built in), so it reads a few plausible field
+    names defensively and just shows nothing if none match, rather than
+    risk a wrong number — worth checking against a real order.
+  - **Leave feedback for buyer** — shown once an order is SHIPPED,
+    RECEIVED, or COMPLETED: pick Praise/Neutral/Complaint, write a
+    comment, confirm (this posts public feedback visible to the buyer
+    and everyone on BrickLink), `POST /feedback` with
+    `{order_id, rating, comment}`. Like Drive Thru, a successful post
+    just hides the form in memory for the current page load — no local
+    record survives a reload, so the form can reappear even though
+    BrickLink will reject a second submission for the same order.
