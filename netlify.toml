@@ -30,3 +30,8 @@
   from = "/api/update-order-status"
   to = "/.netlify/functions/update-order-status"
   status = 200
+
+[[redirects]]
+  from = "/api/pick-state"
+  to = "/.netlify/functions/pick-state"
+  status = 200

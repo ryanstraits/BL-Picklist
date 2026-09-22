@@ -11,6 +11,7 @@ netlify/functions/order-items.js      → GET /api/orders/:id/items (flattened)
 netlify/functions/colors.js           → GET /api/colors (cached)
 netlify/functions/item-image.js       → GET /api/item-image?type=&no= (proxied photo)
 netlify/functions/update-order-status.js → POST /api/update-order-status (writes to BrickLink)
+netlify/functions/pick-state.js       → GET/POST /api/pick-state (durable "picked" state)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 ```
 
@@ -76,9 +77,22 @@ Token Secret as sensitive as an API key that can move money.
   disabled site-wide to avoid accidental zooming while picking).
 - Colors are fetched once from `/api/colors` and cached indefinitely in
   `localStorage`, since BrickLink color IDs essentially never change.
-- "Picked" state is stored per-order in `localStorage` on the device —
-  it doesn't sync across phone/iPad. See the spec for a Netlify Blobs-based
-  sync option if that's wanted later.
+- "Picked" state's durable copy lives in Netlify Blobs via `/api/pick-state`
+  (a single JSON object, all orders' picks together, GET to read / POST to
+  overwrite). `localStorage` is only a fast, offline-capable cache in front
+  of it — every pick writes to both immediately, and the app pulls the
+  remote copy on load and merges it in (a picked item stays picked if
+  *either* side has it picked, so a sync can't accidentally erase
+  progress). This is what actually matters on iOS: a standalone
+  "Add to Home Screen" web app's `localStorage` can get evicted by iOS
+  between launches (worse than a normal Safari tab), which used to look
+  like picks resetting after a force-quit. Netlify Blobs isn't tied to a
+  device, so it also means picks now sync across phone/iPad if you use
+  both. Picked items are keyed by item number + color + condition (not
+  list position), since BrickLink doesn't guarantee returning an order's
+  items in the same order on every fetch — an old install's
+  position-keyed picks get migrated to the new keying automatically the
+  first time each order is reopened.
 - There's no auto-refresh; tap "Refresh" in the header to re-pull orders,
   which keeps usage well under BrickLink's 5,000 requests/day limit.
 - The orders list can push a real status change back to BrickLink: a
