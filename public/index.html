@@ -484,7 +484,12 @@
     cursor: pointer;
   }
   .drive-thru-btn:active { background: var(--surface-alt); }
-  .drive-thru-btn:disabled { opacity: 0.6; cursor: default; }
+  .drive-thru-btn:disabled {
+    color: var(--text-secondary);
+    border-color: var(--border);
+    background: var(--surface-alt);
+    cursor: default;
+  }
 
   /* ---- Order messages ---- */
   .messages-section { margin-top: 16px; }
