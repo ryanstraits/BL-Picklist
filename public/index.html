@@ -575,13 +575,13 @@
     }
   }
 
-  function isPicked(orderId, idx) {
-    return !!(state[orderId] && state[orderId][idx]);
+  function isPicked(orderId, key) {
+    return !!(state[orderId] && state[orderId][key]);
   }
 
-  function togglePicked(orderId, idx) {
+  function togglePicked(orderId, key) {
     if (!state[orderId]) state[orderId] = {};
-    state[orderId][idx] = !state[orderId][idx];
+    state[orderId][key] = !state[orderId][key];
     saveState();
   }
 
@@ -592,17 +592,55 @@
 
   function selectAllOrder(orderId, items) {
     var picks = {};
-    items.forEach(function (item, idx) { picks[idx] = true; });
+    computeItemKeys(items).forEach(function (key) { picks[key] = true; });
     state[orderId] = picks;
     saveState();
   }
 
   function pickedCount(orderId, items) {
+    var keys = computeItemKeys(items);
     var n = 0;
-    for (var i = 0; i < items.length; i++) {
-      if (isPicked(orderId, i)) n++;
+    for (var i = 0; i < keys.length; i++) {
+      if (isPicked(orderId, keys[i])) n++;
     }
     return n;
+  }
+
+  // Keys a pick by the item's content (number + color + condition) rather
+  // than its position in the list, so picks survive BrickLink returning an
+  // order's items in a different sequence on a later fetch (which is what
+  // happens every time the app is reopened, since the in-memory items
+  // cache doesn't survive a reload). The trailing occurrence count only
+  // matters when the exact same item/color/condition is split across
+  // multiple batches within one order.
+  function computeItemKeys(items) {
+    var seen = {};
+    return items.map(function (item) {
+      var sig = item.itemNo + "|" + item.colorId + "|" + item.newOrUsed;
+      var occurrence = seen[sig] || 0;
+      seen[sig] = occurrence + 1;
+      return sig + "|" + occurrence;
+    });
+  }
+
+  // One-time upgrade for picks saved before keys were content-based (when
+  // they were just the item's array index, e.g. "0", "1", ...). Remaps
+  // them onto the current fetch's content-based keys so existing progress
+  // isn't lost the first time an order is reopened after this change.
+  function migrateOrderState(orderId, items) {
+    var saved = state[orderId];
+    if (!saved) return;
+    var isLegacyIndexKeyed = Object.keys(saved).every(function (k) { return /^\d+$/.test(k); });
+    if (!isLegacyIndexKeyed) return;
+
+    var keys = computeItemKeys(items);
+    var migrated = {};
+    Object.keys(saved).forEach(function (idxStr) {
+      var key = keys[Number(idxStr)];
+      if (key && saved[idxStr]) migrated[key] = true;
+    });
+    state[orderId] = migrated;
+    saveState();
   }
 
   function escapeHtml(s) {
@@ -1093,11 +1131,12 @@
   function renderOrderDetail(order, items) {
     var picked = pickedCount(order.orderId, items);
     var allDone = items.length > 0 && picked === items.length;
+    var itemKeys = computeItemKeys(items);
 
     var rows = items.map(function (item, idx) {
-      var isDone = isPicked(order.orderId, idx);
+      var isDone = isPicked(order.orderId, itemKeys[idx]);
       return ""
-        + '<div class="item-row' + (isDone ? ' picked' : '') + '" data-idx="' + idx + '">'
+        + '<div class="item-row' + (isDone ? ' picked' : '') + '" data-key="' + escapeHtml(itemKeys[idx]) + '">'
         + '<div class="item-thumb">' + thumbHtml(item) + '<span class="qty-chip">' + item.qty + '</span></div>'
         + '<div class="item-body">'
         + '<div class="item-line1">'
@@ -1144,8 +1183,7 @@
 
     orderView.querySelectorAll(".item-row").forEach(function (row) {
       row.addEventListener("click", function () {
-        var idx = parseInt(row.getAttribute("data-idx"), 10);
-        togglePicked(order.orderId, idx);
+        togglePicked(order.orderId, row.getAttribute("data-key"));
         renderOrderDetail(order, items);
       });
     });
@@ -1222,6 +1260,7 @@
         item.remarks = decodeHtmlEntities(item.remarks);
       });
       itemsCache[orderId] = items;
+      migrateOrderState(orderId, items);
       if (currentView === "order" && order.orderId === orderId) {
         renderOrderDetail(order, items);
       }
