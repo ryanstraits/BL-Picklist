@@ -21,3 +21,25 @@ Netlify: Ryan's account (ryanstraits@gmail.com, team id
 `straitsbudget` (site id 33025e83-0751-4029-9329-eeeb9b951461) — Claude
 set that one up and deploys to it directly; use the same pattern here
 instead of asking Ryan to run CLI commands.
+
+## Fork point: pre-API-expansion
+
+Branch `fork-point-pre-api-expansion` (commit `6105b7c`) marks the app
+right before adding Drive Thru sending, order messages, and buyer
+feedback — a simple, fully-working state (pick list, item photos,
+BrickLink status write-back, durable Netlify Blobs pick state). Ryan
+asked for this checkpoint in case the new features make the app feel
+unwieldy and he wants to back out.
+
+To undo everything after this point and go back to that simpler app:
+```
+git checkout -B claude/bricklink-pick-list-backend-13b32l fork-point-pre-api-expansion
+git push --force-with-lease origin claude/bricklink-pick-list-backend-13b32l
+```
+(Confirm with Ryan before force-pushing — this discards the newer commits
+from the branch history, though they remain reachable via the fork-point
+branch and the commit hash above either way.)
+
+Note: pushing an actual git *tag* to this repo from a session returns a
+403 (branch refs work fine, so a branch was used for the marker instead)
+— worth knowing if this comes up again.
