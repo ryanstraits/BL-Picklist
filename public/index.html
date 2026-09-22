@@ -637,6 +637,20 @@
     return !!(state[orderId] && state[orderId][key]);
   }
 
+  // Picked count straight from saved state, with no dependency on that
+  // order's items being fetched. The orders list needs this: itemsCache
+  // only has an order's items once you've opened it in this session, so
+  // relying on it there made every card read "0 picked" right after a
+  // fresh launch — even though the real picks were sitting in state the
+  // whole time (confirmed correct once you opened the order itself).
+  function pickedCountFromState(orderId) {
+    var picks = state[orderId];
+    if (!picks) return 0;
+    var n = 0;
+    Object.keys(picks).forEach(function (k) { if (picks[k]) n++; });
+    return n;
+  }
+
   function togglePicked(orderId, key) {
     if (!state[orderId]) state[orderId] = {};
     state[orderId][key] = !state[orderId][key];
@@ -1034,7 +1048,7 @@
       var total = order.totalCount || 0;
       var lineCount = order.uniqueCount || 0;
       var items = itemsCache[order.orderId];
-      var picked = items ? pickedCount(order.orderId, items) : 0;
+      var picked = items ? pickedCount(order.orderId, items) : pickedCountFromState(order.orderId);
       var knownTotal = items ? items.length : lineCount;
       var done = knownTotal > 0 && picked === knownTotal;
       var pct = knownTotal > 0 ? Math.round((picked / knownTotal) * 100) : 0;
