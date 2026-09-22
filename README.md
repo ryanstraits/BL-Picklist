@@ -16,6 +16,7 @@ netlify/functions/order-messages.js   → GET /api/orders/:id/messages
 netlify/functions/send-drive-thru.js  → POST /api/send-drive-thru (writes to BrickLink)
 netlify/functions/member-rating.js    → GET /api/member-rating?username=
 netlify/functions/post-feedback.js    → POST /api/feedback (writes to BrickLink)
+netlify/functions/order-status-check.js → GET /api/orders/:id/status-check?buyer= (Drive Thru/feedback already done on BL?)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 ```
 
@@ -118,12 +119,17 @@ Token Secret as sensitive as an API key that can move money.
   - **Send Drive Thru** — shown once an order is SHIPPED.
     `POST /orders/{id}/drive_thru?mail_me=false` (a query param, not a
     JSON body, unlike the other writes here). Confirm dialog first, same
-    reasoning as the status buttons. There's no way to ask BrickLink
-    whether one's already been sent for an order, so the app tracks it
-    itself — "sent" state lives in `/api/pick-state?key=actions`, the
-    same durable Blobs store picks use (second key, same store), so
-    the button correctly shows "Drive Thru Sent" (disabled) on every
-    device and after a reload, not just for the current page load.
+    reasoning as the status buttons. "Sent" state lives in
+    `/api/pick-state?key=actions`, the same durable Blobs store picks
+    use (second key, same store), so the button correctly shows
+    "Drive Thru Sent" (grayed out, disabled) on every device and after a
+    reload — including when it was sent directly on BrickLink rather
+    than through this app: opening an order also calls
+    `/api/orders/:id/status-check`, which reads the order's own
+    `drive_thru_sent` field (confirmed against a real client library's
+    typed struct) and folds that in. That check only ever turns the flag
+    *on*, never off, and any failure there just leaves things as
+    whatever's already tracked.
   - **Order messages** — `GET /orders/{id}/messages`, shown read-only
     under the item list when an order has any. Fetched alongside items;
     a failure here doesn't block the rest of the order view.
@@ -144,4 +150,10 @@ Token Secret as sensitive as an API key that can move money.
     `PARAMETER_MISSING_OR_INVALID`. Like Drive Thru, "already posted"
     state is tracked durably via `/api/pick-state?key=actions`, so the
     form correctly shows "Feedback sent" everywhere once it's been
-    posted from any device.
+    posted from any device — and the same `status-check` call also
+    tries to catch feedback posted directly on BrickLink, via
+    `GET /orders/{id}/feedback`: any entry whose `from` isn't the buyer
+    is assumed to be ours. That shape isn't independently confirmed
+    (unlike `drive_thru_sent`), so it's a best guess — worth watching
+    the first few real orders to see whether it's actually catching
+    this correctly.

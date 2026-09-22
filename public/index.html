@@ -1684,6 +1684,23 @@
       } catch (e) { /* ignore — just show the order without messages */ }
       messagesCache[orderId] = messages;
 
+      // Catches "already done directly on BrickLink" — only ever adds
+      // true, never overrides a locally-tracked true back to false, and
+      // any failure here just leaves things as they were.
+      try {
+        var statusCheck = await fetchJSON("/api/orders/" + encodeURIComponent(orderId) + "/status-check?buyer=" + encodeURIComponent(order.buyer || ""));
+        var actionsChanged = false;
+        if (statusCheck && statusCheck.driveThruSent && !driveThruSent[orderId]) {
+          driveThruSent[orderId] = true;
+          actionsChanged = true;
+        }
+        if (statusCheck && statusCheck.feedbackAlreadyPosted && !feedbackSent[orderId]) {
+          feedbackSent[orderId] = true;
+          actionsChanged = true;
+        }
+        if (actionsChanged) pushOrderActions();
+      } catch (e) { /* ignore — just show whatever's already tracked locally */ }
+
       if (currentView === "order" && order.orderId === orderId) {
         renderOrderDetail(order, items, messages);
       }
