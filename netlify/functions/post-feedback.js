@@ -1,7 +1,13 @@
 const { blPost } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
 
-const VALID_RATINGS = new Set(['Praise', 'Neutral', 'Complaint']);
+// BrickLink's feedback "rating" field is a plain integer code, not the
+// word itself — confirmed against a real client library's source
+// (funwithbots/go-bricklink-api, util/rating.go): its Rating type is an
+// int with Praise=0/Neutral=1/Complaint=2, and has no MarshalJSON, so the
+// wire value is the bare number. The frontend still speaks in the human
+// words; this is the only place that needs to know the numeric mapping.
+const RATING_CODES = { Praise: 0, Neutral: 1, Complaint: 2 };
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -17,12 +23,12 @@ exports.handler = async (event) => {
 
   const { orderId, rating, comment } = payload;
   const trimmedComment = typeof comment === 'string' ? comment.trim() : '';
-  if (!orderId || !VALID_RATINGS.has(rating) || !trimmedComment) {
+  if (!orderId || !(rating in RATING_CODES) || !trimmedComment) {
     return { statusCode: 400, body: 'orderId, a supported rating (Praise/Neutral/Complaint), and a comment are required' };
   }
 
   try {
-    await blPost('/feedback', { order_id: Number(orderId), rating, comment: trimmedComment });
+    await blPost('/feedback', { order_id: Number(orderId), rating: RATING_CODES[rating], comment: trimmedComment });
     return json(200, { ok: true });
   } catch (err) {
     return errorResponse(err);
