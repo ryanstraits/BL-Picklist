@@ -1,19 +1,25 @@
-const { getStore, getDeployStore } = require('@netlify/blobs');
+const { getStore } = require('@netlify/blobs');
 const { json, errorResponse } = require('./lib/http');
 
 const STORE_NAME = 'pick-state';
 const STATE_KEY = 'state';
 
-// Global store (survives every deploy) in production; a deploy-scoped store
-// everywhere else, so a local test or preview deploy can't clobber real
-// picking progress. This site's production context deploys straight from
-// this branch, so real usage always hits the global store.
-function getBlobStore() {
-  return process.env.CONTEXT === 'production' ? getStore(STORE_NAME) : getDeployStore(STORE_NAME);
-}
-
+// Always the global store: this site only ever runs one real deploy
+// context (production, straight from this branch — confirmed via the
+// deploy metadata), so there's no separate preview/staging usage to
+// protect against here. An earlier version branched to getDeployStore()
+// for "non-production", which crashed the function outright
+// (MissingBlobsEnvironmentError, thrown synchronously outside any
+// try/catch) because that mode needs deploy-scoped environment wiring
+// this runtime doesn't provide — every write silently failed as a
+// result, since the frontend's push is fire-and-forget.
 exports.handler = async (event) => {
-  const store = getBlobStore();
+  let store;
+  try {
+    store = getStore(STORE_NAME);
+  } catch (err) {
+    return errorResponse(err);
+  }
 
   if (event.httpMethod === 'GET') {
     try {
