@@ -1438,6 +1438,8 @@
     { value: "Complaint", label: "Complaint", cls: "complaint" }
   ];
 
+  var DEFAULT_FEEDBACK_COMMENT = "A+ buyer! Thanks for your order with The Brick Stud, come back again soon :)";
+
   function renderFeedbackSection(order) {
     if (feedbackSent[order.orderId]) {
       return '<div class="feedback-section"><div class="feedback-sent-msg">Feedback sent — thanks!</div></div>';
@@ -1449,7 +1451,7 @@
       + '<div class="feedback-section">'
       + '<div class="feedback-heading">Leave feedback for buyer</div>'
       + '<div class="feedback-rating-row">' + ratingBtns + '</div>'
-      + '<textarea class="feedback-textarea" id="feedbackComment" placeholder="Great buyer, fast payment!" maxlength="500"></textarea>'
+      + '<textarea class="feedback-textarea" id="feedbackComment" maxlength="500">' + escapeHtml(DEFAULT_FEEDBACK_COMMENT) + '</textarea>'
       + '<button class="feedback-submit-btn" id="feedbackSubmitBtn" disabled>Submit feedback</button>'
       + '</div>';
   }
