@@ -673,6 +673,8 @@
   .inventory-submit-btn:disabled { opacity: 0.5; cursor: default; }
   .inventory-submit-btn:active { filter: brightness(0.94); }
 
+  .item-row.inventory-row { flex-wrap: wrap; }
+  .inventory-price-guide-block { flex: 1 1 100%; min-width: 0; }
   .price-guide-toggle-btn {
     display: block;
     margin-top: 10px;
@@ -2628,9 +2630,11 @@
         + '<div class="inventory-field"><label>Color ID</label><input type="number" min="0" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="colorId" value="' + escapeHtml(row.colorId) + '"' + (locked ? ' disabled' : '') + '></div>'
         + '<div class="inventory-field remarks-field"><label>Remarks</label><input type="text" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks" value="' + escapeHtml(row.remarks) + '"' + (locked ? ' disabled' : '') + '></div>'
         + '</div>'
+        + resultHtml
+        + '</div>'
+        + '<div class="inventory-price-guide-block">'
         + '<button type="button" class="price-guide-toggle-btn" data-key="' + escapeHtml(row.key) + '">' + (row.priceExpanded ? "▾" : "▸") + ' See active US listings</button>'
         + renderPriceGuidePanel(row)
-        + resultHtml
         + '</div>'
         + '</div>';
     }).join("");
