@@ -1,4 +1,5 @@
 const { blGet } = require('./lib/bricklink');
+const { extractOrderContact } = require('./lib/order-contact');
 const { json, errorResponse } = require('./lib/http');
 
 // Candidate rows for a PirateShip CSV export: every PAID order paid via
@@ -23,23 +24,14 @@ exports.handler = async (event) => {
     details.forEach((result) => {
       if (result.status !== 'fulfilled' || !result.value) return;
       const o = result.value;
-      const method = (o.payment && o.payment.method) || '';
-      if (!/stripe/i.test(method)) return;
+      const contact = extractOrderContact(o);
+      if (!/stripe/i.test(contact.paymentMethod)) return;
 
-      const addr = (o.shipping && o.shipping.address) || {};
-      rows.push({
+      rows.push(Object.assign({}, contact, {
         orderId: String(o.order_id),
-        email: o.buyer_email || '',
-        name: (addr.name && addr.name.full) || '',
-        address1: addr.address1 || '',
-        address2: addr.address2 || '',
-        city: addr.city || '',
-        state: addr.state || '',
-        postalCode: addr.postal_code || '',
-        countryCode: addr.country_code || '',
         totalCount: o.total_count || 0,
         uniqueCount: o.unique_count || 0,
-      });
+      }));
     });
 
     return json(200, rows);

@@ -317,6 +317,44 @@
   }
   .picked-count strong { color: var(--text); }
 
+  .contact-section {
+    margin-top: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .contact-row {
+    display: flex;
+    gap: 10px;
+    font-size: 13.5px;
+    padding: 4px 0;
+  }
+  .contact-row + .contact-row { border-top: 1px solid var(--border); }
+  .contact-label {
+    flex: 0 0 64px;
+    color: var(--text-secondary);
+  }
+  .contact-address { line-height: 1.4; }
+  .contact-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .copy-btn {
+    flex: 1;
+    background: none;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .copy-btn:active { background: var(--surface-alt); }
+
   .item-row {
     display: flex;
     align-items: flex-start;
@@ -692,6 +730,7 @@
   var orders = [];
   var itemsCache = {};
   var messagesCache = {};
+  var contactCache = {};
   var ratingsCache = {};
   var driveThruSent = {};
   var feedbackSent = {};
@@ -1449,7 +1488,7 @@
       + '</span>';
   }
 
-  function renderOrderDetail(order, items, messages) {
+  function renderOrderDetail(order, items, messages, contact) {
     messages = messages || [];
     var picked = pickedCount(order.orderId, items);
     var allDone = items.length > 0 && picked === items.length;
@@ -1498,6 +1537,7 @@
         + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>'
         + '</div>' : '')
       + '</div>'
+      + renderContactSection(contact)
       + (items.length ? rows : '<div class="state-block">This order has no line items.</div>')
       + renderMessagesSection(messages)
       + (canLeaveFeedback ? renderFeedbackSection(order) : '')
@@ -1513,7 +1553,7 @@
     orderView.querySelectorAll(".item-row").forEach(function (row) {
       row.addEventListener("click", function () {
         togglePicked(order.orderId, row.getAttribute("data-key"));
-        renderOrderDetail(order, items, messages);
+        renderOrderDetail(order, items, messages, contact);
       });
     });
 
@@ -1521,7 +1561,7 @@
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         resetOrder(order.orderId);
-        renderOrderDetail(order, items, messages);
+        renderOrderDetail(order, items, messages, contact);
       });
     });
 
@@ -1529,7 +1569,7 @@
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         selectAllOrder(order.orderId, items);
-        renderOrderDetail(order, items, messages);
+        renderOrderDetail(order, items, messages, contact);
       });
     });
 
@@ -1541,6 +1581,27 @@
       });
     }
 
+    var copyAddressBtn = document.getElementById("copyAddressBtn");
+    if (copyAddressBtn) {
+      copyAddressBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var originalText = copyAddressBtn.textContent;
+        copyToClipboard(contactAddressLines(contact).join("\n"))
+          .then(function () { flashCopied(copyAddressBtn, originalText); })
+          .catch(function () { window.alert("Couldn't copy — select and copy manually."); });
+      });
+    }
+    var copyEmailBtn = document.getElementById("copyEmailBtn");
+    if (copyEmailBtn) {
+      copyEmailBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var originalText = copyEmailBtn.textContent;
+        copyToClipboard(contact.email)
+          .then(function () { flashCopied(copyEmailBtn, originalText); })
+          .catch(function () { window.alert("Couldn't copy — select and copy manually."); });
+      });
+    }
+
     wireFeedbackForm(order, items, messages);
     fetchAndShowBuyerRating(order.buyer);
 
@@ -1548,6 +1609,66 @@
       e.stopPropagation();
       goToOrders();
     });
+  }
+
+  // Country line is skipped for US addresses — that matches how a
+  // standard domestic USPS-style name/address block reads, and is what
+  // gets pasted into PirateShip's address fields.
+  function contactAddressLines(contact) {
+    if (!contact) return [];
+    var lines = [];
+    if (contact.name) lines.push(contact.name);
+    if (contact.address1) lines.push(contact.address1);
+    if (contact.address2) lines.push(contact.address2);
+    var cityStateZip = [contact.city, contact.state].filter(Boolean).join(", ") + (contact.postalCode ? " " + contact.postalCode : "");
+    cityStateZip = cityStateZip.trim();
+    if (cityStateZip) lines.push(cityStateZip);
+    if (contact.countryCode && contact.countryCode !== "US") lines.push(contact.countryCode);
+    return lines;
+  }
+
+  function renderContactSection(contact) {
+    if (!contact || (!contact.email && !contact.address1)) return "";
+    var lines = contactAddressLines(contact);
+    return ""
+      + '<div class="contact-section">'
+      + (contact.paymentMethod ? '<div class="contact-row"><span class="contact-label">Payment</span><span>' + escapeHtml(contact.paymentMethod) + '</span></div>' : '')
+      + (lines.length ? '<div class="contact-row"><span class="contact-label">Ship to</span><span class="contact-address">' + lines.map(escapeHtml).join("<br>") + '</span></div>' : '')
+      + (contact.email ? '<div class="contact-row"><span class="contact-label">Email</span><span>' + escapeHtml(contact.email) + '</span></div>' : '')
+      + '<div class="contact-actions">'
+      + (lines.length ? '<button class="copy-btn" id="copyAddressBtn">Copy name &amp; address</button>' : '')
+      + (contact.email ? '<button class="copy-btn" id="copyEmailBtn">Copy email</button>' : '')
+      + '</div>'
+      + '</div>';
+  }
+
+  // navigator.clipboard needs a secure context (fine — this app is always
+  // served over HTTPS) but isn't available in every embedded webview, so
+  // this falls back to the older execCommand("copy") dance via a hidden
+  // textarea rather than just failing silently there.
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (ok) resolve(); else reject(new Error("Copy failed"));
+      } catch (e) { reject(e); }
+    });
+  }
+
+  function flashCopied(btn, originalText) {
+    btn.textContent = "Copied!";
+    setTimeout(function () { btn.textContent = originalText; }, 1500);
   }
 
   function renderMessagesSection(messages) {
@@ -1626,7 +1747,7 @@
         .then(function () {
           feedbackSent[order.orderId] = true;
           pushOrderActions();
-          renderOrderDetail(order, items, messages);
+          renderOrderDetail(order, items, messages, contact);
         })
         .catch(function (err) {
           window.alert("Couldn't post feedback: " + err.message);
@@ -1647,7 +1768,7 @@
       .then(function () {
         driveThruSent[order.orderId] = true;
         pushOrderActions();
-        renderOrderDetail(order, items, messages);
+        renderOrderDetail(order, items, messages, contact);
       })
       .catch(function (err) {
         window.alert("Couldn't send Drive Thru: " + err.message);
@@ -1735,11 +1856,11 @@
     }
     if (currentView !== "order" || order.orderId !== orderId) return;
 
-    if (forceReload) { delete itemsCache[orderId]; delete messagesCache[orderId]; }
+    if (forceReload) { delete itemsCache[orderId]; delete messagesCache[orderId]; delete contactCache[orderId]; }
 
     var cached = itemsCache[orderId];
     if (cached) {
-      renderOrderDetail(order, cached, messagesCache[orderId] || []);
+      renderOrderDetail(order, cached, messagesCache[orderId] || [], contactCache[orderId] || null);
       return;
     }
 
@@ -1768,6 +1889,15 @@
       } catch (e) { /* ignore — just show the order without messages */ }
       messagesCache[orderId] = messages;
 
+      // Payment method/address/email — also a nice-to-have, not core to
+      // picking, so a failure here shouldn't block the order view either.
+      var contact = null;
+      try {
+        contact = await fetchJSON("/api/orders/" + encodeURIComponent(orderId) + "/contact");
+        contact.name = decodeHtmlEntities(contact.name);
+      } catch (e) { /* ignore — just show the order without the contact block */ }
+      contactCache[orderId] = contact;
+
       // Catches "already done directly on BrickLink" — only ever adds
       // true, never overrides a locally-tracked true back to false, and
       // any failure here just leaves things as they were.
@@ -1786,7 +1916,7 @@
       } catch (e) { /* ignore — just show whatever's already tracked locally */ }
 
       if (currentView === "order" && order.orderId === orderId) {
-        renderOrderDetail(order, items, messages);
+        renderOrderDetail(order, items, messages, contact);
       }
     } catch (err) {
       if (currentView === "order" && order.orderId === orderId) {

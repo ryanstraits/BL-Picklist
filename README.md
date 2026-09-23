@@ -18,7 +18,9 @@ netlify/functions/member-rating.js    → GET /api/member-rating?username=
 netlify/functions/post-feedback.js    → POST /api/feedback (writes to BrickLink)
 netlify/functions/order-status-check.js → GET /api/orders/:id/status-check?buyer= (Drive Thru/feedback already done on BL?)
 netlify/functions/pirateship-export.js  → GET /api/pirateship-export (PAID+Stripe orders, mapped for a PirateShip CSV import)
+netlify/functions/order-contact.js    → GET /api/orders/:id/contact (buyer email/address/payment method)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
+netlify/functions/lib/order-contact.js → shared BrickLink order → buyer-contact mapping (used by order-contact.js and pirateship-export.js)
 ```
 
 A branch/commit checkpoint, `fork-point-pre-api-expansion`, marks the app
@@ -175,3 +177,14 @@ Token Secret as sensitive as an API key that can move money.
   `total_weight` field has no confirmed unit for this account, and
   guessing wrong could produce a wrong postage cost/label — fill those in
   on PirateShip's side same as always.
+- **Buyer contact block** — on the order detail page, above the line
+  items: payment method, shipping address, and email, from
+  `GET /api/orders/:id/contact` (same underlying order-detail call and
+  field mapping as the PirateShip export, factored into
+  `lib/order-contact.js` so both share it — this one isn't limited to
+  Stripe/PAID orders, it just shows whatever the order has). Two buttons:
+  "Copy name & address" copies a standard multi-line name/address block
+  (ready to paste into PirateShip's manual address entry) and "Copy
+  email" copies just the buyer's email. Uses the Clipboard API with a
+  hidden-textarea `execCommand("copy")` fallback for any embedded webview
+  that doesn't support it.
