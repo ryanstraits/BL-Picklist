@@ -57,6 +57,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/price-guide"
+  to = "/.netlify/functions/price-guide"
+  status = 200
+
+[[redirects]]
   from = "/api/pick-state"
   to = "/.netlify/functions/pick-state"
   status = 200

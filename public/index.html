@@ -644,6 +644,67 @@
   }
   .inventory-submit-btn:disabled { opacity: 0.5; cursor: default; }
   .inventory-submit-btn:active { filter: brightness(0.94); }
+
+  .price-guide-toggle-btn {
+    display: block;
+    margin-top: 10px;
+    border: none;
+    background: none;
+    color: var(--info);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 4px 0;
+    cursor: pointer;
+  }
+  .price-guide-panel {
+    margin-top: 6px;
+    background: var(--surface-alt);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 12.5px;
+  }
+  .price-guide-panel.error { color: var(--danger); }
+  .price-guide-stats {
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .price-guide-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    margin-bottom: 6px;
+  }
+  .price-guide-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .price-guide-row:active { background: var(--surface); }
+  .price-guide-row + .price-guide-row { border-top: 1px solid var(--border); }
+  .price-guide-rank {
+    flex: none;
+    width: 18px;
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+  .price-guide-qty {
+    flex: none;
+    width: 30px;
+    color: var(--text-secondary);
+  }
+  .price-guide-price { flex: 1; font-weight: 600; }
+  .price-guide-noship {
+    flex: none;
+    font-size: 10.5px;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    border-radius: 4px;
+    padding: 1px 4px;
+  }
   .reset-btn, .bottom-back-btn, .select-all-btn {
     background: none;
     border: 1px solid var(--border);
@@ -2231,7 +2292,69 @@
       remarks: obj.REMARKS || "",
       location: obj.LOCATION || "",
       result: null,
+      priceExpanded: false,
     };
+  }
+
+  // Keyed on exactly the fields that change what the price guide returns
+  // (item/color/condition) — editing price/qty/remarks shouldn't refetch,
+  // but changing condition or color should, since BrickLink's stats are
+  // specific to that combination.
+  function priceGuideKey(row) {
+    return row.type + ":" + row.itemNo + ":" + (row.colorId || 0) + ":" + row.newOrUsed;
+  }
+
+  var priceGuideCache = {};
+
+  function fetchPriceGuide(row) {
+    var key = priceGuideKey(row);
+    if (priceGuideCache[key]) return; // already loading, loaded, or failed for this combo
+    priceGuideCache[key] = { loading: true, data: null, error: null };
+    renderInventoryReview();
+
+    var qs = "type=" + encodeURIComponent(row.type) + "&no=" + encodeURIComponent(row.itemNo)
+      + "&condition=" + encodeURIComponent(row.newOrUsed)
+      + (row.colorId ? "&color=" + encodeURIComponent(row.colorId) : "");
+
+    fetchJSON("/api/price-guide?" + qs).then(function (data) {
+      priceGuideCache[key] = { loading: false, data: data, error: null };
+      renderInventoryReview();
+    }).catch(function (err) {
+      priceGuideCache[key] = { loading: false, data: null, error: err.message };
+      renderInventoryReview();
+    });
+  }
+
+  function renderPriceGuidePanel(row) {
+    if (!row.priceExpanded) return "";
+    var state = priceGuideCache[priceGuideKey(row)];
+    if (!state || state.loading) {
+      return '<div class="price-guide-panel">Loading active US listings…</div>';
+    }
+    if (state.error) {
+      return '<div class="price-guide-panel error">Couldn’t load listings: ' + escapeHtml(state.error) + '</div>';
+    }
+    var data = state.data;
+    if (!data.listings.length) {
+      return '<div class="price-guide-panel">No active US listings found for this item in ' + (row.newOrUsed === "U" ? "used" : "new") + ' condition.</div>';
+    }
+    var statsLine = "Min " + formatCurrency(data.minPrice, data.currencyCode)
+      + " · Avg " + formatCurrency(data.avgPrice, data.currencyCode)
+      + " · Max " + formatCurrency(data.maxPrice, data.currencyCode)
+      + " · " + data.totalQuantity + " for sale";
+    var rows = data.listings.map(function (l, idx) {
+      return '<div class="price-guide-row" data-key="' + escapeHtml(row.key) + '" data-price="' + escapeHtml(l.unitPrice) + '">'
+        + '<span class="price-guide-rank">' + (idx + 1) + '</span>'
+        + '<span class="price-guide-qty">×' + l.quantity + '</span>'
+        + '<span class="price-guide-price mono">' + escapeHtml(formatCurrency(l.unitPrice, data.currencyCode)) + '</span>'
+        + (l.shippingAvailable ? '' : '<span class="price-guide-noship">no ship</span>')
+        + '</div>';
+    }).join("");
+    return '<div class="price-guide-panel">'
+      + '<div class="price-guide-stats">' + escapeHtml(statsLine) + '</div>'
+      + '<div class="price-guide-hint">Tap a listing to use its price</div>'
+      + rows
+      + '</div>';
   }
 
   // null = show the upload screen; an array (even empty after filtering)
@@ -2304,6 +2427,8 @@
         + '<div class="inventory-field"><label>Color ID</label><input type="number" min="0" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="colorId" value="' + escapeHtml(row.colorId) + '"' + (locked ? ' disabled' : '') + '></div>'
         + '<div class="inventory-field remarks-field"><label>Remarks</label><input type="text" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks" value="' + escapeHtml(row.remarks) + '"' + (locked ? ' disabled' : '') + '></div>'
         + '</div>'
+        + '<button type="button" class="price-guide-toggle-btn" data-key="' + escapeHtml(row.key) + '">' + (row.priceExpanded ? "▾" : "▸") + ' See active US listings</button>'
+        + renderPriceGuidePanel(row)
         + resultHtml
         + '</div>'
         + '</div>';
@@ -2346,11 +2471,33 @@
         } else {
           row[field] = el.value;
         }
-        // Only re-render for fields that affect the photo (type/color) —
-        // re-rendering on every keystroke-triggering "change" would also
-        // be fine, but qty/price fields don't need it and a full
-        // re-render drops focus, which is annoying mid-edit.
-        if (field === "colorId") renderInventoryReview();
+        // colorId/newOrUsed change which price-guide result applies (a
+        // different cache key) — re-fetch if that panel is open. Other
+        // fields don't need a re-render at all; doing one on every
+        // keystroke-triggering "change" would drop focus mid-edit for no
+        // benefit, since qty/price/remarks don't affect anything else shown.
+        if (field === "colorId" || field === "newOrUsed") {
+          if (row.priceExpanded) fetchPriceGuide(row); else renderInventoryReview();
+        }
+      });
+    });
+
+    inventoryView.querySelectorAll(".price-guide-toggle-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var row = findInventoryRow(el.getAttribute("data-key"));
+        if (!row) return;
+        row.priceExpanded = !row.priceExpanded;
+        if (row.priceExpanded) fetchPriceGuide(row);
+        renderInventoryReview();
+      });
+    });
+
+    inventoryView.querySelectorAll(".price-guide-row").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var row = findInventoryRow(el.getAttribute("data-key"));
+        if (!row) return;
+        row.unitPrice = el.getAttribute("data-price");
+        renderInventoryReview();
       });
     });
 

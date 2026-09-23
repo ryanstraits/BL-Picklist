@@ -21,6 +21,7 @@ netlify/functions/pirateship-export.js  → GET /api/pirateship-export (PAID+Str
 netlify/functions/order-contact.js    → GET /api/orders/:id/contact (buyer email/address/payment method/tracking number)
 netlify/functions/update-tracking.js  → POST /api/update-tracking (writes tracking number to BrickLink)
 netlify/functions/inventory-create.js → POST /api/inventory-create (BrickScan CSV import, writes new listings to BrickLink)
+netlify/functions/price-guide.js      → GET /api/price-guide?type=&no=&condition=&color= (active US listings, for pricing)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 netlify/functions/lib/order-contact.js → shared BrickLink order → buyer-contact mapping (used by order-contact.js and pirateship-export.js)
 ```
@@ -242,3 +243,20 @@ Token Secret as sensitive as an API key that can move money.
   `drive_thru_sent`, which were confirmed via a debug endpoint before
   anything shipped). Worth watching the first real submission: a wrong
   casing would show up as a clear per-row error, not a silent failure.
+- **Active listings price check** — a "See active US listings" toggle on
+  each review card in Add Inventory. `GET /api/price-guide` wraps
+  BrickLink's Get Price Guide endpoint (`GET /items/{type}/{no}/price`
+  with `guide_type=stock`, i.e. currently-listed items, not past sales)
+  filtered to `country_code=US` (also re-filtered server-side on
+  `seller_country_code` as a fail-safe). Confirmed against two
+  independent real client libraries (`go-bricklink-api` and the Python
+  `bricklink-py`, which agree on both the query param names and that the
+  URL path's `{type}` is the same full uppercase word used everywhere
+  else here) — the query param is `new_or_used`, not `condition`; the Go
+  client's own internal option-builder actually gets that one wrong,
+  caught by cross-checking a second source rather than trusting either
+  alone. Shows min/avg/max and the full for-sale list sorted lowest
+  price first; tapping a listing fills that row's Price field. Cached
+  per item+color+condition combination (editing color or condition
+  refetches; qty/price/remarks don't) so re-opening an already-checked
+  panel doesn't re-hit the API.
