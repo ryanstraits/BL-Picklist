@@ -19,6 +19,21 @@ exports.handler = async (event) => {
     const newOrUsed = params.condition === 'U' ? 'U' : 'N';
     const colorId = params.color;
 
+    // Temporary diagnostic: a real order returned zero listings despite
+    // 20+ visible on bricklink.com for the same item/condition, so this
+    // fetches both a country_code=US query and an unfiltered one side by
+    // side to see the raw response — confirms whether country_code needs
+    // to be paired with region (a real client library enforces that
+    // pairing; another doesn't), and the real price_detail field names,
+    // rather than guessing again. Remove once the real shape is confirmed.
+    if (params.debug === '1') {
+      const [withCountry, withoutCountry] = await Promise.all([
+        blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/price?guide_type=stock&new_or_used=${newOrUsed}&country_code=US`),
+        blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/price?guide_type=stock&new_or_used=${newOrUsed}`),
+      ]);
+      return json(200, { withCountry, withoutCountry });
+    }
+
     const query = new URLSearchParams({
       guide_type: 'stock',
       new_or_used: newOrUsed,
