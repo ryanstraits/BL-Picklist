@@ -1759,7 +1759,7 @@
     var allDone = items.length > 0 && picked === items.length;
     var itemKeys = computeItemKeys(items);
     var canSendDriveThru = order.status === "SHIPPED";
-    var canLeaveFeedback = ["SHIPPED", "RECEIVED", "COMPLETED"].indexOf(order.status) !== -1;
+    var canLeaveFeedback = ["PACKED", "SHIPPED", "RECEIVED", "COMPLETED"].indexOf(order.status) !== -1;
 
     var rows = items.map(function (item, idx) {
       var isDone = isPicked(order.orderId, itemKeys[idx]);

@@ -153,8 +153,11 @@ Token Secret as sensitive as an API key that can move money.
     returns `{"rating": {"PRAISE": n, "NEUTRAL": n, "COMPLAINT": n}}`
     (counts, not an overall score), so the badge is a total feedback
     count and the praise percentage computed from those three.
-  - **Leave feedback for buyer** — shown once an order is SHIPPED,
-    RECEIVED, or COMPLETED: pick Praise/Neutral/Complaint, write a
+  - **Leave feedback for buyer** — shown once an order is PACKED,
+    SHIPPED, RECEIVED, or COMPLETED (PACKED included because Ryan marks
+    an order packed as soon as its label is bought, often before it's
+    physically picked — well before SHIPPED in his actual workflow):
+    pick Praise/Neutral/Complaint, write a
     comment (pre-filled with Ryan's own standard feedback text, still
     editable), confirm (this posts public feedback visible to the buyer
     and everyone on BrickLink), `POST /feedback` with
