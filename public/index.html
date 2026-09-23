@@ -152,6 +152,21 @@
   .refresh-btn.spinning svg { animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  .topbar-row-nav { margin-top: 10px; }
+  .nav-tab-btn {
+    width: 100%;
+    border: 1px dashed var(--accent);
+    background: none;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .nav-tab-btn:active { background: var(--surface-alt); }
+
   main { flex: 1; padding: 4px 16px 32px; }
 
   /* ---- Status states ---- */
@@ -527,6 +542,108 @@
   }
   .reset-row { margin-top: 18px; }
   .order-actions { margin-top: 12px; }
+
+  /* ---- Add Inventory ---- */
+  .inventory-intro {
+    padding-top: 10px;
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .inventory-upload {
+    margin-top: 16px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 20px 16px;
+    text-align: center;
+  }
+  .inventory-file-input { font-size: 13.5px; font-family: inherit; }
+  .inventory-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .inventory-bulk-actions { display: flex; gap: 8px; }
+  .inventory-bulk-actions button {
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .inventory-bulk-actions button:active { background: var(--surface-alt); }
+
+  .item-row.inventory-row { cursor: default; }
+  .item-row.inventory-row:active { background: var(--surface); }
+  .inventory-row.skipped { opacity: 0.45; }
+  .inventory-row-check {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-top: 4px;
+  }
+  .inventory-row .item-thumb { cursor: pointer; }
+  .inventory-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 8px;
+    margin-top: 8px;
+  }
+  .inventory-field { display: flex; flex-direction: column; gap: 2px; }
+  .inventory-field label {
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .inventory-field input, .inventory-field select {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    width: 100%;
+  }
+  .inventory-field.remarks-field { grid-column: 1 / -1; }
+  .inventory-row-result {
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .inventory-row-result.success { color: var(--success); }
+  .inventory-row-result.error { color: var(--danger); }
+  .inventory-row.result-success { opacity: 0.6; }
+
+  .inventory-submit-row {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .inventory-submit-btn {
+    width: 100%;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-family: inherit;
+    font-size: 14.5px;
+    font-weight: 700;
+    padding: 12px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .inventory-submit-btn:disabled { opacity: 0.5; cursor: default; }
+  .inventory-submit-btn:active { filter: brightness(0.94); }
   .reset-btn, .bottom-back-btn, .select-all-btn {
     background: none;
     border: 1px solid var(--border);
@@ -731,11 +848,15 @@
         Refresh
       </button>
     </div>
+    <div class="topbar-row topbar-row-nav" id="topbarNavRow">
+      <button class="nav-tab-btn" id="inventoryNavBtn">+ Add Inventory</button>
+    </div>
   </header>
 
   <main>
     <section id="view-orders"></section>
     <section id="view-order" class="hidden"></section>
+    <section id="view-inventory" class="hidden"></section>
   </main>
 </div>
 
@@ -1068,9 +1189,12 @@
 
   var ordersView = document.getElementById("view-orders");
   var orderView = document.getElementById("view-order");
+  var inventoryView = document.getElementById("view-inventory");
   var backBtn = document.getElementById("backBtn");
   var brandSub = document.getElementById("brandSub");
   var refreshBtn = document.getElementById("refreshBtn");
+  var topbarNavRow = document.getElementById("topbarNavRow");
+  var inventoryNavBtn = document.getElementById("inventoryNavBtn");
   var currentView = "orders";
 
   var lightbox = document.getElementById("lightbox");
@@ -1938,7 +2062,9 @@
     currentView = "order";
     ordersView.classList.add("hidden");
     orderView.classList.remove("hidden");
+    inventoryView.classList.add("hidden");
     backBtn.style.display = "inline-flex";
+    topbarNavRow.style.display = "none";
     brandSub.textContent = "Order #" + order.orderId;
 
     // Make sure picks (and Drive Thru/feedback completion) reflect the
@@ -2023,16 +2149,292 @@
     }
   }
 
+  // ---- Add Inventory (BrickScan CSV import) ----
+
+  // Matches item-image.js's TYPE_LETTERS map, inverted — the single-letter
+  // codes BrickScan's export (and BrickLink's own classic upload format)
+  // use for ITEMTYPE aren't what the rest of this app works with; every
+  // other item shown here (order items, thumbHtml/catalogImageUrl) uses
+  // BrickLink's full-word type ("MINIFIG", "PART", ...), confirmed against
+  // real order data. Converting up front means thumbHtml can be reused
+  // as-is for the review cards.
+  var INVENTORY_TYPE_CODE_TO_WORD = {
+    P: "PART", S: "SET", M: "MINIFIG", B: "BOOK", G: "GEAR",
+    C: "CATALOG", I: "INSTRUCTION", O: "ORIGINAL_BOX", U: "UNSORTED_LOT"
+  };
+  function inventoryTypeWord(code) {
+    return INVENTORY_TYPE_CODE_TO_WORD[(code || "").trim().toUpperCase()] || "PART";
+  }
+
+  // Minimal RFC 4180 CSV parser — BrickScan's export quotes any field
+  // containing a comma (e.g. item names like "Colonel Ward - Sand Green
+  // Jacket, Reddish Brown Legs"), so a naive split(",") would misalign
+  // every column after the first quoted field in a row.
+  function parseCSV(text) {
+    var rows = [];
+    var row = [];
+    var field = "";
+    var inQuotes = false;
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
+        } else {
+          field += c;
+        }
+        continue;
+      }
+      if (c === '"') { inQuotes = true; continue; }
+      if (c === ",") { row.push(field); field = ""; continue; }
+      if (c === "\r") { continue; }
+      if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; continue; }
+      field += c;
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function csvTextToObjects(text) {
+    var rows = parseCSV(text).filter(function (r) { return r.length > 1 || (r.length === 1 && r[0] !== ""); });
+    if (!rows.length) return [];
+    var headers = rows[0].map(function (h) { return h.trim(); });
+    return rows.slice(1).map(function (r) {
+      var obj = {};
+      headers.forEach(function (h, idx) { obj[h] = r[idx] !== undefined ? r[idx].trim() : ""; });
+      return obj;
+    });
+  }
+
+  var inventoryRowCounter = 0;
+
+  // Maps one BrickScan CSV row to this app's internal shape. Column names
+  // (ITEMTYPE/ITEMID/COLOR/REMARKS/DESCRIPTION/QTY/CONDITION/PRICE) match
+  // BrickLink's own classic inventory-upload format exactly — confirmed
+  // against a real BrickScan export — plus BrickScan's own extra columns
+  // (ITEMNAME/COLORNAME/...) used here only for display, never sent to
+  // BrickLink. type/itemNo/colorId/newOrUsed are named to match thumbHtml's
+  // and catalogImageUrl's existing field expectations directly.
+  function csvObjToInventoryRow(obj) {
+    return {
+      key: "inv-" + (inventoryRowCounter++),
+      include: true,
+      type: inventoryTypeWord(obj.ITEMTYPE),
+      itemNo: obj.ITEMID || "",
+      colorId: parseInt(obj.COLOR, 10) || 0,
+      colorName: obj.COLORNAME || "",
+      name: decodeHtmlEntities(obj.ITEMNAME || ""),
+      quantity: parseInt(obj.QTY, 10) || 1,
+      newOrUsed: (obj.CONDITION || "").trim().toUpperCase() === "U" ? "U" : "N",
+      unitPrice: obj.PRICE || "",
+      description: obj.DESCRIPTION || "",
+      remarks: obj.REMARKS || "",
+      location: obj.LOCATION || "",
+      result: null,
+    };
+  }
+
+  // null = show the upload screen; an array (even empty after filtering)
+  // = show the review screen. Persists across navigating away and back
+  // (not cleared until "Start over"), same reasoning as itemsCache.
+  var inventoryRows = null;
+  var inventorySubmitting = false;
+
+  function renderInventoryView() {
+    if (!inventoryRows) {
+      renderInventoryUpload(null);
+    } else {
+      renderInventoryReview();
+    }
+  }
+
+  function renderInventoryUpload(errorMessage) {
+    inventoryView.innerHTML = ""
+      + '<div class="inventory-intro">Upload a BrickScan CSV export to review items before adding them to your BrickLink inventory. Nothing is sent to BrickLink until you approve it on the next screen.</div>'
+      + '<div class="inventory-upload">'
+      + '<input type="file" accept=".csv,text/csv" class="inventory-file-input" id="inventoryFileInput">'
+      + '</div>'
+      + (errorMessage ? '<div class="state-block error">' + escapeHtml(errorMessage) + '</div>' : '');
+    document.getElementById("inventoryFileInput").addEventListener("change", handleInventoryFileChange);
+  }
+
+  function handleInventoryFileChange(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    file.text().then(function (text) {
+      var objs = csvTextToObjects(text);
+      if (!objs.length) { renderInventoryUpload("No rows found in that file."); return; }
+      inventoryRows = objs.map(csvObjToInventoryRow);
+      renderInventoryView();
+    }).catch(function (err) {
+      renderInventoryUpload("Couldn't read that file: " + err.message);
+    });
+  }
+
+  function renderInventoryReview() {
+    var includedCount = inventoryRows.filter(function (r) { return r.include; }).length;
+
+    var cards = inventoryRows.map(function (row) {
+      var locked = !!(row.result && row.result.success);
+      var resultHtml = "";
+      if (row.result) {
+        resultHtml = row.result.success
+          ? '<div class="inventory-row-result success">Added to inventory (ID ' + escapeHtml(row.result.inventoryId) + ')</div>'
+          : '<div class="inventory-row-result error">' + escapeHtml(row.result.error) + '</div>';
+      }
+      return ""
+        + '<div class="item-row inventory-row' + (!row.include ? ' skipped' : '') + (locked ? ' result-success' : '') + '" data-key="' + escapeHtml(row.key) + '">'
+        + '<input type="checkbox" class="inventory-row-check" data-key="' + escapeHtml(row.key) + '"' + (row.include ? ' checked' : '') + (locked ? ' disabled' : '') + '>'
+        + '<div class="item-thumb">' + thumbHtml(row) + '<span class="qty-chip">' + row.quantity + '</span></div>'
+        + '<div class="item-body">'
+        + '<div class="item-line1">'
+        + '<span class="item-no mono">' + escapeHtml(row.itemNo) + '</span>'
+        + '<span class="item-line1-right"><span class="item-type-tag">' + escapeHtml(row.type) + '</span></span>'
+        + '</div>'
+        + '<div class="item-name">' + escapeHtml(row.name || "(name unknown)") + '</div>'
+        + (row.colorName ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
+        + (row.location ? '<div class="item-color">Bin: ' + escapeHtml(row.location) + '</div>' : '')
+        + '<div class="inventory-fields">'
+        + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="quantity" value="' + escapeHtml(row.quantity) + '"' + (locked ? ' disabled' : '') + '></div>'
+        + '<div class="inventory-field"><label>Price</label><input type="text" inputmode="decimal" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="unitPrice" value="' + escapeHtml(row.unitPrice) + '"' + (locked ? ' disabled' : '') + '></div>'
+        + '<div class="inventory-field"><label>Condition</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="newOrUsed"' + (locked ? ' disabled' : '') + '>'
+        + '<option value="N"' + (row.newOrUsed === "N" ? ' selected' : '') + '>New</option>'
+        + '<option value="U"' + (row.newOrUsed === "U" ? ' selected' : '') + '>Used</option>'
+        + '</select></div>'
+        + '<div class="inventory-field"><label>Color ID</label><input type="number" min="0" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="colorId" value="' + escapeHtml(row.colorId) + '"' + (locked ? ' disabled' : '') + '></div>'
+        + '<div class="inventory-field remarks-field"><label>Remarks</label><input type="text" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks" value="' + escapeHtml(row.remarks) + '"' + (locked ? ' disabled' : '') + '></div>'
+        + '</div>'
+        + resultHtml
+        + '</div>'
+        + '</div>';
+    }).join("");
+
+    inventoryView.innerHTML = ""
+      + '<div class="inventory-intro">Review each item before it goes live on BrickLink. Uncheck anything you don’t want to add yet, edit price/qty/condition as needed, then submit.</div>'
+      + '<div class="inventory-summary-row">'
+      + '<span>' + includedCount + ' of ' + inventoryRows.length + ' selected</span>'
+      + '<div class="inventory-bulk-actions">'
+      + '<button type="button" id="invSelectAllBtn">Select all</button>'
+      + '<button type="button" id="invStartOverBtn">Start over</button>'
+      + '</div>'
+      + '</div>'
+      + cards
+      + '<div class="inventory-submit-row">'
+      + '<button class="inventory-submit-btn" id="inventorySubmitBtn"' + (includedCount === 0 || inventorySubmitting ? ' disabled' : '') + '>'
+      + (inventorySubmitting ? "Submitting…" : "Submit " + includedCount + " item" + (includedCount === 1 ? "" : "s") + " to BrickLink")
+      + '</button>'
+      + '</div>';
+
+    wireThumbLinks(inventoryView);
+    sizeThumbsToRows(inventoryView);
+
+    inventoryView.querySelectorAll(".inventory-row-check").forEach(function (el) {
+      el.addEventListener("change", function () {
+        var row = findInventoryRow(el.getAttribute("data-key"));
+        if (row) row.include = el.checked;
+        renderInventoryReview();
+      });
+    });
+
+    inventoryView.querySelectorAll(".inv-input").forEach(function (el) {
+      el.addEventListener("change", function () {
+        var row = findInventoryRow(el.getAttribute("data-key"));
+        if (!row) return;
+        var field = el.getAttribute("data-field");
+        if (field === "quantity" || field === "colorId") {
+          row[field] = parseInt(el.value, 10) || 0;
+        } else {
+          row[field] = el.value;
+        }
+        // Only re-render for fields that affect the photo (type/color) —
+        // re-rendering on every keystroke-triggering "change" would also
+        // be fine, but qty/price fields don't need it and a full
+        // re-render drops focus, which is annoying mid-edit.
+        if (field === "colorId") renderInventoryReview();
+      });
+    });
+
+    var selectAllBtn = document.getElementById("invSelectAllBtn");
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", function () {
+        var allIncluded = inventoryRows.every(function (r) { return r.include || (r.result && r.result.success); });
+        inventoryRows.forEach(function (r) { if (!(r.result && r.result.success)) r.include = !allIncluded; });
+        renderInventoryReview();
+      });
+    }
+
+    var startOverBtn = document.getElementById("invStartOverBtn");
+    if (startOverBtn) {
+      startOverBtn.addEventListener("click", function () {
+        if (!window.confirm("Discard this list and upload a different file?")) return;
+        inventoryRows = null;
+        renderInventoryView();
+      });
+    }
+
+    var submitBtn = document.getElementById("inventorySubmitBtn");
+    if (submitBtn) {
+      submitBtn.addEventListener("click", handleInventorySubmit);
+    }
+  }
+
+  function findInventoryRow(key) {
+    return inventoryRows.filter(function (r) { return r.key === key; })[0] || null;
+  }
+
+  function handleInventorySubmit() {
+    var toSubmit = inventoryRows.filter(function (r) { return r.include && !(r.result && r.result.success); });
+    if (!toSubmit.length) return;
+    if (!window.confirm("Add " + toSubmit.length + " item" + (toSubmit.length === 1 ? "" : "s") + " to your live BrickLink inventory? This makes them visible/purchasable on your store right away.")) return;
+
+    inventorySubmitting = true;
+    renderInventoryReview();
+
+    postJSON("/api/inventory-create", {
+      items: toSubmit.map(function (r) {
+        return {
+          key: r.key, type: r.type, itemNo: r.itemNo, colorId: r.colorId,
+          quantity: r.quantity, newOrUsed: r.newOrUsed, unitPrice: r.unitPrice,
+          description: r.description, remarks: r.remarks,
+        };
+      }),
+    }).then(function (res) {
+      (res.results || []).forEach(function (result) {
+        var row = findInventoryRow(result.key);
+        if (row) row.result = result;
+      });
+    }).catch(function (err) {
+      window.alert("Couldn't reach the server to submit these items: " + err.message);
+    }).finally(function () {
+      inventorySubmitting = false;
+      renderInventoryReview();
+    });
+  }
+
   function goToOrders() {
     currentView = "orders";
     orderView.classList.add("hidden");
+    inventoryView.classList.add("hidden");
     ordersView.classList.remove("hidden");
     backBtn.style.display = "none";
+    topbarNavRow.style.display = "";
     brandSub.textContent = "Open BrickLink orders";
     renderOrdersList();
   }
 
+  function goToInventory() {
+    currentView = "inventory";
+    ordersView.classList.add("hidden");
+    orderView.classList.add("hidden");
+    inventoryView.classList.remove("hidden");
+    backBtn.style.display = "inline-flex";
+    topbarNavRow.style.display = "none";
+    brandSub.textContent = "Add Inventory";
+    renderInventoryView();
+  }
+
   backBtn.addEventListener("click", goToOrders);
+  inventoryNavBtn.addEventListener("click", goToInventory);
   refreshBtn.addEventListener("click", function () {
     itemsCache = {};
     loadOrders();

@@ -20,6 +20,7 @@ netlify/functions/order-status-check.js → GET /api/orders/:id/status-check?buy
 netlify/functions/pirateship-export.js  → GET /api/pirateship-export (PAID+Stripe orders, mapped for a PirateShip CSV import)
 netlify/functions/order-contact.js    → GET /api/orders/:id/contact (buyer email/address/payment method/tracking number)
 netlify/functions/update-tracking.js  → POST /api/update-tracking (writes tracking number to BrickLink)
+netlify/functions/inventory-create.js → POST /api/inventory-create (BrickScan CSV import, writes new listings to BrickLink)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 netlify/functions/lib/order-contact.js → shared BrickLink order → buyer-contact mapping (used by order-contact.js and pirateship-export.js)
 ```
@@ -209,3 +210,35 @@ Token Secret as sensitive as an API key that can move money.
   ignores anything else in the body, so this can't accidentally touch
   status, payment, or cost). Saving switches the field to the same
   read-only display without needing to reopen the order.
+- **Add Inventory** — a separate page (nav button above the orders list,
+  "+ Add Inventory"), for adding new listings from a
+  [BrickScan](https://apps.apple.com/app/brickscan) CSV export without
+  needing to log into BrickLink's own site (blocked on Ryan's work
+  network) or use its mobile-unfriendly upload/review flow. Upload a CSV
+  → parsed client-side (a small hand-rolled RFC 4180 parser handles
+  BrickScan's quoted fields, e.g. item names containing commas) → shown
+  as a review screen reusing the order detail page's item-card styling
+  (photo via the existing `/api/item-image`, same thumbnail/lightbox) →
+  each row's qty/price/condition/color/remarks is editable and can be
+  unchecked to skip it → only on "Submit" does anything reach BrickLink.
+  `POST /api/inventory-create` creates each selected item individually
+  (not one bulk call) via `POST /inventories` (BrickLink's "Create
+  Inventory" endpoint), sequentially so one bad row can't take down the
+  rest of the batch, and returns a per-row success/error result the
+  review screen displays inline — a row that fails stays editable to fix
+  and retry, one that succeeds locks and shows its new inventory ID.
+  There's no staging/review endpoint in BrickLink's Store API itself
+  (unlike its website's own upload flow) — everything up to the actual
+  `POST` happens entirely in this app, which is what makes the review
+  step possible at all here.
+  The CSV's `ITEMTYPE/ITEMID/COLOR/REMARKS/DESCRIPTION/QTY/CONDITION/PRICE`
+  columns match BrickLink's own classic inventory-upload format exactly
+  (confirmed against a real BrickScan export); the request body's
+  `item.type` is sent as the full uppercase word ("MINIFIG", "PART", ...)
+  to match what BrickLink's Order Items endpoint is confirmed to return
+  elsewhere in this app — but that casing is **not** independently
+  confirmed for Create Inventory specifically, since there's no safe
+  read-only way to check it first (unlike shipping address or
+  `drive_thru_sent`, which were confirmed via a debug endpoint before
+  anything shipped). Worth watching the first real submission: a wrong
+  casing would show up as a clear per-row error, not a silent failure.

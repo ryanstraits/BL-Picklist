@@ -52,6 +52,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/inventory-create"
+  to = "/.netlify/functions/inventory-create"
+  status = 200
+
+[[redirects]]
   from = "/api/pick-state"
   to = "/.netlify/functions/pick-state"
   status = 200
