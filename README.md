@@ -191,15 +191,22 @@ Token Secret as sensitive as an API key that can move money.
   `total_weight` field has no confirmed unit for this account, and
   guessing wrong could produce a wrong postage cost/label — fill those in
   on PirateShip's side same as always.
-- **Order detail page layout** — top to bottom: order summary, a "Jump
-  to items ↓" button (only shown when the order has line items — scrolls
-  straight past everything below to the item list, for whenever the
-  blocks above aren't what someone opened the order for), the
-  address/tracking block, the payment/cost block, messages, then Leave
-  Feedback — all before the item rows. Feedback in particular used to
-  render after the items, which made it feel gated behind picking
-  everything even though it never actually was (the code only ever
-  checked order status); moving it up just makes that visible.
+- **Order detail page layout** — top to bottom: order summary (with a
+  "Mark as packed"/"Mark as shipped" button right there when the order
+  is PAID/PACKED — the same `/api/update-order-status` write the orders
+  list button does, just reachable without leaving the order; `order`
+  is the same object reference the orders list reads, not a copy, so
+  marking it here updates the list's badge/button too, no refetch
+  needed), a "Jump to items ↓" button (only shown when the order has
+  line items — scrolls straight past everything below to the item
+  list), the address/tracking block, the payment/cost block, messages,
+  Leave Feedback, then "Select all as picked"/"Clear picks for this
+  order" — all before the item rows. Feedback and the pick-progress
+  buttons both used to render after the items; feedback in particular
+  isn't actually gated on pick progress (only order status), so moving
+  it up just makes that visible. The same two pick-progress buttons
+  still repeat at the very bottom of the page too, for after you've
+  scrolled down while picking.
 - **Buyer contact block** — shipping address and email, from
   `GET /api/orders/:id/contact` (same underlying order-detail call and
   field mapping as the PirateShip export, factored into

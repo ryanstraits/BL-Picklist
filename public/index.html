@@ -1760,6 +1760,12 @@
     var itemKeys = computeItemKeys(items);
     var canSendDriveThru = order.status === "SHIPPED";
     var canLeaveFeedback = ["PACKED", "SHIPPED", "RECEIVED", "COMPLETED"].indexOf(order.status) !== -1;
+    var detailStatusAction = "";
+    if (order.status === "PAID") {
+      detailStatusAction = '<button class="status-action-btn to-packed" id="detailStatusBtn" data-target-status="PACKED">Mark as packed</button>';
+    } else if (order.status === "PACKED") {
+      detailStatusAction = '<button class="status-action-btn to-shipped" id="detailStatusBtn" data-target-status="SHIPPED">Mark as shipped</button>';
+    }
 
     var rows = items.map(function (item, idx) {
       var isDone = isPicked(order.orderId, itemKeys[idx]);
@@ -1794,10 +1800,7 @@
       + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
       + '</div>'
       + '<div class="picked-count"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>'
-      + (items.length ? '<div class="order-actions">'
-        + '<button class="select-all-btn">Select all as picked</button>'
-        + '<button class="reset-btn">Clear picks for this order</button>'
-        + '</div>' : '')
+      + (detailStatusAction ? '<div class="drive-thru-row">' + detailStatusAction + '</div>' : '')
       + (canSendDriveThru ? '<div class="drive-thru-row">'
         + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>'
         + '</div>' : '')
@@ -1807,6 +1810,10 @@
       + renderFinancialSection(contact, order)
       + renderMessagesSection(messages)
       + (canLeaveFeedback ? renderFeedbackSection(order) : '')
+      + (items.length ? '<div class="order-actions">'
+        + '<button class="select-all-btn">Select all as picked</button>'
+        + '<button class="reset-btn">Clear picks for this order</button>'
+        + '</div>' : '')
       + '<div id="orderItemsAnchor"></div>'
       + (items.length ? rows : '<div class="state-block">This order has no line items.</div>')
       + '<div class="reset-row">'
@@ -1840,6 +1847,34 @@
         renderOrderDetail(order, items, messages, contact);
       });
     });
+
+    var detailStatusBtn = document.getElementById("detailStatusBtn");
+    if (detailStatusBtn) {
+      detailStatusBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var targetStatus = detailStatusBtn.getAttribute("data-target-status");
+        var label = targetStatus === "PACKED" ? "Packed" : "Shipped";
+        if (!window.confirm("Mark order #" + order.orderId + " as " + label + " on BrickLink?")) return;
+
+        var originalText = detailStatusBtn.textContent;
+        detailStatusBtn.disabled = true;
+        detailStatusBtn.textContent = "Updating…";
+
+        postJSON("/api/update-order-status", { orderId: order.orderId, status: targetStatus })
+          .then(function () {
+            // order is the same object referenced from the orders array
+            // (openOrder finds it there, not a copy), so this mutation
+            // also updates what the orders list shows once you go back.
+            order.status = targetStatus;
+            renderOrderDetail(order, items, messages, contact);
+          })
+          .catch(function (err) {
+            window.alert("Couldn't update order #" + order.orderId + ": " + err.message);
+            detailStatusBtn.disabled = false;
+            detailStatusBtn.textContent = originalText;
+          });
+      });
+    }
 
     var driveThruBtn = document.getElementById("driveThruBtn");
     if (driveThruBtn) {
