@@ -374,6 +374,12 @@
     color: var(--text-secondary);
   }
   .contact-address { line-height: 1.4; }
+  .tracking-number-link {
+    color: var(--info);
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+  }
+  .tracking-number-link:active { color: var(--accent); }
   .contact-actions {
     display: flex;
     gap: 8px;
@@ -1976,9 +1982,31 @@
     return lines;
   }
 
+  // UPS numbers always start "1Z"; USPS numbers are purely numeric and
+  // long (tracking numbers range ~20-22 digits across their various
+  // service prefixes — 9300/9400/9205/9407/etc — so matching "all
+  // digits, long enough to be a real tracking number" catches those
+  // without hardcoding one specific prefix). Anything else (FedEx,
+  // DHL, a typo) is left as plain text rather than guessing a carrier
+  // and linking to the wrong one.
+  function trackingUrl(trackingNo) {
+    var clean = (trackingNo || "").replace(/\s+/g, "");
+    if (/^1Z/i.test(clean)) {
+      return "https://www.ups.com/track?tracknum=" + encodeURIComponent(clean);
+    }
+    if (/^\d{10,}$/.test(clean)) {
+      return "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(clean);
+    }
+    return null;
+  }
+
   function renderTrackingRow(contact) {
     if (contact.trackingNo) {
-      return '<div class="contact-row"><span class="contact-label">Tracking</span><span class="mono">' + escapeHtml(contact.trackingNo) + '</span></div>';
+      var url = trackingUrl(contact.trackingNo);
+      var valueHtml = url
+        ? '<a class="mono tracking-number-link" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(contact.trackingNo) + '</a>'
+        : '<span class="mono">' + escapeHtml(contact.trackingNo) + '</span>';
+      return '<div class="contact-row"><span class="contact-label">Tracking</span>' + valueHtml + '</div>';
     }
     return ""
       + '<div class="contact-row">'

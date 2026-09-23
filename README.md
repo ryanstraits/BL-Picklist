@@ -231,7 +231,14 @@ Token Secret as sensitive as an API key that can move money.
   sends exactly that shape (only the fields being changed; BrickLink
   ignores anything else in the body, so this can't accidentally touch
   status, payment, or cost). Saving switches the field to the same
-  read-only display without needing to reopen the order.
+  read-only display without needing to reopen the order. Once a
+  tracking number exists (BrickLink's or one just saved here), it's a
+  link that opens the carrier's tracking page in a new tab — UPS
+  (numbers starting "1Z") or USPS (purely numeric, 10+ digits, which
+  covers USPS's various service prefixes — 9300/9400/9205/9407/etc —
+  without hardcoding just one of them). Anything that doesn't match
+  either pattern (FedEx, DHL, a typo) stays plain text rather than
+  guessing a carrier and linking to the wrong tracking page.
 - **Payment/cost block** — a separate block from the address one (order
   detail page): payment method plus the order's cost breakdown
   (subtotal/shipping/insurance/tax/etc1/etc2/credit/coupon/grand total),
