@@ -2501,18 +2501,27 @@
   });
 
   // Deep-links to BrickLink's own catalog page, pre-filtered to this row's
-  // condition and US-only listings. The #T=S&O={...} fragment is copied
-  // verbatim (as a literal template, not re-built with encodeURIComponent)
-  // from a real URL captured live off bricklink.com for a New, US-filtered
-  // minifig — its "O" param is oddly encoded (only { } " are percent-escaped;
-  // : and , are left raw), so matching it exactly avoids guessing at
-  // whether a "cleaner" encoding would still parse the same way. Doesn't yet
-  // scope by color for parts — no captured example of that param exists.
+  // color (if any), condition, and US-only listings. The #T=S&...&O={...}
+  // fragment is copied verbatim (as a literal template, not re-built with
+  // encodeURIComponent) from two real URLs captured live off bricklink.com
+  // — its "O" param is oddly encoded (only { } " are percent-escaped; :
+  // and , are left raw), so matching it exactly avoids guessing at whether
+  // a "cleaner" encoding would still parse the same way. Confirmed shapes:
+  //   no color (sw1528, New, US):
+  //     ...?M=sw1528#T=S&O={"cond":"N","loc":"US","iconly":0}
+  //   with color (3001 in Blue/7, New, US):
+  //     ...?P=3001#T=S&C=7&O={"color":"7","cond":"N","loc":"US","iconly":0}
+  // Color shows up twice — once as its own C= fragment param, once as a
+  // string inside O — so both are included when row.colorId is set.
   function bricklinkCatalogUrl(row) {
     var typeCode = INVENTORY_TYPE_WORD_TO_CODE[row.type] || "P";
     var cond = row.newOrUsed === "U" ? "U" : "N";
-    return "https://www.bricklink.com/v2/catalog/catalogitem.page?" + typeCode + "=" + encodeURIComponent(row.itemNo)
-      + "#T=S&O=%7B%22cond%22:%22" + cond + "%22,%22loc%22:%22US%22,%22iconly%22:0%7D";
+    var base = "https://www.bricklink.com/v2/catalog/catalogitem.page?" + typeCode + "=" + encodeURIComponent(row.itemNo);
+    if (row.colorId) {
+      return base + "#T=S&C=" + row.colorId
+        + "&O=%7B%22color%22:%22" + row.colorId + "%22,%22cond%22:%22" + cond + "%22,%22loc%22:%22US%22,%22iconly%22:0%7D";
+    }
+    return base + "#T=S&O=%7B%22cond%22:%22" + cond + "%22,%22loc%22:%22US%22,%22iconly%22:0%7D";
   }
 
   function renderPriceGuidePanel(row) {
