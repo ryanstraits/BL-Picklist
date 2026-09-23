@@ -355,6 +355,28 @@
   }
   .copy-btn:active { background: var(--surface-alt); }
 
+  .tracking-entry {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  .tracking-input {
+    flex: 1;
+    min-width: 0;
+    font-family: inherit;
+    font-size: 13.5px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .tracking-save-btn {
+    flex: 0 0 auto;
+    padding: 5px 12px;
+  }
+
   .item-row {
     display: flex;
     align-items: flex-start;
@@ -1602,6 +1624,31 @@
       });
     }
 
+    var saveTrackingBtn = document.getElementById("saveTrackingBtn");
+    if (saveTrackingBtn) {
+      saveTrackingBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var input = document.getElementById("trackingInput");
+        var trackingNo = input.value.trim();
+        if (!trackingNo) { window.alert("Enter a tracking number first."); return; }
+
+        saveTrackingBtn.disabled = true;
+        saveTrackingBtn.textContent = "Saving…";
+
+        postJSON("/api/update-tracking", { orderId: order.orderId, trackingNo: trackingNo })
+          .then(function () {
+            contact.trackingNo = trackingNo;
+            contactCache[order.orderId] = contact;
+            renderOrderDetail(order, items, messages, contact);
+          })
+          .catch(function (err) {
+            window.alert("Couldn't save tracking number: " + err.message);
+            saveTrackingBtn.disabled = false;
+            saveTrackingBtn.textContent = "Save";
+          });
+      });
+    }
+
     wireFeedbackForm(order, items, messages);
     fetchAndShowBuyerRating(order.buyer);
 
@@ -1627,6 +1674,20 @@
     return lines;
   }
 
+  function renderTrackingRow(contact) {
+    if (contact.trackingNo) {
+      return '<div class="contact-row"><span class="contact-label">Tracking</span><span class="mono">' + escapeHtml(contact.trackingNo) + '</span></div>';
+    }
+    return ""
+      + '<div class="contact-row">'
+      + '<span class="contact-label">Tracking</span>'
+      + '<span class="tracking-entry">'
+      + '<input type="text" class="tracking-input" id="trackingInput" placeholder="Enter tracking number" autocomplete="off">'
+      + '<button class="copy-btn tracking-save-btn" id="saveTrackingBtn">Save</button>'
+      + '</span>'
+      + '</div>';
+  }
+
   function renderContactSection(contact) {
     if (!contact || (!contact.email && !contact.address1)) return "";
     var lines = contactAddressLines(contact);
@@ -1635,6 +1696,7 @@
       + (contact.paymentMethod ? '<div class="contact-row"><span class="contact-label">Payment</span><span>' + escapeHtml(contact.paymentMethod) + '</span></div>' : '')
       + (lines.length ? '<div class="contact-row"><span class="contact-label">Ship to</span><span class="contact-address">' + lines.map(escapeHtml).join("<br>") + '</span></div>' : '')
       + (contact.email ? '<div class="contact-row"><span class="contact-label">Email</span><span>' + escapeHtml(contact.email) + '</span></div>' : '')
+      + renderTrackingRow(contact)
       + '<div class="contact-actions">'
       + (lines.length ? '<button class="copy-btn" id="copyAddressBtn">Copy name &amp; address</button>' : '')
       + (contact.email ? '<button class="copy-btn" id="copyEmailBtn">Copy email</button>' : '')

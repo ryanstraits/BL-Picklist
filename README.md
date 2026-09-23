@@ -18,7 +18,8 @@ netlify/functions/member-rating.js    → GET /api/member-rating?username=
 netlify/functions/post-feedback.js    → POST /api/feedback (writes to BrickLink)
 netlify/functions/order-status-check.js → GET /api/orders/:id/status-check?buyer= (Drive Thru/feedback already done on BL?)
 netlify/functions/pirateship-export.js  → GET /api/pirateship-export (PAID+Stripe orders, mapped for a PirateShip CSV import)
-netlify/functions/order-contact.js    → GET /api/orders/:id/contact (buyer email/address/payment method)
+netlify/functions/order-contact.js    → GET /api/orders/:id/contact (buyer email/address/payment method/tracking number)
+netlify/functions/update-tracking.js  → POST /api/update-tracking (writes tracking number to BrickLink)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 netlify/functions/lib/order-contact.js → shared BrickLink order → buyer-contact mapping (used by order-contact.js and pirateship-export.js)
 ```
@@ -188,3 +189,15 @@ Token Secret as sensitive as an API key that can move money.
   email" copies just the buyer's email. Uses the Clipboard API with a
   hidden-textarea `execCommand("copy")` fallback for any embedded webview
   that doesn't support it.
+- **Tracking number entry** — also in that contact block. If BrickLink
+  already has a tracking number on the order (`shipping.tracking_no`),
+  it's shown read-only; otherwise there's a text field + Save button.
+  `POST /api/update-tracking` writes it with `PUT /orders/{id}`
+  (BrickLink's "Update Order" endpoint —
+  https://www.bricklink.com/v3/api.page?page=update-order) and body
+  `{"shipping":{"tracking_no":"..."}}` — confirmed against the real
+  `go-bricklink-api` client library's `UpdateOrder` implementation, which
+  sends exactly that shape (only the fields being changed; BrickLink
+  ignores anything else in the body, so this can't accidentally touch
+  status, payment, or cost). Saving switches the field to the same
+  read-only display without needing to reopen the order.

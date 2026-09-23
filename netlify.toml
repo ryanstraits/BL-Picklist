@@ -47,6 +47,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/update-tracking"
+  to = "/.netlify/functions/update-tracking"
+  status = 200
+
+[[redirects]]
   from = "/api/pick-state"
   to = "/.netlify/functions/pick-state"
   status = 200

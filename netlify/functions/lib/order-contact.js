@@ -15,6 +15,7 @@ function extractOrderContact(order) {
     postalCode: addr.postal_code || '',
     countryCode: addr.country_code || '',
     paymentMethod: (order.payment && order.payment.method) || '',
+    trackingNo: (order.shipping && order.shipping.tracking_no) || '',
   };
 }
 
