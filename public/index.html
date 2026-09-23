@@ -2806,6 +2806,7 @@
     ordersView.classList.remove("hidden");
     backBtn.style.display = "none";
     topbarNavRow.style.display = "";
+    refreshBtn.style.display = "";
     brandSub.textContent = "Open BrickLink orders";
     renderOrdersList();
   }
@@ -2817,6 +2818,10 @@
     inventoryView.classList.remove("hidden");
     backBtn.style.display = "inline-flex";
     topbarNavRow.style.display = "none";
+    // Refresh only ever reloads Orders data (orders list, order items,
+    // pick-state) — nothing on this screen, so hide it here rather than
+    // leave a button that looks live but silently does nothing visible.
+    refreshBtn.style.display = "none";
     brandSub.textContent = "Add Inventory";
     renderInventoryView();
   }
