@@ -1599,7 +1599,7 @@
     if (driveThruBtn) {
       driveThruBtn.addEventListener("click", function (e) {
         e.stopPropagation();
-        handleSendDriveThru(order, items, messages);
+        handleSendDriveThru(order, items, messages, contact);
       });
     }
 
@@ -1649,7 +1649,7 @@
       });
     }
 
-    wireFeedbackForm(order, items, messages);
+    wireFeedbackForm(order, items, messages, contact);
     fetchAndShowBuyerRating(order.buyer);
 
     document.getElementById("bottomBackBtn").addEventListener("click", function (e) {
@@ -1770,7 +1770,7 @@
       + '</div>';
   }
 
-  function wireFeedbackForm(order, items, messages) {
+  function wireFeedbackForm(order, items, messages, contact) {
     var section = orderView.querySelector(".feedback-section");
     if (!section || feedbackSent[order.orderId]) return;
 
@@ -1819,7 +1819,7 @@
     });
   }
 
-  function handleSendDriveThru(order, items, messages) {
+  function handleSendDriveThru(order, items, messages, contact) {
     if (!window.confirm('Send the "Thank You, Drive Thru!" email for order #' + order.orderId + "?")) return;
 
     var btn = document.getElementById("driveThruBtn");
