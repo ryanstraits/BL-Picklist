@@ -60,3 +60,8 @@
   from = "/api/feedback"
   to = "/.netlify/functions/post-feedback"
   status = 200
+
+[[redirects]]
+  from = "/api/order-raw-debug"
+  to = "/.netlify/functions/order-raw-debug"
+  status = 200
