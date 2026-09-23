@@ -1696,6 +1696,8 @@
     setRefreshing(true);
     try {
       orders = await fetchJSON("/api/orders");
+      // Newest first, matching BrickLink's own Orders Received page.
+      orders.sort(function (a, b) { return new Date(b.date) - new Date(a.date); });
       if (currentView === "orders") renderOrdersList();
     } catch (err) {
       if (currentView === "orders") setOrdersError(err.message);

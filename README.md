@@ -111,6 +111,9 @@ Token Secret as sensitive as an API key that can move money.
   first time each order is reopened.
 - There's no auto-refresh; tap "Refresh" in the header to re-pull orders,
   which keeps usage well under BrickLink's 5,000 requests/day limit.
+  The list is sorted newest to oldest by `date_ordered`, matching
+  BrickLink's own Orders Received page — `/api/orders` doesn't guarantee
+  an order, so this sorts client-side right after every fetch.
 - The orders list can push a real status change back to BrickLink: a
   "Mark as packed" button on PAID orders and "Mark as shipped" on PACKED
   ones. `/api/update-order-status` only accepts those two target
