@@ -2633,7 +2633,7 @@
         + '<span class="item-line1-right"><span class="item-type-tag">' + escapeHtml(row.type) + '</span></span>'
         + '</div>'
         + '<div class="item-name">' + escapeHtml(row.name || "(name unknown)") + '</div>'
-        + (row.colorName ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
+        + (row.colorName && row.colorName.trim().toLowerCase() !== "not applicable" ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
         + (row.location ? '<div class="item-color">Bin: ' + escapeHtml(row.location) + '</div>' : '')
         + '<div class="inventory-fields">'
         + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="quantity" value="' + escapeHtml(row.quantity) + '"' + (locked ? ' disabled' : '') + '></div>'
