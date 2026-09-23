@@ -1935,7 +1935,17 @@
       jumpToItemsBtn.addEventListener("click", function (e) {
         e.stopPropagation();
         var anchor = document.getElementById("orderItemsAnchor");
-        if (anchor) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+        var header = document.querySelector(".topbar");
+        if (!anchor) return;
+        // scrollIntoView's block:"start" aligns the anchor with the very
+        // top of the viewport, but the header is position:sticky and
+        // overlaps that same space — without correcting for its height,
+        // the anchor (and the first item right after it) lands partly
+        // hidden underneath it, which is what looked like landing
+        // "midway through the first item" instead of at its top.
+        var headerHeight = header ? header.getBoundingClientRect().height : 0;
+        var targetY = anchor.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
       });
     }
 
