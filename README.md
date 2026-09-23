@@ -293,11 +293,25 @@ Token Secret as sensitive as an API key that can move money.
   else here) — the query param is `new_or_used`, not `condition`; the Go
   client's own internal option-builder actually gets that one wrong,
   caught by cross-checking a second source rather than trusting either
-  alone. Shows min/avg/max and the full for-sale list sorted lowest
-  price first; tapping a listing fills that row's Price field. Cached
-  per item+color+condition combination (editing color or condition
-  refetches; qty/price/remarks don't) so re-opening an already-checked
-  panel doesn't re-hit the API.
+  alone. Shows both New and Used sections side by side — always both,
+  regardless of the row's own Condition dropdown, so Ryan can compare
+  pricing across conditions before deciding how to list — each with its
+  own min/avg/max and its cheapest 25 listings (the backend sorts then
+  caps to 25; a common item can have 60+ active listings, and Ryan only
+  ever prices off the bottom of the list anyway). Tapping a listing fills
+  that row's Price field and syncs its Condition dropdown to match
+  whichever section it came from, so a tapped price and the declared
+  condition never end up mismatched. Cached per item+color+condition
+  combination independently of the row's own Condition (editing color
+  refetches both; changing Condition doesn't refetch anything, since both
+  are already loaded; qty/price/remarks don't affect it either) so
+  re-opening an already-checked panel doesn't re-hit the API. Each
+  section also links out to BrickLink's own catalog page (`View on
+  BrickLink`), pre-scoped to that section's condition, the row's color
+  (if any), and US-only — the URL shape (including the odd `O={...}`
+  fragment encoding, and color showing up twice — once as its own `C=`
+  param, once inside `O`) was confirmed against two real URLs Ryan
+  captured live off bricklink.com, not reconstructed from guesswork.
   `country_code=US` filtering itself is confirmed working correctly
   against a real response (20 of 64 total listings), which ruled out an
   early bug's first suspect. The actual bug was a defensive client-side

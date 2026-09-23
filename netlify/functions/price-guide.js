@@ -37,13 +37,17 @@ exports.handler = async (event) => {
 
     const data = await blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/price?${query.toString()}`);
 
+    // Capped to the cheapest 25 — Ryan prices off the bottom of the list,
+    // so the long tail of pricier listings isn't useful and just bloats
+    // the response (a common item can easily have 60+ active listings).
     const listings = ((data && data.price_detail) || [])
       .map((d) => ({
         quantity: d.quantity,
         unitPrice: d.unit_price,
         shippingAvailable: !!d.shipping_available,
       }))
-      .sort((a, b) => Number(a.unitPrice) - Number(b.unitPrice));
+      .sort((a, b) => Number(a.unitPrice) - Number(b.unitPrice))
+      .slice(0, 25);
 
     return json(200, {
       newOrUsed: (data && data.new_or_used) || newOrUsed,

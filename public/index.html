@@ -2463,33 +2463,41 @@
     };
   }
 
-  // Keyed on exactly the fields that change what the price guide returns
-  // (item/color/condition) — editing price/qty/remarks shouldn't refetch,
-  // but changing condition or color should, since BrickLink's stats are
-  // specific to that combination.
-  function priceGuideKey(row) {
-    return row.type + ":" + row.itemNo + ":" + (row.colorId || 0) + ":" + row.newOrUsed;
+  // Keyed on item/color/condition. Takes an explicit cond ("N"/"U") rather
+  // than reading row.newOrUsed — the panel now always shows both New and
+  // Used listings regardless of which condition the row itself is set to,
+  // so each row needs two independent cache entries, not one keyed off its
+  // own Condition dropdown.
+  function priceGuideKey(row, cond) {
+    return row.type + ":" + row.itemNo + ":" + (row.colorId || 0) + ":" + cond;
   }
 
   var priceGuideCache = {};
 
+  // Fetches both New and Used listings for a row — always both, since
+  // Ryan wants to compare pricing across conditions regardless of what
+  // condition the item's actually being listed as.
   function fetchPriceGuide(row) {
-    var key = priceGuideKey(row);
-    if (priceGuideCache[key]) return; // already loading, loaded, or failed for this combo
-    priceGuideCache[key] = { loading: true, data: null, error: null };
-    renderInventoryReview();
+    var needsRender = false;
+    ["N", "U"].forEach(function (cond) {
+      var key = priceGuideKey(row, cond);
+      if (priceGuideCache[key]) return; // already loading, loaded, or failed for this combo
+      priceGuideCache[key] = { loading: true, data: null, error: null };
+      needsRender = true;
 
-    var qs = "type=" + encodeURIComponent(row.type) + "&no=" + encodeURIComponent(row.itemNo)
-      + "&condition=" + encodeURIComponent(row.newOrUsed)
-      + (row.colorId ? "&color=" + encodeURIComponent(row.colorId) : "");
+      var qs = "type=" + encodeURIComponent(row.type) + "&no=" + encodeURIComponent(row.itemNo)
+        + "&condition=" + encodeURIComponent(cond)
+        + (row.colorId ? "&color=" + encodeURIComponent(row.colorId) : "");
 
-    fetchJSON("/api/price-guide?" + qs).then(function (data) {
-      priceGuideCache[key] = { loading: false, data: data, error: null };
-      renderInventoryReview();
-    }).catch(function (err) {
-      priceGuideCache[key] = { loading: false, data: null, error: err.message };
-      renderInventoryReview();
+      fetchJSON("/api/price-guide?" + qs).then(function (data) {
+        priceGuideCache[key] = { loading: false, data: data, error: null };
+        renderInventoryReview();
+      }).catch(function (err) {
+        priceGuideCache[key] = { loading: false, data: null, error: err.message };
+        renderInventoryReview();
+      });
     });
+    if (needsRender) renderInventoryReview();
   }
 
   // Reverses INVENTORY_TYPE_CODE_TO_WORD (already confirmed against a real
@@ -2515,9 +2523,8 @@
   //     ...?P=3001#T=S&C=7&O={"color":"7","cond":"N","loc":"US","iconly":0}
   // Color shows up twice — once as its own C= fragment param, once as a
   // string inside O — so both are included when row.colorId is set.
-  function bricklinkCatalogUrl(row) {
+  function bricklinkCatalogUrl(row, cond) {
     var typeCode = INVENTORY_TYPE_WORD_TO_CODE[row.type] || "P";
-    var cond = row.newOrUsed === "U" ? "U" : "N";
     var base = "https://www.bricklink.com/v2/catalog/catalogitem.page?" + typeCode + "=" + encodeURIComponent(row.itemNo);
     if (row.colorId) {
       return base + "#T=S&C=" + row.colorId
@@ -2526,27 +2533,30 @@
     return base + "#T=S&O=%7B%22cond%22:%22" + cond + "%22,%22loc%22:%22US%22,%22iconly%22:0%7D";
   }
 
-  function renderPriceGuidePanel(row) {
-    if (!row.priceExpanded) return "";
-    var viewOnBricklink = '<a class="price-guide-view-link" href="' + escapeHtml(bricklinkCatalogUrl(row)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>';
-    var state = priceGuideCache[priceGuideKey(row)];
+  // Renders one condition's block (New or Used) — always both, regardless
+  // of the row's own Condition dropdown, so Ryan can compare pricing
+  // across conditions before deciding how to list an item.
+  function renderPriceGuideSection(row, cond) {
+    var label = cond === "U" ? "Used" : "New";
+    var viewOnBricklink = '<a class="price-guide-view-link" href="' + escapeHtml(bricklinkCatalogUrl(row, cond)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>';
+    var state = priceGuideCache[priceGuideKey(row, cond)];
     if (!state || state.loading) {
-      return '<div class="price-guide-panel">Loading active US listings… ' + viewOnBricklink + '</div>';
+      return '<div class="price-guide-panel">' + label + ' — Loading active US listings… ' + viewOnBricklink + '</div>';
     }
     if (state.error) {
-      return '<div class="price-guide-panel error">Couldn’t load listings: ' + escapeHtml(state.error) + ' ' + viewOnBricklink + '</div>';
+      return '<div class="price-guide-panel error">' + label + ' — Couldn’t load listings: ' + escapeHtml(state.error) + ' ' + viewOnBricklink + '</div>';
     }
     var data = state.data;
     if (!data.listings.length) {
-      return '<div class="price-guide-panel">No active US listings found for this item in ' + (row.newOrUsed === "U" ? "used" : "new") + ' condition. ' + viewOnBricklink + '</div>';
+      return '<div class="price-guide-panel">' + label + ' — No active US listings found. ' + viewOnBricklink + '</div>';
     }
-    var statsLine = (row.newOrUsed === "U" ? "Used" : "New")
+    var statsLine = label
       + " · Min " + formatCurrency(data.minPrice, data.currencyCode)
       + " · Avg " + formatCurrency(data.avgPrice, data.currencyCode)
       + " · Max " + formatCurrency(data.maxPrice, data.currencyCode)
       + " · " + data.totalQuantity + " for sale";
     var rows = data.listings.map(function (l, idx) {
-      return '<div class="price-guide-row" data-key="' + escapeHtml(row.key) + '" data-price="' + escapeHtml(l.unitPrice) + '">'
+      return '<div class="price-guide-row" data-key="' + escapeHtml(row.key) + '" data-price="' + escapeHtml(l.unitPrice) + '" data-condition="' + cond + '">'
         + '<span class="price-guide-rank">' + (idx + 1) + '</span>'
         + '<span class="price-guide-qty">×' + l.quantity + '</span>'
         + '<span class="price-guide-price mono">' + escapeHtml(formatCurrency(l.unitPrice, data.currencyCode)) + '</span>'
@@ -2555,9 +2565,14 @@
     }).join("");
     return '<div class="price-guide-panel">'
       + '<div class="price-guide-stats">' + escapeHtml(statsLine) + ' ' + viewOnBricklink + '</div>'
-      + '<div class="price-guide-hint">Tap a listing to use its price</div>'
+      + '<div class="price-guide-hint">Tap a listing to use its price (also sets Condition)</div>'
       + rows
       + '</div>';
+  }
+
+  function renderPriceGuidePanel(row) {
+    if (!row.priceExpanded) return "";
+    return renderPriceGuideSection(row, "N") + renderPriceGuideSection(row, "U");
   }
 
   // null = show the upload screen; an array (even empty after filtering)
@@ -2676,12 +2691,14 @@
         } else {
           row[field] = el.value;
         }
-        // colorId/newOrUsed change which price-guide result applies (a
-        // different cache key) — re-fetch if that panel is open. Other
-        // fields don't need a re-render at all; doing one on every
+        // colorId changes which item+color the price guide looks up (a
+        // different cache key) — re-fetch if that panel is open. newOrUsed
+        // no longer affects the panel at all (both conditions are always
+        // fetched), so it needs no re-fetch or re-render. Other fields
+        // don't need a re-render either; doing one on every
         // keystroke-triggering "change" would drop focus mid-edit for no
         // benefit, since qty/price/remarks don't affect anything else shown.
-        if (field === "colorId" || field === "newOrUsed") {
+        if (field === "colorId") {
           if (row.priceExpanded) fetchPriceGuide(row); else renderInventoryReview();
         }
       });
@@ -2702,6 +2719,11 @@
         var row = findInventoryRow(el.getAttribute("data-key"));
         if (!row) return;
         row.unitPrice = el.getAttribute("data-price");
+        // Tapping a Used-section listing while the row's still set to New
+        // (or vice versa) would otherwise leave the price and the declared
+        // Condition mismatched — syncing them here keeps a tapped price
+        // honest about which condition it actually came from.
+        row.newOrUsed = el.getAttribute("data-condition") === "U" ? "U" : "N";
         renderInventoryReview();
       });
     });
