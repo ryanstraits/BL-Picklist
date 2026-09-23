@@ -2410,6 +2410,13 @@
 
   var inventoryRowCounter = 0;
 
+  // Default remarks text, seeded per-row below only when BrickScan's own
+  // REMARKS column comes through blank — never overwrites a remark Ryan
+  // (or BrickScan) already set. Still editable afterward via the Remarks
+  // field on the review card.
+  var DEFAULT_REMARKS_USED = "Typical light play wear, otherwise excellent condition. No cracks or scratches. Fast shipping!";
+  var DEFAULT_REMARKS_NEW = "Taken straight out of packaging. Fast shipping!";
+
   // Maps one BrickScan CSV row to this app's internal shape. Column names
   // (ITEMTYPE/ITEMID/COLOR/REMARKS/DESCRIPTION/QTY/CONDITION/PRICE) match
   // BrickLink's own classic inventory-upload format exactly — confirmed
@@ -2418,6 +2425,9 @@
   // BrickLink. type/itemNo/colorId/newOrUsed are named to match thumbHtml's
   // and catalogImageUrl's existing field expectations directly.
   function csvObjToInventoryRow(obj) {
+    var newOrUsed = (obj.CONDITION || "").trim().toUpperCase() === "U" ? "U" : "N";
+    var remarks = obj.REMARKS || "";
+    if (!remarks.trim()) remarks = newOrUsed === "U" ? DEFAULT_REMARKS_USED : DEFAULT_REMARKS_NEW;
     return {
       key: "inv-" + (inventoryRowCounter++),
       include: true,
@@ -2427,10 +2437,10 @@
       colorName: obj.COLORNAME || "",
       name: decodeHtmlEntities(obj.ITEMNAME || ""),
       quantity: parseInt(obj.QTY, 10) || 1,
-      newOrUsed: (obj.CONDITION || "").trim().toUpperCase() === "U" ? "U" : "N",
+      newOrUsed: newOrUsed,
       unitPrice: obj.PRICE || "",
       description: obj.DESCRIPTION || "",
-      remarks: obj.REMARKS || "",
+      remarks: remarks,
       location: obj.LOCATION || "",
       result: null,
       priceExpanded: false,
@@ -2479,7 +2489,8 @@
     if (!data.listings.length) {
       return '<div class="price-guide-panel">No active US listings found for this item in ' + (row.newOrUsed === "U" ? "used" : "new") + ' condition.</div>';
     }
-    var statsLine = "Min " + formatCurrency(data.minPrice, data.currencyCode)
+    var statsLine = (row.newOrUsed === "U" ? "Used" : "New")
+      + " · Min " + formatCurrency(data.minPrice, data.currencyCode)
       + " · Avg " + formatCurrency(data.avgPrice, data.currencyCode)
       + " · Max " + formatCurrency(data.maxPrice, data.currencyCode)
       + " · " + data.totalQuantity + " for sale";
