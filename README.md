@@ -116,7 +116,15 @@ Token Secret as sensitive as an API key that can move money.
   `{"field":"status","value":...}`) — no free-form status picker, so a
   bad request can't push an order into an unexpected state. Each tap
   requires a confirm dialog first, since — unlike most of the app — this
-  writes to a live, buyer-visible order.
+  writes to a live, buyer-visible order. Once an order is SHIPPED (and
+  Drive Thru hasn't been sent yet), that same card slot shows "Send
+  Drive Thru" instead — Ryan's actual workflow is pack → ship → drive
+  thru, so this makes shipping the natural next tap right after marking
+  an order shipped, no trip into the order detail page needed. It's the
+  same POST /api/send-drive-thru and the same durable "sent" tracking as
+  the order detail page's own Drive Thru button (see below) — send it
+  from either place and both stay in sync, and the button disappears
+  from the list the same way "Mark as shipped" does once used.
 - The order detail page also has three more BrickLink writes/reads, added
   so logging into BrickLink directly (blocked on at least one of Ryan's
   work networks, since it goes through lego.com) is needed less often:

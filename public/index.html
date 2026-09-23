@@ -240,6 +240,7 @@
   .status-action-btn:disabled { opacity: 0.6; cursor: default; }
   .status-action-btn.to-packed { color: var(--info); border-color: var(--info); }
   .status-action-btn.to-shipped { color: var(--success); border-color: var(--success); }
+  .status-action-btn.list-drive-thru-btn { color: var(--accent); border-color: var(--accent); }
   .order-top-row {
     display: flex;
     justify-content: space-between;
@@ -873,6 +874,7 @@
           feedbackSent = mergedFeedback;
           pirateshipExported = mergedExported;
           if (remoteNeedsUpdate) pushOrderActions();
+          if (currentView === "orders") renderOrdersList();
         }
       })
       .catch(function () { /* offline or first run — keep whatever's local */ });
@@ -1306,6 +1308,8 @@
         statusAction = '<button class="status-action-btn to-packed" data-order="' + escapeHtml(order.orderId) + '" data-target-status="PACKED">Mark as packed</button>';
       } else if (order.status === "PACKED") {
         statusAction = '<button class="status-action-btn to-shipped" data-order="' + escapeHtml(order.orderId) + '" data-target-status="SHIPPED">Mark as shipped</button>';
+      } else if (order.status === "SHIPPED" && !driveThruSent[order.orderId]) {
+        statusAction = '<button class="status-action-btn list-drive-thru-btn" data-order="' + escapeHtml(order.orderId) + '">Send Drive Thru</button>';
       }
       html += ""
         + '<div class="order-card' + (needsPick ? ' needs-pick' : '') + '" role="button" tabindex="0" data-order="' + escapeHtml(order.orderId) + '">'
@@ -1341,10 +1345,17 @@
       });
     });
 
-    ordersView.querySelectorAll(".status-action-btn").forEach(function (btn) {
+    ordersView.querySelectorAll(".status-action-btn:not(.list-drive-thru-btn)").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         handleStatusChange(btn);
+      });
+    });
+
+    ordersView.querySelectorAll(".list-drive-thru-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        handleListDriveThru(btn);
       });
     });
 
@@ -1431,6 +1442,31 @@
       })
       .catch(function (err) {
         window.alert("Couldn't update order #" + orderId + ": " + err.message);
+        btn.disabled = false;
+        btn.textContent = originalText;
+      });
+  }
+
+  // Same action as the order detail page's Drive Thru button (and shares
+  // its durable "sent" tracking), just reachable straight from the list —
+  // the natural next tap right after marking an order shipped, so there's
+  // no separate trip into the order to send it.
+  function handleListDriveThru(btn) {
+    var orderId = btn.getAttribute("data-order");
+    if (!window.confirm('Send the "Thank You, Drive Thru!" email for order #' + orderId + "?")) return;
+
+    var originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+
+    postJSON("/api/send-drive-thru", { orderId: orderId })
+      .then(function () {
+        driveThruSent[orderId] = true;
+        pushOrderActions();
+        renderOrdersList();
+      })
+      .catch(function (err) {
+        window.alert("Couldn't send Drive Thru: " + err.message);
         btn.disabled = false;
         btn.textContent = originalText;
       });
