@@ -188,6 +188,22 @@
     gap: 3px;
   }
   .order-stats strong { color: var(--accent); }
+  .export-row { margin-top: 10px; }
+  .export-btn {
+    width: 100%;
+    background: none;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--info);
+    border-color: var(--info);
+    cursor: pointer;
+  }
+  .export-btn:active { background: var(--surface-alt); }
+  .export-btn:disabled { opacity: 0.6; cursor: default; }
   .order-card {
     display: block;
     width: 100%;
@@ -679,6 +695,7 @@
   var ratingsCache = {};
   var driveThruSent = {};
   var feedbackSent = {};
+  var pirateshipExported = {};
   var colorsMap = null;
 
   function loadState() {
@@ -776,7 +793,7 @@
   }
 
   function pushOrderActions() {
-    postJSON("/api/pick-state?key=actions", { driveThruSent: driveThruSent, feedbackSent: feedbackSent })
+    postJSON("/api/pick-state?key=actions", { driveThruSent: driveThruSent, feedbackSent: feedbackSent, pirateshipExported: pirateshipExported })
       .catch(function () { /* offline — ignore, same as picks */ });
   }
 
@@ -787,10 +804,13 @@
         if (remote && typeof remote === "object") {
           var mergedDriveThru = mergeActionMap(driveThruSent, remote.driveThruSent);
           var mergedFeedback = mergeActionMap(feedbackSent, remote.feedbackSent);
+          var mergedExported = mergeActionMap(pirateshipExported, remote.pirateshipExported);
           var remoteNeedsUpdate = JSON.stringify(mergedDriveThru) !== JSON.stringify(remote.driveThruSent || {})
-            || JSON.stringify(mergedFeedback) !== JSON.stringify(remote.feedbackSent || {});
+            || JSON.stringify(mergedFeedback) !== JSON.stringify(remote.feedbackSent || {})
+            || JSON.stringify(mergedExported) !== JSON.stringify(remote.pirateshipExported || {});
           driveThruSent = mergedDriveThru;
           feedbackSent = mergedFeedback;
+          pirateshipExported = mergedExported;
           if (remoteNeedsUpdate) pushOrderActions();
         }
       })
@@ -1208,7 +1228,8 @@
       + '<div>Total orders to be picked: <strong>' + toPickCount + '</strong></div>'
       + '<div>Total orders to be shipped: <strong>' + toShipCount + '</strong></div>'
       + (inProcessTotal !== null ? '<div>Total value of orders in process: <strong>' + escapeHtml(formatCurrency(inProcessTotal, inProcessCurrency)) + '</strong></div>' : '')
-      + '</div>';
+      + '</div>'
+      + '<div class="export-row"><button class="export-btn" id="exportPirateshipBtn">Export to PirateShip</button></div>';
     orders.forEach(function (order) {
       var total = order.totalCount || 0;
       var lineCount = order.uniqueCount || 0;
@@ -1265,6 +1286,69 @@
         handleStatusChange(btn);
       });
     });
+
+    var exportBtn = document.getElementById("exportPirateshipBtn");
+    if (exportBtn) exportBtn.addEventListener("click", exportPirateshipCsv);
+  }
+
+  // CSV field-quoting per RFC 4180: only quote a field when it actually
+  // needs it, but always escape internal quotes when it does.
+  function csvField(value) {
+    var s = value === null || value === undefined ? "" : String(value);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  var PIRATESHIP_HEADERS = ["Email", "Name", "Company", "Address", "Address Line 2", "City", "State", "Zipcode", "Country", "Order ID", "Order Items", "Pounds", "Length", "Width", "Height"];
+
+  // Weight/dimensions are deliberately left blank — BrickLink's total_weight
+  // field has no confirmed unit for this account (grams vs oz vs lbs), and
+  // guessing wrong here would produce a wrong postage cost/label. Fill
+  // those in on PirateShip's side same as always.
+  function pirateshipRowToCsv(row) {
+    var itemsSummary = row.uniqueCount + " lot" + (row.uniqueCount === 1 ? "" : "s") + ", " + row.totalCount + " item" + (row.totalCount === 1 ? "" : "s");
+    return [row.email, row.name, "", row.address1, row.address2, row.city, row.state, row.postalCode, row.countryCode, row.orderId, itemsSummary, "", "", "", ""]
+      .map(csvField).join(",");
+  }
+
+  function downloadTextFile(filename, text) {
+    var blob = new Blob([text], { type: "text/csv" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function exportPirateshipCsv() {
+    var btn = document.getElementById("exportPirateshipBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "Exporting…"; }
+
+    fetchJSON("/api/pirateship-export")
+      .then(function (rows) {
+        var newRows = (rows || []).filter(function (r) { return !pirateshipExported[r.orderId]; });
+        if (!newRows.length) {
+          window.alert("No new Stripe-paid orders ready to export.");
+          return;
+        }
+
+        var csv = [PIRATESHIP_HEADERS.map(csvField).join(",")]
+          .concat(newRows.map(pirateshipRowToCsv))
+          .join("\r\n");
+        downloadTextFile("pirateship-export-" + Date.now() + ".csv", csv);
+
+        newRows.forEach(function (r) { pirateshipExported[r.orderId] = true; });
+        pushOrderActions();
+      })
+      .catch(function (err) {
+        window.alert("Couldn't build the PirateShip export: " + err.message);
+      })
+      .finally(function () {
+        if (btn) { btn.disabled = false; btn.textContent = "Export to PirateShip"; }
+      });
   }
 
   function handleStatusChange(btn) {

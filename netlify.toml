@@ -62,6 +62,6 @@
   status = 200
 
 [[redirects]]
-  from = "/api/order-raw-debug"
-  to = "/.netlify/functions/order-raw-debug"
+  from = "/api/pirateship-export"
+  to = "/.netlify/functions/pirateship-export"
   status = 200

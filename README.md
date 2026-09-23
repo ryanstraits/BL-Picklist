@@ -17,6 +17,7 @@ netlify/functions/send-drive-thru.js  → POST /api/send-drive-thru (writes to B
 netlify/functions/member-rating.js    → GET /api/member-rating?username=
 netlify/functions/post-feedback.js    → POST /api/feedback (writes to BrickLink)
 netlify/functions/order-status-check.js → GET /api/orders/:id/status-check?buyer= (Drive Thru/feedback already done on BL?)
+netlify/functions/pirateship-export.js  → GET /api/pirateship-export (PAID+Stripe orders, mapped for a PirateShip CSV import)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 ```
 
@@ -157,3 +158,20 @@ Token Secret as sensitive as an API key that can move money.
     (unlike `drive_thru_sent`), so it's a best guess — worth watching
     the first few real orders to see whether it's actually catching
     this correctly.
+- **Export to PirateShip** — a button above the orders list.
+  `GET /api/pirateship-export` pulls every PAID order, fetches each one's
+  full detail (`GET /orders/{id}` — the only endpoint that returns
+  `buyer_email` and the fully-separated `shipping.address` fields; the
+  list endpoint doesn't), and keeps only the ones paid via Stripe
+  (`payment.method` containing "Stripe" — confirmed against a real
+  order's response, e.g. `"Credit/Debit (Powered by Stripe)"`). The
+  frontend filters out orders already exported (tracked durably via
+  `/api/pick-state?key=actions`, a third key alongside Drive
+  Thru/feedback — same union-merge pattern, so an order exported from
+  one device won't show up again on another), builds a CSV client-side
+  matching PirateShip's import columns (Email/Name/Address/Address Line
+  2/City/State/Zipcode/Country/Order ID/Order Items), and downloads it.
+  Pounds/Length/Width/Height are left blank on purpose: BrickLink's
+  `total_weight` field has no confirmed unit for this account, and
+  guessing wrong could produce a wrong postage cost/label — fill those in
+  on PirateShip's side same as always.
