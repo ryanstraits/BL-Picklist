@@ -694,9 +694,23 @@
   }
   .price-guide-panel.error { color: var(--danger); }
   .price-guide-stats {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
     font-weight: 600;
     color: var(--text-secondary);
   }
+  .price-guide-view-link {
+    flex: none;
+    font-weight: 400;
+    font-size: 11.5px;
+    white-space: nowrap;
+    color: var(--info);
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+  }
+  .price-guide-view-link:active { color: var(--accent); }
   .price-guide-hint {
     font-size: 11px;
     color: var(--text-secondary);
@@ -2476,18 +2490,44 @@
     });
   }
 
+  // Reverses INVENTORY_TYPE_CODE_TO_WORD (already confirmed against a real
+  // BrickScan export) to get back BrickLink's single-letter item-type code
+  // — cross-confirmed as the right code to use here too, since a real
+  // captured catalogitem.page URL for a minifig (sw1528) used "M=sw1528",
+  // matching this table's M: "MINIFIG" exactly.
+  var INVENTORY_TYPE_WORD_TO_CODE = {};
+  Object.keys(INVENTORY_TYPE_CODE_TO_WORD).forEach(function (code) {
+    INVENTORY_TYPE_WORD_TO_CODE[INVENTORY_TYPE_CODE_TO_WORD[code]] = code;
+  });
+
+  // Deep-links to BrickLink's own catalog page, pre-filtered to this row's
+  // condition and US-only listings. The #T=S&O={...} fragment is copied
+  // verbatim (as a literal template, not re-built with encodeURIComponent)
+  // from a real URL captured live off bricklink.com for a New, US-filtered
+  // minifig — its "O" param is oddly encoded (only { } " are percent-escaped;
+  // : and , are left raw), so matching it exactly avoids guessing at
+  // whether a "cleaner" encoding would still parse the same way. Doesn't yet
+  // scope by color for parts — no captured example of that param exists.
+  function bricklinkCatalogUrl(row) {
+    var typeCode = INVENTORY_TYPE_WORD_TO_CODE[row.type] || "P";
+    var cond = row.newOrUsed === "U" ? "U" : "N";
+    return "https://www.bricklink.com/v2/catalog/catalogitem.page?" + typeCode + "=" + encodeURIComponent(row.itemNo)
+      + "#T=S&O=%7B%22cond%22:%22" + cond + "%22,%22loc%22:%22US%22,%22iconly%22:0%7D";
+  }
+
   function renderPriceGuidePanel(row) {
     if (!row.priceExpanded) return "";
+    var viewOnBricklink = '<a class="price-guide-view-link" href="' + escapeHtml(bricklinkCatalogUrl(row)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>';
     var state = priceGuideCache[priceGuideKey(row)];
     if (!state || state.loading) {
-      return '<div class="price-guide-panel">Loading active US listings…</div>';
+      return '<div class="price-guide-panel">Loading active US listings… ' + viewOnBricklink + '</div>';
     }
     if (state.error) {
-      return '<div class="price-guide-panel error">Couldn’t load listings: ' + escapeHtml(state.error) + '</div>';
+      return '<div class="price-guide-panel error">Couldn’t load listings: ' + escapeHtml(state.error) + ' ' + viewOnBricklink + '</div>';
     }
     var data = state.data;
     if (!data.listings.length) {
-      return '<div class="price-guide-panel">No active US listings found for this item in ' + (row.newOrUsed === "U" ? "used" : "new") + ' condition.</div>';
+      return '<div class="price-guide-panel">No active US listings found for this item in ' + (row.newOrUsed === "U" ? "used" : "new") + ' condition. ' + viewOnBricklink + '</div>';
     }
     var statsLine = (row.newOrUsed === "U" ? "Used" : "New")
       + " · Min " + formatCurrency(data.minPrice, data.currencyCode)
@@ -2503,7 +2543,7 @@
         + '</div>';
     }).join("");
     return '<div class="price-guide-panel">'
-      + '<div class="price-guide-stats">' + escapeHtml(statsLine) + '</div>'
+      + '<div class="price-guide-stats">' + escapeHtml(statsLine) + ' ' + viewOnBricklink + '</div>'
       + '<div class="price-guide-hint">Tap a listing to use its price</div>'
       + rows
       + '</div>';
