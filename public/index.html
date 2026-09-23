@@ -2435,10 +2435,11 @@
 
   var inventoryRowCounter = 0;
 
-  // Default remarks text, seeded per-row below only when BrickScan's own
-  // REMARKS column comes through blank — never overwrites a remark Ryan
-  // (or BrickScan) already set. Still editable afterward via the Remarks
-  // field on the review card.
+  // Default condition write-up text, seeded per-row below into BOTH
+  // Description and Remarks, each only when BrickScan's own column for
+  // it comes through blank — never overwrites text Ryan (or BrickScan)
+  // already set. Still editable afterward via either field on the
+  // review card.
   var DEFAULT_REMARKS_USED = "Typical light play wear, otherwise excellent condition. No cracks or scratches. Fast shipping!";
   var DEFAULT_REMARKS_NEW = "Taken straight out of packaging. Fast shipping!";
 
@@ -2451,8 +2452,11 @@
   // and catalogImageUrl's existing field expectations directly.
   function csvObjToInventoryRow(obj) {
     var newOrUsed = (obj.CONDITION || "").trim().toUpperCase() === "U" ? "U" : "N";
+    var defaultText = newOrUsed === "U" ? DEFAULT_REMARKS_USED : DEFAULT_REMARKS_NEW;
     var remarks = obj.REMARKS || "";
-    if (!remarks.trim()) remarks = newOrUsed === "U" ? DEFAULT_REMARKS_USED : DEFAULT_REMARKS_NEW;
+    if (!remarks.trim()) remarks = defaultText;
+    var description = obj.DESCRIPTION || "";
+    if (!description.trim()) description = defaultText;
     return {
       key: "inv-" + (inventoryRowCounter++),
       include: true,
@@ -2464,7 +2468,7 @@
       quantity: parseInt(obj.QTY, 10) || 1,
       newOrUsed: newOrUsed,
       unitPrice: obj.PRICE || "",
-      description: obj.DESCRIPTION || "",
+      description: description,
       remarks: remarks,
       location: obj.LOCATION || "",
       result: null,
