@@ -595,7 +595,7 @@
     color: var(--text-secondary);
   }
   .inventory-bulk-actions { display: flex; gap: 8px; }
-  .inventory-bulk-actions button {
+  .inventory-bulk-actions button, .inv-start-over-btn {
     border: 1px solid var(--border);
     background: none;
     color: var(--text);
@@ -606,7 +606,8 @@
     border-radius: 6px;
     cursor: pointer;
   }
-  .inventory-bulk-actions button:active { background: var(--surface-alt); }
+  .inventory-bulk-actions button:active, .inv-start-over-btn:active { background: var(--surface-alt); }
+  .inventory-submit-row .inv-start-over-btn { align-self: center; }
 
   .item-row.inventory-row { cursor: default; }
   .item-row.inventory-row:active { background: var(--surface); }
@@ -2674,7 +2675,7 @@
       + '<span>' + includedCount + ' of ' + inventoryRows.length + ' selected</span>'
       + '<div class="inventory-bulk-actions">'
       + '<button type="button" id="invSelectAllBtn">Select all</button>'
-      + '<button type="button" id="invStartOverBtn">Start over</button>'
+      + '<button type="button" class="inv-start-over-btn">Start over</button>'
       + '</div>'
       + '</div>'
       + cards
@@ -2682,6 +2683,7 @@
       + '<button class="inventory-submit-btn" id="inventorySubmitBtn"' + (includedCount === 0 || inventorySubmitting ? ' disabled' : '') + '>'
       + (inventorySubmitting ? "Submitting…" : "Submit " + includedCount + " item" + (includedCount === 1 ? "" : "s") + " to BrickLink")
       + '</button>'
+      + '<button type="button" class="inv-start-over-btn">Start over</button>'
       + '</div>';
 
     wireThumbLinks(inventoryView);
@@ -2751,14 +2753,13 @@
       });
     }
 
-    var startOverBtn = document.getElementById("invStartOverBtn");
-    if (startOverBtn) {
-      startOverBtn.addEventListener("click", function () {
+    inventoryView.querySelectorAll(".inv-start-over-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
         if (!window.confirm("Discard this list and upload a different file?")) return;
         inventoryRows = null;
         renderInventoryView();
       });
-    }
+    });
 
     var submitBtn = document.getElementById("inventorySubmitBtn");
     if (submitBtn) {
