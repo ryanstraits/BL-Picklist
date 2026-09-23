@@ -7,8 +7,17 @@ const { json, errorResponse } = require('./lib/http');
 // new_or_used, country_code, ...) and that {type} in the URL path is the
 // same full uppercase word used everywhere else in this app ("MINIFIG",
 // "PART", ...). guide_type=stock returns *currently listed* items (not
-// past sales), and country_code filters to stores located in that
-// country — exactly "active US listings" for pricing against.
+// past sales), and country_code=US filters server-side to stores located
+// in the US — confirmed against a real live response (20 US listings out
+// of 64 total for a real item), so no client-side re-filter is needed —
+// or possible: each price_detail entry only has quantity, unit_price, and
+// shipping_available (plus a redundant, identically-typo'd "qunatity"
+// field BrickLink's own API apparently ships) — no seller_country_code,
+// no buyer_country_code, no date_ordered, despite a client library's
+// PriceDetail struct claiming otherwise. An earlier version of this
+// function re-filtered on seller_country_code as a defensive measure,
+// which — since that field doesn't exist — silently zeroed out every
+// result regardless of the real (correct) server-side filtering.
 exports.handler = async (event) => {
   try {
     const params = event.queryStringParameters || {};
@@ -18,21 +27,6 @@ exports.handler = async (event) => {
 
     const newOrUsed = params.condition === 'U' ? 'U' : 'N';
     const colorId = params.color;
-
-    // Temporary diagnostic: a real order returned zero listings despite
-    // 20+ visible on bricklink.com for the same item/condition, so this
-    // fetches both a country_code=US query and an unfiltered one side by
-    // side to see the raw response — confirms whether country_code needs
-    // to be paired with region (a real client library enforces that
-    // pairing; another doesn't), and the real price_detail field names,
-    // rather than guessing again. Remove once the real shape is confirmed.
-    if (params.debug === '1') {
-      const [withCountry, withoutCountry] = await Promise.all([
-        blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/price?guide_type=stock&new_or_used=${newOrUsed}&country_code=US`),
-        blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/price?guide_type=stock&new_or_used=${newOrUsed}`),
-      ]);
-      return json(200, { withCountry, withoutCountry });
-    }
 
     const query = new URLSearchParams({
       guide_type: 'stock',
@@ -44,12 +38,6 @@ exports.handler = async (event) => {
     const data = await blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/price?${query.toString()}`);
 
     const listings = ((data && data.price_detail) || [])
-      // Defense in depth: country_code should already restrict this
-      // server-side, but filtering again here means a change in
-      // BrickLink's own filtering behavior fails safe (an empty/short
-      // list) rather than silently showing non-US sellers as if they
-      // were US ones.
-      .filter((d) => d.seller_country_code === 'US')
       .map((d) => ({
         quantity: d.quantity,
         unitPrice: d.unit_price,

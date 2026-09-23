@@ -286,8 +286,7 @@ Token Secret as sensitive as an API key that can move money.
   each review card in Add Inventory. `GET /api/price-guide` wraps
   BrickLink's Get Price Guide endpoint (`GET /items/{type}/{no}/price`
   with `guide_type=stock`, i.e. currently-listed items, not past sales)
-  filtered to `country_code=US` (also re-filtered server-side on
-  `seller_country_code` as a fail-safe). Confirmed against two
+  filtered server-side to `country_code=US`. Confirmed against two
   independent real client libraries (`go-bricklink-api` and the Python
   `bricklink-py`, which agree on both the query param names and that the
   URL path's `{type}` is the same full uppercase word used everywhere
@@ -299,3 +298,17 @@ Token Secret as sensitive as an API key that can move money.
   per item+color+condition combination (editing color or condition
   refetches; qty/price/remarks don't) so re-opening an already-checked
   panel doesn't re-hit the API.
+  `country_code=US` filtering itself is confirmed working correctly
+  against a real response (20 of 64 total listings), which ruled out an
+  early bug's first suspect. The actual bug was a defensive client-side
+  re-filter on `seller_country_code` — a field the Go client's
+  `PriceDetail` struct claimed existed but doesn't: each `price_detail`
+  entry really only has `quantity`, `unit_price`, and
+  `shipping_available` (plus a redundant, identically-typo'd
+  `"qunatity"` field BrickLink's own API ships). That re-filter matched
+  nothing on every request and silently zeroed the whole list — caught
+  by adding a temporary side-by-side raw-response debug endpoint (same
+  technique as the order shipping-address/payment confirmations
+  earlier), having Ryan hit it against a real item with 20+ known
+  listings, and reading the actual field names instead of trusting the
+  struct a second time.
