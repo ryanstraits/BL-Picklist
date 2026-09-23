@@ -188,8 +188,16 @@ Token Secret as sensitive as an API key that can move money.
   `total_weight` field has no confirmed unit for this account, and
   guessing wrong could produce a wrong postage cost/label — fill those in
   on PirateShip's side same as always.
-- **Buyer contact block** — on the order detail page, above the line
-  items: payment method, shipping address, and email, from
+- **Order detail page layout** — top to bottom: order summary, a "Jump
+  to items ↓" button (only shown when the order has line items — scrolls
+  straight past everything below to the item list, for whenever the
+  blocks above aren't what someone opened the order for), the
+  address/tracking block, the payment/cost block, messages, then Leave
+  Feedback — all before the item rows. Feedback in particular used to
+  render after the items, which made it feel gated behind picking
+  everything even though it never actually was (the code only ever
+  checked order status); moving it up just makes that visible.
+- **Buyer contact block** — shipping address and email, from
   `GET /api/orders/:id/contact` (same underlying order-detail call and
   field mapping as the PirateShip export, factored into
   `lib/order-contact.js` so both share it — this one isn't limited to
@@ -211,6 +219,17 @@ Token Secret as sensitive as an API key that can move money.
   ignores anything else in the body, so this can't accidentally touch
   status, payment, or cost). Saving switches the field to the same
   read-only display without needing to reopen the order.
+- **Payment/cost block** — a separate block from the address one (order
+  detail page): payment method plus the order's cost breakdown
+  (subtotal/shipping/insurance/tax/etc1/etc2/credit/coupon/grand total),
+  from the same `order.cost` object `lib/order-contact.js` already reads
+  off the order detail fetch. Optional charge rows only render when
+  BrickLink actually returned a non-zero value, so a typical order shows
+  just Payment/Subtotal/Shipping/Total, not a wall of "$0.00" rows. The
+  sales-tax field is a soft guess (a real client library disagreed with
+  itself on the field's name/casing/type across two different structs)
+  — read-only display, so a miss just shows a blank Tax row, never a bad
+  write.
 - **Add Inventory** — a separate page (nav button above the orders list,
   "+ Add Inventory"), for adding new listings from a
   [BrickScan](https://apps.apple.com/app/brickscan) CSV export without

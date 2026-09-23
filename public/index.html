@@ -334,6 +334,27 @@
   }
   .picked-count strong { color: var(--text); }
 
+  .jump-to-items-btn {
+    width: 100%;
+    margin-top: 12px;
+    border: 1px solid var(--accent);
+    background: none;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .jump-to-items-btn:active { background: var(--surface-alt); }
+
+  .financial-total {
+    font-weight: 700;
+    font-size: 14.5px;
+  }
+  .financial-total .contact-label { color: var(--text); }
+
   .contact-section {
     margin-top: 12px;
     background: var(--surface);
@@ -1781,10 +1802,13 @@
         + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>'
         + '</div>' : '')
       + '</div>'
+      + (items.length ? '<button class="jump-to-items-btn" id="jumpToItemsBtn">Jump to items ↓</button>' : '')
       + renderContactSection(contact)
-      + (items.length ? rows : '<div class="state-block">This order has no line items.</div>')
+      + renderFinancialSection(contact, order)
       + renderMessagesSection(messages)
       + (canLeaveFeedback ? renderFeedbackSection(order) : '')
+      + '<div id="orderItemsAnchor"></div>'
+      + (items.length ? rows : '<div class="state-block">This order has no line items.</div>')
       + '<div class="reset-row">'
       + '<button class="bottom-back-btn" id="bottomBackBtn">&#8592; All orders</button>'
       + (items.length ? '<button class="select-all-btn">Select all as picked</button>'
@@ -1871,6 +1895,15 @@
       });
     }
 
+    var jumpToItemsBtn = document.getElementById("jumpToItemsBtn");
+    if (jumpToItemsBtn) {
+      jumpToItemsBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var anchor = document.getElementById("orderItemsAnchor");
+        if (anchor) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+
     wireFeedbackForm(order, items, messages, contact);
     fetchAndShowBuyerRating(order.buyer);
 
@@ -1915,7 +1948,6 @@
     var lines = contactAddressLines(contact);
     return ""
       + '<div class="contact-section">'
-      + (contact.paymentMethod ? '<div class="contact-row"><span class="contact-label">Payment</span><span>' + escapeHtml(contact.paymentMethod) + '</span></div>' : '')
       + (lines.length ? '<div class="contact-row"><span class="contact-label">Ship to</span><span class="contact-address">' + lines.map(escapeHtml).join("<br>") + '</span></div>' : '')
       + (contact.email ? '<div class="contact-row"><span class="contact-label">Email</span><span>' + escapeHtml(contact.email) + '</span></div>' : '')
       + renderTrackingRow(contact)
@@ -1923,6 +1955,39 @@
       + (lines.length ? '<button class="copy-btn" id="copyAddressBtn">Copy name &amp; address</button>' : '')
       + (contact.email ? '<button class="copy-btn" id="copyEmailBtn">Copy email</button>' : '')
       + '</div>'
+      + '</div>';
+  }
+
+  // Payment method lives here now (moved out of the contact/address block)
+  // alongside the full cost breakdown — all sourced from the same order
+  // detail fetch, just grouped by what it's about rather than where it
+  // came from. Optional charge rows (insurance/etc1/etc2/credit/coupon)
+  // only show when BrickLink actually returned a non-zero value, so a
+  // typical order isn't cluttered with a wall of "$0.00" rows.
+  function financialRow(label, amount, currencyCode) {
+    var num = Number(amount);
+    if (!amount || isNaN(num) || num === 0) return "";
+    return '<div class="contact-row"><span class="contact-label">' + escapeHtml(label) + '</span><span>' + escapeHtml(formatCurrency(amount, currencyCode)) + '</span></div>';
+  }
+
+  function renderFinancialSection(contact, order) {
+    if (!contact) return "";
+    var cost = contact.cost || {};
+    var currencyCode = cost.currencyCode || order.currencyCode;
+    var grandTotal = cost.grandTotal || order.orderTotal;
+    if (!contact.paymentMethod && !grandTotal) return "";
+    return ""
+      + '<div class="contact-section">'
+      + (contact.paymentMethod ? '<div class="contact-row"><span class="contact-label">Payment</span><span>' + escapeHtml(contact.paymentMethod) + '</span></div>' : '')
+      + financialRow("Subtotal", cost.subtotal, currencyCode)
+      + financialRow("Shipping", cost.shipping, currencyCode)
+      + financialRow("Insurance", cost.insurance, currencyCode)
+      + financialRow("Tax", cost.tax, currencyCode)
+      + financialRow("Other", cost.etc1, currencyCode)
+      + financialRow("Other", cost.etc2, currencyCode)
+      + financialRow("Credit", cost.credit, currencyCode)
+      + financialRow("Coupon", cost.coupon, currencyCode)
+      + (grandTotal ? '<div class="contact-row financial-total"><span class="contact-label">Total</span><span>' + escapeHtml(formatCurrency(grandTotal, currencyCode)) + '</span></div>' : '')
       + '</div>';
   }
 
