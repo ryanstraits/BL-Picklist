@@ -2,8 +2,7 @@ const { blPost } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
 const { requireAuth } = require('./lib/site-auth');
 
-// Create Inventory — POST /inventories — confirmed against a real client
-// library's Item struct (go-bricklink-api): the request body nests the
+// Create Inventory — POST /inventories — the request body nests the
 // catalog item under "item" ({no, type}), with color_id, quantity,
 // new_or_used, unit_price, description, and remarks as siblings. This
 // creates the listing live/immediately — there's no staging or review
@@ -11,27 +10,21 @@ const { requireAuth } = require('./lib/site-auth');
 // which is why the review step lives in the frontend instead: nothing
 // reaches BrickLink until the seller approves each row there.
 //
-// item.type was originally sent as the full uppercase word ("MINIFIG",
-// "PART", ...) matching the shape BrickLink's Order Items endpoint
-// returns — that was flagged as unconfirmed for this specific endpoint,
-// and real testing confirmed it wrong: every item came back
-// PARAMETER_MISSING_OR_INVALID. go-bricklink-api's own item-type
-// constants file (itemtypes.go — a single source of truth used for this
-// same struct field across its whole library, not just one endpoint)
-// uses single-letter codes ("P", "M", "S", ...), so this maps the word
-// down to that letter before it reaches the request body. Matches this
-// app's own existing letter map in item-image.js exactly except for
-// UNSORTED_LOT, where this app's "U" (confirmed earlier against a real
-// captured BrickLink catalog URL — a first-party source) is trusted over
-// the Go library's "L" for that one entry.
-const TYPE_LETTERS = {
-  PART: 'P', SET: 'S', MINIFIG: 'M', BOOK: 'B', GEAR: 'G',
-  CATALOG: 'C', INSTRUCTION: 'I', ORIGINAL_BOX: 'O', UNSORTED_LOT: 'U',
-};
-
+// item.type is the full uppercase word ("PART", "MINIFIG", ...) — this
+// was briefly changed to a single-letter code ("P", "M", ...) on the
+// mistaken assumption that go-bricklink-api's single-letter item-type
+// constants applied here; real API testing proved that wrong (BrickLink
+// returned "Unparseable value or field: item.type" for the letter code).
+// The single-letter codes are specific to BrickLink's *image* CDN URL
+// paths (where this app's item-image.js already correctly uses them,
+// confirmed against a real captured catalog image URL) — a different
+// subsystem from the Store API's JSON fields. A real JS client library
+// (ryansh100/bricklink-api's store/inventory.js), whose Create Inventory
+// request body matches this app's shape field-for-field, confirms the
+// full word is correct for this endpoint.
 async function createOne(item) {
   const payload = {
-    item: { no: item.itemNo, type: TYPE_LETTERS[item.type] || item.type },
+    item: { no: item.itemNo, type: item.type },
     color_id: item.colorId || 0,
     quantity: item.quantity,
     new_or_used: item.newOrUsed === 'U' ? 'U' : 'N',

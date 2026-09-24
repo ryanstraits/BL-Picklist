@@ -333,25 +333,32 @@ Token Secret as sensitive as an API key that can move money.
   The CSV's `ITEMTYPE/ITEMID/COLOR/REMARKS/DESCRIPTION/QTY/CONDITION/PRICE`
   columns match BrickLink's own classic inventory-upload format exactly
   (confirmed against a real BrickScan export). The request body's
-  `item.type` was originally sent as the full uppercase word ("MINIFIG",
-  "PART", ...) to match what BrickLink's Order Items endpoint is
-  confirmed to return elsewhere in this app — flagged at the time as
-  unconfirmed for Create Inventory specifically, since there was no safe
-  read-only way to check it first. Ryan's first real submission confirmed
-  it wrong: every row came back `PARAMETER_MISSING_OR_INVALID`. Fixed by
-  mapping the word down to BrickLink's single-letter code ("P", "M",
-  "S", ...) before it reaches the request body — cross-checked against
-  `go-bricklink-api`'s own dedicated item-type-constants file
-  (`itemtypes.go`, a single source of truth for that struct field across
-  its whole library, not just one endpoint) and matches this app's own
-  existing letter map in `item-image.js` exactly except for
-  `UNSORTED_LOT`, where this app's "U" (confirmed earlier against a real
-  captured BrickLink catalog URL) is trusted over the Go library's "L"
-  for that one entry. Verified by exercising the real
-  `inventory-create.js` handler directly in Node with `blPost` mocked
-  out (not just a hand-written stub) to confirm the actual file now
-  serializes `"type":"P"` — not by a live BrickLink write, since that
-  would create real listings on Ryan's store.
+  `item.type` is the full uppercase word ("MINIFIG", "PART", ...). Ryan's
+  first real submission got a bare `PARAMETER_MISSING_OR_INVALID` with no
+  field-level detail (see the `blRequest` error-message fix below — at the
+  time this app was only surfacing BrickLink's short `message`, not the
+  more specific `description`), which was misdiagnosed as `item.type`
+  needing BrickLink's single-letter code ("P", "M", "S", ...) — a mapping
+  that exists in `item-image.js` for a different purpose (building catalog
+  image CDN URLs) and was applied here on the mistaken assumption it also
+  applied to this JSON field, cross-checked at the time only against a Go
+  client library's constants file rather than another Create Inventory
+  call site. That fix made things worse in a way that was newly
+  diagnosable: with the `description` field now surfaced, BrickLink
+  rejected the letter code explicitly as `Unparseable value or field:
+  item.type`, i.e. not a recognized enum value at all — proving the
+  letter code was never valid for this endpoint. Reverted to the full
+  word, now corroborated by a real JS client library
+  (`ryansh100/bricklink-api`'s `store/inventory.js`) whose Create
+  Inventory request body matches this app's shape field-for-field and
+  confirms the full word is correct. Verified by exercising the real
+  `inventory-create.js` handler directly in Node with `blPost` mocked out
+  (not just a hand-written stub) across all 9 item types, confirming each
+  serializes as its full word — not by a live BrickLink write, since that
+  would create real listings on Ryan's store. What was actually wrong in
+  the original submission (before either type-format detour) is still
+  unconfirmed; the `description`-surfacing fix means Ryan's next retry
+  will show the real reason if something else is still off.
 - **Active listings price check** — a "See active US listings" toggle on
   each review card in Add Inventory. `GET /api/price-guide` wraps
   BrickLink's Get Price Guide endpoint (`GET /items/{type}/{no}/price`
