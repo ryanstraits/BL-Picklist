@@ -11,6 +11,11 @@ const { json } = require('./http');
 // session store — stateless, needs no database, and rotating
 // SITE_PASSWORD invalidates every previously issued cookie for free,
 // since the signature is over that same secret.
+//
+// Note: updating SITE_PASSWORD's value alone does not take effect on its
+// own — Netlify Functions read env vars as they were at deploy time, not
+// live per-request, so a fresh deploy (even with no code changes) is
+// required afterward for a changed value to actually reach getPassword().
 const COOKIE_NAME = 'bl_site_auth';
 const AUTHORIZED_VALUE = 'authorized';
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 180; // ~180 days
