@@ -684,6 +684,7 @@
     cursor: pointer;
   }
   .inventory-bulk-actions button:active, .inv-start-over-btn:active { background: var(--surface-alt); }
+  .inv-start-over-btn:disabled { opacity: 0.5; cursor: default; }
   .inventory-submit-row .inv-start-over-btn { align-self: center; }
 
   .item-row.inventory-row { cursor: default; }
@@ -738,7 +739,7 @@
   .inventory-row-result.success { color: var(--success); }
   .inventory-row-result.error { color: var(--danger); }
   .inventory-row.result-success { opacity: 0.6; }
-  .item-row.row-dirty { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+  .item-row.row-dirty { background: var(--accent-soft); border-color: transparent; }
 
   .manage-inventory-search {
     width: 100%;
@@ -859,6 +860,20 @@
   }
   .inventory-submit-btn:disabled { opacity: 0.5; cursor: default; }
   .topbar-submit-btn { flex: none; width: auto; padding: 8px 16px; font-size: 13px; }
+  .topbar-cancel-btn {
+    flex: none;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .topbar-cancel-btn:active { background: var(--surface-alt); }
+  .topbar-cancel-btn:disabled { opacity: 0.5; cursor: default; }
   .inventory-submit-btn:active { filter: brightness(0.94); }
 
   .item-row.inventory-row { flex-wrap: wrap; }
@@ -1235,6 +1250,7 @@
       <button class="inventory-submit-btn topbar-submit-btn" id="topbarInventorySubmitBtn" disabled>Submit 0 items to BrickLink</button>
     </div>
     <div class="topbar-submit-row hidden" id="topbarManageSubmitRow">
+      <button type="button" class="topbar-cancel-btn" id="topbarManageCancelBtn" disabled>Cancel</button>
       <button class="inventory-submit-btn topbar-submit-btn" id="topbarManageSubmitBtn" disabled>Submit 0 changes to BrickLink</button>
     </div>
   </header>
@@ -1732,6 +1748,7 @@
   var topbarInventorySubmitBtn = document.getElementById("topbarInventorySubmitBtn");
   var topbarManageSubmitRow = document.getElementById("topbarManageSubmitRow");
   var topbarManageSubmitBtn = document.getElementById("topbarManageSubmitBtn");
+  var topbarManageCancelBtn = document.getElementById("topbarManageCancelBtn");
   var currentView = "orders";
 
   // Two top-level categories — Orders (order list + Label Prep, since
@@ -3715,7 +3732,7 @@
     return '<div class="manage-inventory-stats">'
       + '<span class="manage-inventory-stat"><strong>' + stats.lots + '</strong> lot' + (stats.lots === 1 ? '' : 's') + '</span>'
       + '<span class="manage-inventory-stat"><strong>' + stats.items + '</strong> item' + (stats.items === 1 ? '' : 's') + '</span>'
-      + '<span class="manage-inventory-stat"><strong>' + escapeHtml(formatCurrency(stats.value, "USD")) + '</strong></span>'
+      + '<span class="manage-inventory-stat"><strong>' + escapeHtml(formatCurrency(stats.value, "USD")) + '</strong>Total value</span>'
       + '</div>';
   }
 
@@ -3903,11 +3920,13 @@
 
     var row = document.getElementById("manageInventorySubmitRow");
     var btn = document.getElementById("manageInventorySubmitBtn");
+    var cancelBtn = document.getElementById("manageInventoryCancelBtn");
     if (row && btn) {
       row.style.display = dirtyCount ? "" : "none";
       btn.textContent = label;
       btn.disabled = disabled;
     }
+    if (cancelBtn) cancelBtn.disabled = disabled;
 
     // Sticky topbar mirror — a static node outside the re-rendered
     // results area, so it's kept in sync here too rather than only in
@@ -3916,6 +3935,7 @@
     topbarManageSubmitRow.classList.toggle("hidden", !dirtyCount);
     topbarManageSubmitBtn.textContent = label;
     topbarManageSubmitBtn.disabled = disabled;
+    topbarManageCancelBtn.disabled = disabled;
   }
 
   // Rebuilds only the results area below the search box, leaving the
@@ -3958,6 +3978,7 @@
         + '<button class="inventory-submit-btn" id="manageInventorySubmitBtn"' + (dirtyCount === 0 || manageInventorySubmitting ? ' disabled' : '') + '>'
         + (manageInventorySubmitting ? "Submitting…" : "Submit " + dirtyCount + " change" + (dirtyCount === 1 ? "" : "s") + " to BrickLink")
         + '</button>'
+        + '<button type="button" class="inv-start-over-btn" id="manageInventoryCancelBtn"' + (dirtyCount === 0 || manageInventorySubmitting ? ' disabled' : '') + '>Cancel changes</button>'
         + '</div>';
     }
 
@@ -4038,6 +4059,8 @@
 
     var submitBtnEl = document.getElementById("manageInventorySubmitBtn");
     if (submitBtnEl) submitBtnEl.addEventListener("click", handleManageInventorySubmit);
+    var cancelBtnEl = document.getElementById("manageInventoryCancelBtn");
+    if (cancelBtnEl) cancelBtnEl.addEventListener("click", handleManageInventoryCancel);
   }
 
   function renderManageInventoryView() {
@@ -4090,6 +4113,23 @@
       manageInventorySubmitting = false;
       renderManageInventoryResults();
     });
+  }
+
+  // Reverts every dirty row back to its loaded snapshot — nothing has
+  // reached BrickLink yet at this point, so this is purely local (no
+  // API call), unlike handleManageInventorySubmit.
+  function handleManageInventoryCancel() {
+    var dirtyRows = (manageInventoryRows || []).filter(isManageInventoryRowDirty);
+    if (!dirtyRows.length) return;
+    if (!window.confirm("Discard " + dirtyRows.length + " unsaved change" + (dirtyRows.length === 1 ? "" : "s") + "?")) return;
+    dirtyRows.forEach(function (row) {
+      row.quantity = row.orig.quantity;
+      row.newOrUsed = row.orig.newOrUsed;
+      row.unitPrice = row.orig.unitPrice;
+      row.description = row.orig.description;
+      row.remarks = row.orig.remarks;
+    });
+    renderManageInventoryResults();
   }
 
   function goToOrders() {
@@ -4160,6 +4200,7 @@
   // stack duplicate listeners).
   topbarInventorySubmitBtn.addEventListener("click", handleInventorySubmit);
   topbarManageSubmitBtn.addEventListener("click", handleManageInventorySubmit);
+  topbarManageCancelBtn.addEventListener("click", handleManageInventoryCancel);
   categoryOrdersBtn.addEventListener("click", goToOrders);
   categoryInventoryBtn.addEventListener("click", goToManageInventory);
   refreshBtn.addEventListener("click", function () {

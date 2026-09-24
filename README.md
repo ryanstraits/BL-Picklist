@@ -597,4 +597,19 @@ Token Secret as sensitive as an API key that can move money.
   item+color+condition), items is the sum of quantities across those
   lots — which is also what the flat list's old plain "N items" count
   was actually mislabeling (it was counting lots, not pieces); that
-  label is gone now that the full stats banner covers it.
+  label is gone now that the full stats banner covers it. The $ figure
+  has its own "Total value" caption underneath, matching the "lots"/
+  "items" captions on the other two numbers.
+  A dirty row (unsaved edits) is highlighted with a plain amber
+  background (`.item-row.row-dirty`, same `--accent-soft` tint
+  `.item-row.partial` already uses for a mid-count multi-qty pick on
+  the order-detail page) rather than the left-edge accent bar it used
+  to have (`box-shadow: inset 3px 0 0`) — that bar read as visually
+  off-center rather than as a highlight.
+  The submit bar (in-page and its sticky topbar mirror) now also shows
+  a "Cancel changes" button next to Submit whenever there's at least
+  one dirty row, reverting every dirty row to its loaded snapshot
+  (`handleManageInventoryCancel()` — purely local, no BrickLink call,
+  since nothing's reached BrickLink yet at that point) after a confirm
+  prompt, the same way Submit's own confirm prompt guards the opposite
+  action.
