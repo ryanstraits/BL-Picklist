@@ -2914,14 +2914,15 @@
   var LABEL_PREP_SETTINGS_KEY = "labelPrepSettings";
 
   // Locked in from real-world testing with an actual Pirate Ship label
-  // (not a slider anymore — Ryan dialed this in once and it's fixed now):
-  // 67% is the content size that actually fills the corner correctly.
-  // The top edge still needs a small gap rather than sitting flush at
-  // y=0, so that gap is sized off the same testing — the difference
-  // between 67% (the real answer) and 65% (the tool's old default,
-  // which visibly left a gap) — rather than picking an arbitrary margin.
-  var LABEL_SCALE = 0.67;
-  var LABEL_TOP_BUFFER = LABEL_CANVAS_W * 0.02; // (0.67 - 0.65) * LABEL_CANVAS_W
+  // (not a slider anymore — Ryan dialed this in once and it's fixed now).
+  // 67% filled the corner correctly but left content sitting flush
+  // against — or, at 90°/270°, briefly overflowing past — the canvas
+  // edges it's anchored to. Sized down slightly to 64% so the footprint
+  // (including the 90° case, where the label's own height becomes the
+  // on-canvas width) actually fits inside the canvas with room for
+  // LABEL_EDGE_BUFFER on every edge it touches, not just flush/clipped.
+  var LABEL_SCALE = 0.64;
+  var LABEL_EDGE_BUFFER = LABEL_CANVAS_W * 0.02;
 
   function loadLabelPrepSettings() {
     var defaults = { rotation: 90, position: "top-right" };
@@ -3077,13 +3078,16 @@
     var footprintW = rotated ? scaledH : scaledW;
     var footprintH = rotated ? scaledW : scaledH;
 
+    // Every non-center position insets from the two canvas edges it's
+    // anchored to by LABEL_EDGE_BUFFER, so content never sits flush
+    // against — or, worse, overflows past — the physical label edge.
     var x, y;
     switch (labelPrepSettings.position) {
-      case "top-right": x = LABEL_CANVAS_W - footprintW; y = LABEL_TOP_BUFFER; break;
-      case "bottom-left": x = 0; y = LABEL_CANVAS_H - footprintH; break;
-      case "bottom-right": x = LABEL_CANVAS_W - footprintW; y = LABEL_CANVAS_H - footprintH; break;
+      case "top-right": x = LABEL_CANVAS_W - footprintW - LABEL_EDGE_BUFFER; y = LABEL_EDGE_BUFFER; break;
+      case "bottom-left": x = LABEL_EDGE_BUFFER; y = LABEL_CANVAS_H - footprintH - LABEL_EDGE_BUFFER; break;
+      case "bottom-right": x = LABEL_CANVAS_W - footprintW - LABEL_EDGE_BUFFER; y = LABEL_CANVAS_H - footprintH - LABEL_EDGE_BUFFER; break;
       case "center": x = (LABEL_CANVAS_W - footprintW) / 2; y = (LABEL_CANVAS_H - footprintH) / 2; break;
-      default: x = 0; y = LABEL_TOP_BUFFER; // top-left
+      default: x = LABEL_EDGE_BUFFER; y = LABEL_EDGE_BUFFER; // top-left
     }
 
     // Rotating around the block's own center (after translating to where

@@ -337,16 +337,20 @@ Token Secret as sensitive as an API key that can move money.
   position are one-time settings (persisted to `localStorage`), not a
   per-label adjustment — set once for however Ryan actually tapes boxes,
   then every label after that gets the same treatment automatically.
-  Content size is locked at a fixed 67% (`LABEL_SCALE`), not user-adjustable:
+  Content size is locked at a fixed 64% (`LABEL_SCALE`), not user-adjustable:
   the original 50% left a visible gap in Ryan's first real-world test with
   actual Pirate Ship labels, a 25–100% slider went in next to let him tune
-  it against his real printer's margins, and once he'd found 67% by feel
-  as the correct size on real label stock he asked to drop the slider and
-  hardcode that number rather than leave a knob nobody needs to turn again.
-  A small additive top-edge buffer (`LABEL_TOP_BUFFER`, 2% of canvas width
-  — sized from the 65%→67% delta of that tuning process) is applied on top
-  of the 67% content for the top-aligned positions, so top-right/top-left
-  content doesn't sit flush against the physical label edge.
+  it against his real printer's margins, he found 67% by feel as the
+  correct fill size and asked to drop the slider and hardcode that
+  number — then, testing the result, clarified he actually wanted a small
+  buffer around all three edges the rotated content sits near (top, left,
+  and right; bottom is untouched — it's meant to stay mostly blank as the
+  tape area), not just flush/filled. At 67% the rotated footprint was
+  wider than the canvas itself and briefly overflowed past the left edge
+  while sitting flush against the right, so the size was nudged down
+  slightly to 64% — just enough for `LABEL_EDGE_BUFFER` (2% of canvas
+  width) worth of margin on every edge a given rotation/position touches,
+  applied generically per position (not special-cased to top-right).
   PDF rendering uses `pdfjs-dist`, vendored locally under
   `public/vendor/pdfjs/` rather than pulled from a CDN (this app has no
   other external script dependencies, and CDN reachability had already
