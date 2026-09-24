@@ -333,17 +333,20 @@ Token Secret as sensitive as an API key that can move money.
   (Ryan's own workflow — Labelife, his label printer's app, is too
   clunky to do this shrink/rotate/position itself). Entirely client-side:
   no server round-trip, nothing touches a Netlify Function, so shipping
-  labels (real customer addresses) never leave the browser. Rotation,
-  position, and size (a 25–100% slider, live-redrawing as it's dragged)
-  are one-time settings (persisted to `localStorage`), not a per-label
-  adjustment — set once for however Ryan actually tapes boxes and
-  whatever his printer's real margins turn out to be, then every label
-  after that gets the same treatment automatically. Size defaults to
-  65% (not a computed "correct" fit — the original 50% left a visible
-  gap in Ryan's real first test with actual Pirate Ship labels; the
-  right number depends on the label's real printable area, which
-  varies by printer, so this is a slider to tune rather than a value to
-  guess twice).
+  labels (real customer addresses) never leave the browser. Rotation and
+  position are one-time settings (persisted to `localStorage`), not a
+  per-label adjustment — set once for however Ryan actually tapes boxes,
+  then every label after that gets the same treatment automatically.
+  Content size is locked at a fixed 67% (`LABEL_SCALE`), not user-adjustable:
+  the original 50% left a visible gap in Ryan's first real-world test with
+  actual Pirate Ship labels, a 25–100% slider went in next to let him tune
+  it against his real printer's margins, and once he'd found 67% by feel
+  as the correct size on real label stock he asked to drop the slider and
+  hardcode that number rather than leave a knob nobody needs to turn again.
+  A small additive top-edge buffer (`LABEL_TOP_BUFFER`, 2% of canvas width
+  — sized from the 65%→67% delta of that tuning process) is applied on top
+  of the 67% content for the top-aligned positions, so top-right/top-left
+  content doesn't sit flush against the physical label edge.
   PDF rendering uses `pdfjs-dist`, vendored locally under
   `public/vendor/pdfjs/` rather than pulled from a CDN (this app has no
   other external script dependencies, and CDN reachability had already

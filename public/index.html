@@ -587,7 +587,6 @@
     text-align: center;
   }
   .inventory-file-input { font-size: 13.5px; font-family: inherit; }
-  .label-prep-scale-field { grid-column: 1 / -1; }
   .label-prep-canvas {
     display: block;
     width: 100%;
@@ -2914,13 +2913,18 @@
   var LABEL_CANVAS_H = 6 * LABEL_DPI;
   var LABEL_PREP_SETTINGS_KEY = "labelPrepSettings";
 
+  // Locked in from real-world testing with an actual Pirate Ship label
+  // (not a slider anymore — Ryan dialed this in once and it's fixed now):
+  // 67% is the content size that actually fills the corner correctly.
+  // The top edge still needs a small gap rather than sitting flush at
+  // y=0, so that gap is sized off the same testing — the difference
+  // between 67% (the real answer) and 65% (the tool's old default,
+  // which visibly left a gap) — rather than picking an arbitrary margin.
+  var LABEL_SCALE = 0.67;
+  var LABEL_TOP_BUFFER = LABEL_CANVAS_W * 0.02; // (0.67 - 0.65) * LABEL_CANVAS_W
+
   function loadLabelPrepSettings() {
-    // 65% isn't a computed "correct" default — it's just a reasonable
-    // starting point above the original fixed 50%. The right number
-    // depends on the real label's exact printable area (thermal printer
-    // margins vary), which isn't something to guess at twice; Ryan tunes
-    // it once here instead.
-    var defaults = { rotation: 90, position: "top-left", scale: 65 };
+    var defaults = { rotation: 90, position: "top-right" };
     try {
       var raw = window.localStorage.getItem(LABEL_PREP_SETTINGS_KEY);
       if (raw) {
@@ -2928,7 +2932,6 @@
         return {
           rotation: parsed.rotation || defaults.rotation,
           position: parsed.position || defaults.position,
-          scale: parsed.scale || defaults.scale,
         };
       }
     } catch (e) { /* fall through to defaults */ }
@@ -2954,7 +2957,7 @@
 
   function renderLabelPrepView() {
     labelPrepView.innerHTML = ""
-      + '<div class="inventory-intro">Shrink a 4×6 Pirate Ship shipping label, rotate it, and tuck it into one corner — the blank remainder doubles as tape for small-box orders. Rotation, position, and size are remembered, so you only need to set them once.</div>'
+      + '<div class="inventory-intro">Shrink a 4×6 Pirate Ship shipping label, rotate it, and tuck it into one corner — the blank remainder doubles as tape for small-box orders. Rotation and position are remembered, so you only need to set them once.</div>'
       + '<div class="inventory-upload"><input type="file" accept="application/pdf,image/*" class="inventory-file-input" id="labelPrepFileInput"></div>'
       + '<div class="inventory-fields">'
       + '<div class="inventory-field"><label>Rotation</label><select id="labelPrepRotation">'
@@ -2967,8 +2970,6 @@
           return '<option value="' + p[0] + '"' + (labelPrepSettings.position === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
         }).join('')
       + '</select></div>'
-      + '<div class="inventory-field label-prep-scale-field"><label>Size <span class="field-hint" id="labelPrepScaleReadout">' + labelPrepSettings.scale + '%</span></label>'
-      + '<input type="range" min="25" max="100" step="1" id="labelPrepScale" value="' + labelPrepSettings.scale + '"></div>'
       + '</div>'
       + (labelPrepLoading ? '<div class="state-block">Loading label…</div>' : '')
       + (labelPrepError ? '<div class="state-block error">' + escapeHtml(labelPrepError) + '</div>' : '')
@@ -2988,14 +2989,6 @@
       saveLabelPrepSettings();
       drawLabelPrepOutput();
     });
-
-    var scaleReadout = document.getElementById("labelPrepScaleReadout");
-    document.getElementById("labelPrepScale").addEventListener("input", function (e) {
-      labelPrepSettings.scale = parseInt(e.target.value, 10);
-      scaleReadout.textContent = labelPrepSettings.scale + "%";
-      drawLabelPrepOutput();
-    });
-    document.getElementById("labelPrepScale").addEventListener("change", saveLabelPrepSettings);
 
     if (labelPrepSource) {
       drawLabelPrepOutput();
@@ -3073,9 +3066,8 @@
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, LABEL_CANVAS_W, LABEL_CANVAS_H);
 
-    var scaleFactor = labelPrepSettings.scale / 100;
-    var scaledW = labelPrepSource.naturalWidth * scaleFactor;
-    var scaledH = labelPrepSource.naturalHeight * scaleFactor;
+    var scaledW = labelPrepSource.naturalWidth * LABEL_SCALE;
+    var scaledH = labelPrepSource.naturalHeight * LABEL_SCALE;
 
     var angle = labelPrepSettings.rotation;
     var angleRad = angle * Math.PI / 180;
@@ -3087,11 +3079,11 @@
 
     var x, y;
     switch (labelPrepSettings.position) {
-      case "top-right": x = LABEL_CANVAS_W - footprintW; y = 0; break;
+      case "top-right": x = LABEL_CANVAS_W - footprintW; y = LABEL_TOP_BUFFER; break;
       case "bottom-left": x = 0; y = LABEL_CANVAS_H - footprintH; break;
       case "bottom-right": x = LABEL_CANVAS_W - footprintW; y = LABEL_CANVAS_H - footprintH; break;
       case "center": x = (LABEL_CANVAS_W - footprintW) / 2; y = (LABEL_CANVAS_H - footprintH) / 2; break;
-      default: x = 0; y = 0; // top-left
+      default: x = 0; y = LABEL_TOP_BUFFER; // top-left
     }
 
     // Rotating around the block's own center (after translating to where
