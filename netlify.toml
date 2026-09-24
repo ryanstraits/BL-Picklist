@@ -95,3 +95,8 @@
   from = "/api/site-session"
   to = "/.netlify/functions/site-session"
   status = 200
+
+[[redirects]]
+  from = "/api/debug-inventories"
+  to = "/.netlify/functions/debug-inventories"
+  status = 200
