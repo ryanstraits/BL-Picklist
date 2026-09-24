@@ -2739,6 +2739,7 @@
       description: description,
       remarks: remarks,
       location: obj.LOCATION || "",
+      stockRoomId: "",
       result: null,
       priceExpanded: false,
     };
@@ -2938,6 +2939,12 @@
         + '<option value="U"' + (row.newOrUsed === "U" ? ' selected' : '') + '>Used</option>'
         + '</select></div>'
         + '<div class="inventory-field"><label>Color ID</label><input type="number" min="0" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="colorId" value="' + escapeHtml(row.colorId) + '"' + (locked ? ' disabled' : '') + '></div>'
+        + '<div class="inventory-field"><label>Stock Room</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="stockRoomId"' + (locked ? ' disabled' : '') + '>'
+        + '<option value=""' + (row.stockRoomId === "" ? ' selected' : '') + '>No</option>'
+        + '<option value="A"' + (row.stockRoomId === "A" ? ' selected' : '') + '>A</option>'
+        + '<option value="B"' + (row.stockRoomId === "B" ? ' selected' : '') + '>B</option>'
+        + '<option value="C"' + (row.stockRoomId === "C" ? ' selected' : '') + '>C</option>'
+        + '</select></div>'
         + '<div class="inventory-field description-field"><label>Description <span class="field-hint">(shown to buyer)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="description"' + (locked ? ' disabled' : '') + '>' + escapeHtml(row.description) + '</textarea></div>'
         + '<div class="inventory-field remarks-field"><label>Remarks <span class="field-hint">(private, only you see this)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks"' + (locked ? ' disabled' : '') + '>' + escapeHtml(row.remarks) + '</textarea></div>'
         + '</div>'
@@ -3070,7 +3077,7 @@
         return {
           key: r.key, type: r.type, itemNo: r.itemNo, colorId: r.colorId,
           quantity: r.quantity, newOrUsed: r.newOrUsed, unitPrice: r.unitPrice,
-          description: r.description, remarks: r.remarks,
+          description: r.description, remarks: r.remarks, stockRoomId: r.stockRoomId,
         };
       }),
     }).then(function (res) {

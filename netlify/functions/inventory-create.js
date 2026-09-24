@@ -36,9 +36,16 @@ async function createOne(item) {
     // upload form default: remove the listing once it sells out rather
     // than keep a 0-qty placeholder row.
     is_retain: false,
+    // BrickLink requires this one explicitly too ("Parameter
+    // [is_stock_room] is missing") — same as is_retain, not defaulted
+    // server-side. Derived from item.stockRoomId (a per-row dropdown in
+    // the review screen, blank by default) rather than a separate flag,
+    // since a stock room only means anything with an id attached.
+    is_stock_room: !!item.stockRoomId,
   };
   if (item.description) payload.description = item.description;
   if (item.remarks) payload.remarks = item.remarks;
+  if (item.stockRoomId) payload.stock_room_id = item.stockRoomId;
 
   const data = await blPost('/inventories', payload);
   return { key: item.key, success: true, inventoryId: (data && data.inventory_id) || null };

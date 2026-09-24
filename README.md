@@ -365,6 +365,16 @@ Token Secret as sensitive as an API key that can move money.
   library examples; the request body now always sends `is_retain: false`,
   matching BrickLink's own classic upload form default (remove the
   listing once it sells out rather than keep a 0-qty placeholder row).
+  BrickLink then rejected the same way on `is_stock_room` ("Parameter
+  [is_stock_room] is missing") — same story as `is_retain`, required but
+  not defaulted server-side. Unlike `is_retain`, this one's a real choice
+  Ryan sometimes wants (stock room = hidden from buyers, hold-only
+  inventory), so each review card got a "Stock Room" dropdown (No / A / B
+  / C) next to Color ID, defaulting to No/blank on every row but editable
+  before submit. `is_stock_room` is derived server-side from whether a
+  `stock_room_id` was picked (`is_stock_room: !!item.stockRoomId`) rather
+  than tracked as a separate flag, and `stock_room_id` itself is only
+  included in the request when non-blank.
 - **Active listings price check** — a "See active US listings" toggle on
   each review card in Add Inventory. `GET /api/price-guide` wraps
   BrickLink's Get Price Guide endpoint (`GET /items/{type}/{no}/price`
