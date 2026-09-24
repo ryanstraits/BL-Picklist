@@ -2728,6 +2728,20 @@
     });
   }
 
+  function computeInventoryTotal() {
+    return inventoryRows.filter(function (r) { return r.include; }).reduce(function (sum, r) {
+      var price = parseFloat(r.unitPrice);
+      var qty = parseInt(r.quantity, 10);
+      if (isNaN(price) || isNaN(qty)) return sum;
+      return sum + price * qty;
+    }, 0);
+  }
+
+  function inventorySummaryText() {
+    var includedCount = inventoryRows.filter(function (r) { return r.include; }).length;
+    return includedCount + " of " + inventoryRows.length + " selected · Total " + formatCurrency(computeInventoryTotal(), "USD");
+  }
+
   function renderInventoryReview() {
     var includedCount = inventoryRows.filter(function (r) { return r.include; }).length;
 
@@ -2774,7 +2788,7 @@
     inventoryView.innerHTML = ""
       + '<div class="inventory-intro">Review each item before it goes live on BrickLink. Uncheck anything you don’t want to add yet, edit price/qty/condition as needed, then submit.</div>'
       + '<div class="inventory-summary-row">'
-      + '<span>' + includedCount + ' of ' + inventoryRows.length + ' selected</span>'
+      + '<span id="inventorySummaryText">' + escapeHtml(inventorySummaryText()) + '</span>'
       + '<div class="inventory-bulk-actions">'
       + '<button type="button" id="invSelectAllBtn">Select all</button>'
       + '<button type="button" class="inv-start-over-btn">Start over</button>'
@@ -2818,6 +2832,11 @@
         // benefit, since qty/price/remarks don't affect anything else shown.
         if (field === "colorId") {
           if (row.priceExpanded) fetchPriceGuide(row); else renderInventoryReview();
+        } else if (field === "quantity" || field === "unitPrice") {
+          // Keep the running total live without a full re-render, which
+          // would otherwise drop focus mid-edit (see comment above).
+          var summaryEl = document.getElementById("inventorySummaryText");
+          if (summaryEl) summaryEl.textContent = inventorySummaryText();
         }
       });
     });
