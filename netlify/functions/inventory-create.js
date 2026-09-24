@@ -29,6 +29,13 @@ async function createOne(item) {
     quantity: item.quantity,
     new_or_used: item.newOrUsed === 'U' ? 'U' : 'N',
     unit_price: String(item.unitPrice || ''),
+    // BrickLink rejects the request as PARAMETER_MISSING_OR_INVALID
+    // ("Parameter [is_retain] is missing") without this — it's not
+    // optional/defaulted server-side despite being absent from most
+    // client library examples. false matches BrickLink's own classic
+    // upload form default: remove the listing once it sells out rather
+    // than keep a 0-qty placeholder row.
+    is_retain: false,
   };
   if (item.description) payload.description = item.description;
   if (item.remarks) payload.remarks = item.remarks;

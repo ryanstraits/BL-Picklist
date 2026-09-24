@@ -355,10 +355,16 @@ Token Secret as sensitive as an API key that can move money.
   `inventory-create.js` handler directly in Node with `blPost` mocked out
   (not just a hand-written stub) across all 9 item types, confirming each
   serializes as its full word — not by a live BrickLink write, since that
-  would create real listings on Ryan's store. What was actually wrong in
-  the original submission (before either type-format detour) is still
-  unconfirmed; the `description`-surfacing fix means Ryan's next retry
-  will show the real reason if something else is still off.
+  would create real listings on Ryan's store. This is what the original
+  submission was actually blocked on all along — the `description`-
+  surfacing fix paid off immediately here, turning a bare
+  `PARAMETER_MISSING_OR_INVALID` into `Parameter [is_retain] is missing`,
+  a field this app's request body didn't send at all. `is_retain`
+  ("whether the item retains in inventory after it is sold out") isn't
+  optional/defaulted server-side despite being absent from most client
+  library examples; the request body now always sends `is_retain: false`,
+  matching BrickLink's own classic upload form default (remove the
+  listing once it sells out rather than keep a 0-qty placeholder row).
 - **Active listings price check** — a "See active US listings" toggle on
   each review card in Add Inventory. `GET /api/price-guide` wraps
   BrickLink's Get Price Guide endpoint (`GET /items/{type}/{no}/price`
