@@ -587,6 +587,7 @@
     text-align: center;
   }
   .inventory-file-input { font-size: 13.5px; font-family: inherit; }
+  .label-prep-scale-field { grid-column: 1 / -1; }
   .label-prep-canvas {
     display: block;
     width: 100%;
@@ -2914,12 +2915,21 @@
   var LABEL_PREP_SETTINGS_KEY = "labelPrepSettings";
 
   function loadLabelPrepSettings() {
-    var defaults = { rotation: 90, position: "top-left" };
+    // 65% isn't a computed "correct" default — it's just a reasonable
+    // starting point above the original fixed 50%. The right number
+    // depends on the real label's exact printable area (thermal printer
+    // margins vary), which isn't something to guess at twice; Ryan tunes
+    // it once here instead.
+    var defaults = { rotation: 90, position: "top-left", scale: 65 };
     try {
       var raw = window.localStorage.getItem(LABEL_PREP_SETTINGS_KEY);
       if (raw) {
         var parsed = JSON.parse(raw);
-        return { rotation: parsed.rotation || defaults.rotation, position: parsed.position || defaults.position };
+        return {
+          rotation: parsed.rotation || defaults.rotation,
+          position: parsed.position || defaults.position,
+          scale: parsed.scale || defaults.scale,
+        };
       }
     } catch (e) { /* fall through to defaults */ }
     return defaults;
@@ -2944,7 +2954,7 @@
 
   function renderLabelPrepView() {
     labelPrepView.innerHTML = ""
-      + '<div class="inventory-intro">Shrink a 4×6 Pirate Ship shipping label to half size, rotate it, and tuck it into one corner — the blank half doubles as tape for small-box orders. Rotation and position are remembered, so you only need to set them once.</div>'
+      + '<div class="inventory-intro">Shrink a 4×6 Pirate Ship shipping label, rotate it, and tuck it into one corner — the blank remainder doubles as tape for small-box orders. Rotation, position, and size are remembered, so you only need to set them once.</div>'
       + '<div class="inventory-upload"><input type="file" accept="application/pdf,image/*" class="inventory-file-input" id="labelPrepFileInput"></div>'
       + '<div class="inventory-fields">'
       + '<div class="inventory-field"><label>Rotation</label><select id="labelPrepRotation">'
@@ -2957,6 +2967,8 @@
           return '<option value="' + p[0] + '"' + (labelPrepSettings.position === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
         }).join('')
       + '</select></div>'
+      + '<div class="inventory-field label-prep-scale-field"><label>Size <span class="field-hint" id="labelPrepScaleReadout">' + labelPrepSettings.scale + '%</span></label>'
+      + '<input type="range" min="25" max="100" step="1" id="labelPrepScale" value="' + labelPrepSettings.scale + '"></div>'
       + '</div>'
       + (labelPrepLoading ? '<div class="state-block">Loading label…</div>' : '')
       + (labelPrepError ? '<div class="state-block error">' + escapeHtml(labelPrepError) + '</div>' : '')
@@ -2976,6 +2988,14 @@
       saveLabelPrepSettings();
       drawLabelPrepOutput();
     });
+
+    var scaleReadout = document.getElementById("labelPrepScaleReadout");
+    document.getElementById("labelPrepScale").addEventListener("input", function (e) {
+      labelPrepSettings.scale = parseInt(e.target.value, 10);
+      scaleReadout.textContent = labelPrepSettings.scale + "%";
+      drawLabelPrepOutput();
+    });
+    document.getElementById("labelPrepScale").addEventListener("change", saveLabelPrepSettings);
 
     if (labelPrepSource) {
       drawLabelPrepOutput();
@@ -3053,8 +3073,9 @@
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, LABEL_CANVAS_W, LABEL_CANVAS_H);
 
-    var scaledW = labelPrepSource.naturalWidth * 0.5;
-    var scaledH = labelPrepSource.naturalHeight * 0.5;
+    var scaleFactor = labelPrepSettings.scale / 100;
+    var scaledW = labelPrepSource.naturalWidth * scaleFactor;
+    var scaledH = labelPrepSource.naturalHeight * scaleFactor;
 
     var angle = labelPrepSettings.rotation;
     var angleRad = angle * Math.PI / 180;
