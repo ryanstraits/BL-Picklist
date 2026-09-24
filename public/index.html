@@ -766,6 +766,30 @@
   }
   .browse-tile-recent { border-color: var(--accent); }
   .browse-tile-recent .browse-tile-name { color: var(--accent); }
+  .manage-inventory-stats {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .manage-inventory-stat {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .manage-inventory-stat strong {
+    display: block;
+    font-size: 16px;
+    color: var(--text);
+    font-weight: 700;
+  }
+  .manage-inventory-sort-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+  }
 
   .browse-breadcrumb {
     display: flex;
@@ -3672,6 +3696,29 @@
     });
   }
 
+  // Lots = distinct listings/rows (BrickLink's own unit — one row per
+  // item+color+condition combo); items = total pieces (sum of
+  // quantities across those lots) — the two numbers differ any time a
+  // lot has quantity > 1, and conflating them ("N items" meaning "N
+  // rows") is exactly the mislabeling this replaces.
+  function manageInventoryStats(rows) {
+    var items = 0, value = 0;
+    rows.forEach(function (r) {
+      var qty = parseInt(r.quantity, 10) || 0;
+      var price = parseFloat(r.unitPrice) || 0;
+      items += qty;
+      value += qty * price;
+    });
+    return { lots: rows.length, items: items, value: value };
+  }
+  function manageInventoryStatsHtml(stats) {
+    return '<div class="manage-inventory-stats">'
+      + '<span class="manage-inventory-stat"><strong>' + stats.lots + '</strong> lot' + (stats.lots === 1 ? '' : 's') + '</span>'
+      + '<span class="manage-inventory-stat"><strong>' + stats.items + '</strong> item' + (stats.items === 1 ? '' : 's') + '</span>'
+      + '<span class="manage-inventory-stat"><strong>' + escapeHtml(formatCurrency(stats.value, "USD")) + '</strong></span>'
+      + '</div>';
+  }
+
   function manageInventoryTypeCounts() {
     var counts = {};
     (manageInventoryRows || []).forEach(function (r) {
@@ -3721,15 +3768,13 @@
       var cappedRecent = recentRows.slice(0, MANAGE_INVENTORY_RESULT_CAP);
       return hint
         + manageInventoryBreadcrumb()
-        + '<div class="inventory-summary-row">'
-        + '<span>' + recentRows.length + ' item' + (recentRows.length === 1 ? '' : 's') + '</span>'
-        + '<div class="inventory-bulk-actions">'
+        + manageInventoryStatsHtml(manageInventoryStats(recentRows))
+        + '<div class="manage-inventory-sort-row">'
         + '<select class="manage-inventory-sort-select" id="manageInventoryRecentWindowSelect">'
         + '<option value="15"' + (manageInventoryRecentDays === 15 ? ' selected' : '') + '>Last 15 days</option>'
         + '<option value="30"' + (manageInventoryRecentDays === 30 ? ' selected' : '') + '>Last 30 days</option>'
         + '</select>'
         + manageInventorySortSelectHtml()
-        + '</div>'
         + '</div>'
         + cappedRecent.map(manageInventoryCardHtml).join("")
         + (recentRows.length > cappedRecent.length ? '<div class="manage-inventory-cap-note">Showing the first ' + cappedRecent.length + ' of ' + recentRows.length + ' items — search above to find a specific one.</div>' : '');
@@ -3751,6 +3796,7 @@
           + '</button>'
         : '';
       return hint
+        + manageInventoryStatsHtml(manageInventoryStats(manageInventoryRows || []))
         + '<div class="manage-inventory-hint">Browse by item type, or search above by name or item number.</div>'
         + '<div class="browse-tile-list">' + recentTile + typeTiles + '</div>';
     }
@@ -3779,8 +3825,10 @@
           + '<span class="browse-tile-count">' + t.count + '</span>'
           + '</button>';
       }).join("");
+      var typeRows = (manageInventoryRows || []).filter(function (r) { return r.type === manageInventoryBrowseType; });
       return hint
         + manageInventoryBreadcrumb()
+        + manageInventoryStatsHtml(manageInventoryStats(typeRows))
         + '<div class="manage-inventory-hint">Browse ' + escapeHtml(manageInventoryBrowseType) + ' by theme/category.'
         + (manageInventoryBrowseType === 'PART' ? ' (Parts mostly don’t have a real theme — this is BrickLink’s physical category tree instead, e.g. Bricks, Plates.)' : '')
         + '</div>'
@@ -3796,10 +3844,8 @@
     var capped = filtered.slice(0, MANAGE_INVENTORY_RESULT_CAP);
     return hint
       + manageInventoryBreadcrumb()
-      + '<div class="inventory-summary-row">'
-      + '<span>' + filtered.length + ' item' + (filtered.length === 1 ? '' : 's') + '</span>'
-      + manageInventorySortSelectHtml()
-      + '</div>'
+      + manageInventoryStatsHtml(manageInventoryStats(filtered))
+      + '<div class="manage-inventory-sort-row">' + manageInventorySortSelectHtml() + '</div>'
       + capped.map(manageInventoryCardHtml).join("")
       + (filtered.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + filtered.length + ' items — search above to find a specific one.</div>' : '');
   }

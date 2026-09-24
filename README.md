@@ -587,3 +587,14 @@ Token Secret as sensitive as an API key that can move money.
   current on every field edit) so it's reachable without scrolling to
   the bottom of a long edit session — shown only while there's at least
   one unsaved change, same as the in-page copy.
+  A stats banner (lot count, total item/piece count, total $ value —
+  `manageInventoryStats()`) sits above the tiles/list at every level of
+  the browse screen: overall totals across the whole inventory at the
+  top, that type's totals once you've picked a type, and that
+  theme/category's (or Recently Added's) totals once you're down to a
+  flat list. "Lots" and "items" are deliberately two different numbers —
+  a lot is one listing (BrickLink's own unit, one row per
+  item+color+condition), items is the sum of quantities across those
+  lots — which is also what the flat list's old plain "N items" count
+  was actually mislabeling (it was counting lots, not pieces); that
+  label is gone now that the full stats banner covers it.
