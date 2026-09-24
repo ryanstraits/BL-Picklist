@@ -49,7 +49,16 @@ async function blRequest(method, path, payload) {
 
   const meta = body && body.meta;
   if (!res.ok || (meta && meta.code >= 300)) {
-    const message = (meta && meta.message) || `BrickLink API request failed (${res.status})`;
+    // BrickLink's meta object commonly carries both a short `message`
+    // (often just a bare code like "PARAMETER_MISSING_OR_INVALID", with
+    // no indication of *which* parameter) and a longer `description`
+    // with the actual detail — surfacing only `message` was throwing
+    // that detail away right when it mattered most for diagnosing a
+    // real rejection.
+    const parts = [];
+    if (meta && meta.message) parts.push(meta.message);
+    if (meta && meta.description && meta.description !== (meta && meta.message)) parts.push(meta.description);
+    const message = parts.length ? parts.join(': ') : `BrickLink API request failed (${res.status})`;
     const err = new Error(message);
     err.status = res.status >= 400 ? res.status : 502;
     err.blMeta = meta;
