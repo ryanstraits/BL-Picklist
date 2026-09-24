@@ -622,10 +622,15 @@ Token Secret as sensitive as an API key that can move money.
   prompt, the same way Submit's own confirm prompt guards the opposite
   action.
   Every editable Price field (here and on Add Inventory) is normalized
-  to exactly two decimal places by a shared `formatPriceInput()` at the
-  moment a row's `unitPrice` is first set — from BrickLink's own
+  to exactly three decimal places by a shared `formatPriceInput()` at
+  the moment a row's `unitPrice` is first set — from BrickLink's own
   `unit_price` on load, from a CSV import, or from tapping a
   price-guide suggestion — rather than only at display time the way
-  `formatCurrency()` already worked. BrickLink's own value carries extra
-  trailing zeros past the cent (e.g. `"0.1500"`), which used to show up
-  verbatim in the editable field itself.
+  `formatCurrency()` already worked. BrickLink's own value carries an
+  extra trailing zero past that (e.g. `"0.1500"`), which used to show up
+  verbatim in the editable field itself. Three, not two: real BrickLink
+  precision goes to tenths of a cent — a genuine convention for common
+  parts priced in bulk (e.g. $0.015 each across a 1000-piece lot) — so
+  rounding to two decimals the way `formatCurrency()`'s aggregate-total
+  display does would have silently truncated a real sub-cent price
+  rather than just trimming a padding zero.

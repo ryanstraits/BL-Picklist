@@ -1629,17 +1629,20 @@
     return (code ? code + " " : "") + num.toFixed(2);
   }
 
-  // BrickLink's own unit_price comes back with extra trailing zeros
-  // (e.g. "0.1500") — real cents precision, never fractions of a cent,
-  // so the editable Price field only needs two decimal places. Used
-  // wherever a row's unitPrice is set from a raw BrickLink/CSV/price-
-  // guide value, so the field itself (not just formatCurrency's
-  // display-only output) never shows that extra zero.
+  // BrickLink's own unit_price comes back with an extra trailing zero
+  // (e.g. "0.1500") — real precision only ever goes to three decimal
+  // places (tenths of a cent, a real BrickLink convention for common
+  // parts priced in bulk, e.g. $0.015 each across a 1000-piece lot), not
+  // two — rounding to two would silently truncate a real sub-cent price.
+  // Used wherever a row's unitPrice is set from a raw BrickLink/CSV/
+  // price-guide value, so the field itself (not just formatCurrency's
+  // 2-decimal display-only output, which is for rounded dollar totals,
+  // not a per-item price) never shows that extra zero.
   function formatPriceInput(value) {
     if (value === null || value === undefined || value === "") return "";
     var num = Number(value);
     if (isNaN(num)) return String(value);
-    return num.toFixed(2);
+    return num.toFixed(3);
   }
 
   // tone: fresh = needs picking, packed = picked & boxed, done = shipped/received,
