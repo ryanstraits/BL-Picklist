@@ -493,7 +493,7 @@ Token Secret as sensitive as an API key that can move money.
   for editing Ryan's *existing*
   live BrickLink listings (hundreds of parts/figs, a few dozen sets) —
   different from Add Inventory, which only stages brand-new rows for a
-  one-time bulk create. Search-first by design: `GET /inventories`
+  one-time bulk create. `GET /inventories`
   returns everything in one unpaginated call (confirmed against real
   data — 842 real rows, no `page`/`cursor` params in the response), so
   the page fetches the whole list once and filters client-side rather
@@ -519,3 +519,21 @@ Token Secret as sensitive as an API key that can move money.
   memory of BrickLink's API — real field names turned out to differ from
   what general knowledge of the API would have guessed (`bulk`, not
   `bulk_qty`).
+  When the search box is empty, the screen defaults to a browse screen
+  instead of a bare "type to search" hint: item type breakdown (PART,
+  MINIFIG, SET, ...) → within a type, a theme/category breakdown → the
+  filtered item list at that point, reusing the same item cards search
+  results use. Each inventory row already carries a `category_id`
+  (confirmed against a real captured order-items response, see
+  `order-items.js`); a new `GET /categories` endpoint (`categories.js`,
+  same in-memory-cache pattern as `colors.js`) supplies BrickLink's
+  category tree (`category_id`/`category_name`/`parent_id`), which gets
+  walked from each item's leaf category up to its top-level ancestor
+  (`parent_id` 0) client-side. For Sets and Minifigs that top-level
+  ancestor is a real LEGO theme (Star Wars, Technic, City, ...); for
+  Parts it's BrickLink's own physical-category tree (Bricks, Plates, ...)
+  since most parts don't have a real theme — the browse screen says so
+  explicitly rather than mislabeling that grouping as "theme". Searching
+  still works exactly as before and takes over the results area
+  regardless of where you've drilled into the browse screen; clearing the
+  search returns to wherever you left off browsing.

@@ -738,6 +738,54 @@
   .manage-inventory-hint { color: var(--text-secondary); font-size: 13px; margin-top: 14px; }
   .manage-inventory-cap-note { color: var(--text-secondary); font-size: 12px; text-align: center; margin-top: 10px; }
 
+  .browse-breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 14px;
+    font-size: 13px;
+  }
+  .browse-crumb {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0;
+    cursor: pointer;
+  }
+  .browse-crumb-sep { color: var(--text-secondary); }
+  .browse-crumb-current { color: var(--text-secondary); font-weight: 600; }
+  .browse-tile-list { margin-top: 10px; }
+  .browse-tile {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 13px 14px;
+    margin-top: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    color: inherit;
+    font-size: 14px;
+  }
+  .browse-tile:active { background: var(--surface-alt); }
+  .browse-tile-name { font-weight: 600; }
+  .browse-tile-count {
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    font-weight: 600;
+    background: var(--surface-alt);
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+
   .inventory-submit-row {
     margin-top: 18px;
     display: flex;
@@ -1149,6 +1197,7 @@
 (function () {
   var STORAGE_KEY = "picklist:picked-v1";
   var COLORS_CACHE_KEY = "picklist:colors-v1";
+  var CATEGORIES_CACHE_KEY = "picklist:categories-v1";
   var state = {};
   var orders = [];
   var itemsCache = {};
@@ -1159,6 +1208,7 @@
   var feedbackSent = {};
   var pickupScheduled = {};
   var colorsMap = null;
+  var categoriesById = null; // categoryId -> { name, parentId }
 
   function loadState() {
     try {
@@ -1554,6 +1604,50 @@
       try { window.localStorage.setItem(COLORS_CACHE_KEY, JSON.stringify(map)); } catch (e) {}
       return map;
     });
+  }
+
+  function getCategories() {
+    if (categoriesById) return Promise.resolve(categoriesById);
+    try {
+      var cached = window.localStorage.getItem(CATEGORIES_CACHE_KEY);
+      if (cached) {
+        categoriesById = JSON.parse(cached);
+        return Promise.resolve(categoriesById);
+      }
+    } catch (e) { /* ignore, fall through to fetch */ }
+
+    return fetchJSON("/api/categories").then(function (categories) {
+      var map = {};
+      (categories || []).forEach(function (c) {
+        map[c.categoryId] = { name: c.categoryName, parentId: c.parentId };
+      });
+      categoriesById = map;
+      try { window.localStorage.setItem(CATEGORIES_CACHE_KEY, JSON.stringify(map)); } catch (e) {}
+      return map;
+    });
+  }
+
+  // Walks a leaf category up its parent chain (parentId 0 = root) to find
+  // the top-level category — the closest BrickLink's category tree comes
+  // to a "theme" (e.g. a Set's leaf category might be "Star Wars > Ships",
+  // this returns "Star Wars"). Parts mostly don't have a real theme, so
+  // this just surfaces their top-level physical category instead (e.g.
+  // "Bricks", "Plates") — still a useful grouping, just not a LEGO theme.
+  var topCategoryCache = {};
+  function topCategoryId(categoryId, categories) {
+    if (topCategoryCache[categoryId] !== undefined) return topCategoryCache[categoryId];
+    var id = categoryId;
+    var seen = {};
+    while (categories[id] && categories[id].parentId && !seen[id]) {
+      seen[id] = true;
+      id = categories[id].parentId;
+    }
+    topCategoryCache[categoryId] = id;
+    return id;
+  }
+  function categoryDisplayNameById(id) {
+    if (!id) return "Uncategorized";
+    return (categoriesById && categoriesById[id] && categoriesById[id].name) || "Uncategorized";
   }
 
   var ordersView = document.getElementById("view-orders");
@@ -3400,6 +3494,14 @@
   var manageInventorySubmitting = false;
   var manageInventorySearchDebounceTimer = null;
   var MANAGE_INVENTORY_RESULT_CAP = 50;
+  // Browse-by-type-then-theme navigation, shown when the search box is
+  // empty. browseType null = showing the type breakdown; set = showing
+  // that type's theme/category breakdown (browseCategory null) or that
+  // type+category's item list (browseCategory set, "" means "all items
+  // of this type, uncategorized by theme").
+  var manageInventoryBrowseType = null;
+  var manageInventoryBrowseCategory = null;
+  var manageInventoryCategoriesLoading = false;
 
   function fetchManageInventory() {
     manageInventoryLoading = true;
@@ -3422,6 +3524,7 @@
           inventoryId: item.inventoryId,
           itemNo: item.itemNo,
           type: item.type,
+          categoryId: item.categoryId || 0,
           name: decodeHtmlEntities(item.name),
           colorId: item.colorId,
           colorName: item.colorName,
@@ -3452,6 +3555,108 @@
       || String(row.unitPrice) !== String(row.orig.unitPrice)
       || row.description !== row.orig.description
       || row.remarks !== row.orig.remarks;
+  }
+
+  function manageInventoryTypeCounts() {
+    var counts = {};
+    (manageInventoryRows || []).forEach(function (r) {
+      counts[r.type] = (counts[r.type] || 0) + 1;
+    });
+    return counts;
+  }
+
+  function manageInventoryThemeCounts(type) {
+    var counts = {}; // topCategoryId (string) -> { name, count }
+    (manageInventoryRows || []).forEach(function (r) {
+      if (r.type !== type) return;
+      var topId = r.categoryId ? topCategoryId(r.categoryId, categoriesById) : 0;
+      var key = String(topId || 0);
+      if (!counts[key]) counts[key] = { name: categoryDisplayNameById(topId), count: 0 };
+      counts[key].count++;
+    });
+    return counts;
+  }
+
+  function manageInventoryBreadcrumb() {
+    var parts = ['<button type="button" class="browse-crumb" data-browse-reset="type">All types</button>'];
+    if (manageInventoryBrowseType) {
+      if (manageInventoryBrowseCategory !== null) {
+        parts.push('<button type="button" class="browse-crumb" data-browse-reset="category">' + escapeHtml(manageInventoryBrowseType) + '</button>');
+        parts.push('<span class="browse-crumb-current">' + escapeHtml(categoryDisplayNameById(manageInventoryBrowseCategory)) + '</span>');
+      } else {
+        parts.push('<span class="browse-crumb-current">' + escapeHtml(manageInventoryBrowseType) + '</span>');
+      }
+    }
+    return '<div class="browse-breadcrumb">' + parts.join('<span class="browse-crumb-sep">›</span>') + '</div>';
+  }
+
+  // The navigation screen shown when the search box is empty: item type
+  // breakdown → theme/category breakdown within that type → flat item
+  // list within that theme. Reuses manageInventoryCardHtml for the final
+  // list so editing works exactly like a search result.
+  function manageInventoryBrowseHtml(dirtyCount) {
+    var hint = dirtyCount
+      ? '<div class="manage-inventory-hint">You have ' + dirtyCount + ' unsaved change' + (dirtyCount === 1 ? '' : 's') + ' — browsing won’t lose them.</div>'
+      : '';
+
+    if (!manageInventoryBrowseType) {
+      var typeCounts = manageInventoryTypeCounts();
+      var types = Object.keys(typeCounts).sort(function (a, b) { return typeCounts[b] - typeCounts[a]; });
+      var typeTiles = types.map(function (t) {
+        return '<button type="button" class="browse-tile" data-browse-type="' + escapeHtml(t) + '">'
+          + '<span class="browse-tile-name">' + escapeHtml(t) + '</span>'
+          + '<span class="browse-tile-count">' + typeCounts[t] + '</span>'
+          + '</button>';
+      }).join("");
+      return hint
+        + '<div class="manage-inventory-hint">Browse by item type, or search above by name or item number.</div>'
+        + '<div class="browse-tile-list">' + typeTiles + '</div>';
+    }
+
+    if (!categoriesById) {
+      if (!manageInventoryCategoriesLoading) {
+        manageInventoryCategoriesLoading = true;
+        getCategories().then(function () {
+          manageInventoryCategoriesLoading = false;
+          renderManageInventoryResults();
+        }).catch(function () {
+          manageInventoryCategoriesLoading = false;
+          renderManageInventoryResults();
+        });
+      }
+      return hint + manageInventoryBreadcrumb() + '<div class="state-block">Loading themes…</div>';
+    }
+
+    if (manageInventoryBrowseCategory === null) {
+      var themeCounts = manageInventoryThemeCounts(manageInventoryBrowseType);
+      var themeIds = Object.keys(themeCounts).sort(function (a, b) { return themeCounts[b].count - themeCounts[a].count; });
+      var themeTiles = themeIds.map(function (id) {
+        var t = themeCounts[id];
+        return '<button type="button" class="browse-tile" data-browse-category="' + escapeHtml(id) + '">'
+          + '<span class="browse-tile-name">' + escapeHtml(t.name) + '</span>'
+          + '<span class="browse-tile-count">' + t.count + '</span>'
+          + '</button>';
+      }).join("");
+      return hint
+        + manageInventoryBreadcrumb()
+        + '<div class="manage-inventory-hint">Browse ' + escapeHtml(manageInventoryBrowseType) + ' by theme/category.'
+        + (manageInventoryBrowseType === 'PART' ? ' (Parts mostly don’t have a real theme — this is BrickLink’s physical category tree instead, e.g. Bricks, Plates.)' : '')
+        + '</div>'
+        + '<div class="browse-tile-list">' + themeTiles + '</div>';
+    }
+
+    var catId = manageInventoryBrowseCategory;
+    var filtered = (manageInventoryRows || []).filter(function (r) {
+      if (r.type !== manageInventoryBrowseType) return false;
+      var topId = r.categoryId ? topCategoryId(r.categoryId, categoriesById) : 0;
+      return String(topId || 0) === catId;
+    });
+    var capped = filtered.slice(0, MANAGE_INVENTORY_RESULT_CAP);
+    return hint
+      + manageInventoryBreadcrumb()
+      + '<div class="inventory-summary-row"><span>' + filtered.length + ' item' + (filtered.length === 1 ? '' : 's') + '</span></div>'
+      + capped.map(manageInventoryCardHtml).join("")
+      + (filtered.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + filtered.length + ' items — search above to find a specific one.</div>' : '');
   }
 
   function manageInventoryMatches(query) {
@@ -3517,7 +3722,6 @@
     var container = document.getElementById("manageInventoryResults");
     if (!container) return;
     var query = manageInventorySearchQuery.trim();
-    var totalCount = manageInventoryRows ? manageInventoryRows.length : 0;
     var dirtyCount = manageInventoryRows ? manageInventoryRows.filter(isManageInventoryRowDirty).length : 0;
 
     var body = "";
@@ -3529,9 +3733,7 @@
     } else if (!manageInventoryRows) {
       body = "";
     } else if (!query) {
-      body = '<div class="manage-inventory-hint">Search your ' + totalCount + ' inventory item' + (totalCount === 1 ? '' : 's') + ' by name or item number to start editing.'
-        + (dirtyCount ? ' You have ' + dirtyCount + ' unsaved change' + (dirtyCount === 1 ? '' : 's') + ' — searching won’t lose them.' : '')
-        + '</div>';
+      body = manageInventoryBrowseHtml(dirtyCount);
     } else {
       var matches = manageInventoryMatches(query);
       var capped = matches.slice(0, MANAGE_INVENTORY_RESULT_CAP);
@@ -3570,6 +3772,28 @@
         var rowEl = el.closest(".item-row");
         if (rowEl) rowEl.classList.toggle("row-dirty", isManageInventoryRowDirty(row));
         updateManageInventorySubmitBar();
+      });
+    });
+
+    container.querySelectorAll("[data-browse-type]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        manageInventoryBrowseType = el.getAttribute("data-browse-type");
+        manageInventoryBrowseCategory = null;
+        renderManageInventoryResults();
+      });
+    });
+    container.querySelectorAll("[data-browse-category]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        manageInventoryBrowseCategory = el.getAttribute("data-browse-category");
+        renderManageInventoryResults();
+      });
+    });
+    container.querySelectorAll("[data-browse-reset]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var level = el.getAttribute("data-browse-reset");
+        if (level === "type") manageInventoryBrowseType = null;
+        manageInventoryBrowseCategory = null;
+        renderManageInventoryResults();
       });
     });
 

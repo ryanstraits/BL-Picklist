@@ -19,6 +19,7 @@ exports.handler = requireAuth(async () => {
       itemNo: (row.item && row.item.no) || '',
       type: (row.item && row.item.type) || 'PART',
       name: (row.item && row.item.name) || '',
+      categoryId: (row.item && row.item.category_id) || 0,
       colorId: row.color_id || 0,
       colorName: row.color_name || '',
       quantity: row.quantity,
