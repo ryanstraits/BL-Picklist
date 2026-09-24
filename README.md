@@ -217,6 +217,25 @@ Token Secret as sensitive as an API key that can move money.
     (unlike `drive_thru_sent`), so it's a best guess — worth watching
     the first few real orders to see whether it's actually catching
     this correctly.
+- **Session resilience** — a 401 from any API call (an expired/missing
+  session cookie mid-use, not just on first load) now shows an explicit
+  message on the login gate ("your session needs to be refreshed... your
+  in-progress work is still here") instead of silently bouncing back to
+  it with no explanation. On successful re-login, the app now resumes
+  whatever view was active (`resumeCurrentView()`) instead of always
+  landing back on the orders list — added after Ryan's first real Add
+  Inventory submit appeared to do nothing and nothing showed up on
+  BrickLink: a mid-submit 401 does fire a real `window.alert` in testing
+  (confirmed with Playwright), but with the login gate silently
+  reappearing underneath it and no way back to the reviewed-but-
+  unsubmitted batch except re-uploading the CSV, a dismissed or
+  unnoticed alert could easily look exactly like "nothing happened" —
+  consistent with this app's prior history of WebKit dialog/cookie
+  flakiness on iOS. `handleInventorySubmit` also now treats a 200
+  response with a missing/malformed `results` array as an error rather
+  than silently doing nothing — that shape shouldn't be reachable given
+  `inventory-create.js`'s own code, but if it ever happened it would
+  otherwise look identical to this same silent-failure symptom.
 - **USPS pickup reminder** — a highlighted banner on the orders list
   (only, never on an individual order page — Ryan's own workflow varies
   on when pickup gets scheduled relative to picking an order, so it

@@ -1491,7 +1491,10 @@
 
   async function fetchJSON(url) {
     var res = await fetch(url);
-    if (res.status === 401) { showLoginGate(); throw new Error("Session expired — please log in again."); }
+    if (res.status === 401) {
+      showLoginGate("Your session needs to be refreshed — log in again. Whatever you were working on is still here once you're back in.");
+      throw new Error("Session expired — please log in again.");
+    }
     var body = null;
     try { body = await res.json(); } catch (e) { /* non-JSON error body */ }
     if (!res.ok) {
@@ -1506,7 +1509,10 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (res.status === 401) { showLoginGate(); throw new Error("Session expired — please log in again."); }
+    if (res.status === 401) {
+      showLoginGate("Your session needs to be refreshed — log in again. Whatever you were working on is still here once you're back in.");
+      throw new Error("Session expired — please log in again.");
+    }
     var body = null;
     try { body = await res.json(); } catch (e) { /* non-JSON error body */ }
     if (!res.ok) {
@@ -3068,7 +3074,15 @@
         };
       }),
     }).then(function (res) {
-      (res.results || []).forEach(function (result) {
+      // A 200 response with no (or a malformed) results array shouldn't
+      // be possible per inventory-create.js's own code, but silently
+      // no-op'ing here if it ever happened would look exactly like
+      // nothing-happened-at-all from the review screen — surfacing it as
+      // a real error instead means a genuine bug never goes unnoticed.
+      if (!res || !Array.isArray(res.results)) {
+        throw new Error("Got an unexpected response from the server — nothing was confirmed added. Please try again.");
+      }
+      res.results.forEach(function (result) {
         var row = findInventoryRow(result.key);
         if (row) row.result = result;
       });
@@ -3663,22 +3677,48 @@
   // rejects unauthenticated requests with 401 (see lib/site-auth.js), and
   // this is the frontend half — nothing here renders real data until a
   // session cookie is established via /api/site-login.
+  // Tracks whether this is the very first time the app's shown itself
+  // (fresh page load) vs. coming back from an interrupted mid-session
+  // login — e.g. a request 401'd partway through something. The first
+  // time, there's nothing to resume, so the orders list is exactly
+  // right (and is already the visible section by default in the static
+  // markup). Any time after that, jumping back to Orders instead of
+  // wherever the user actually was is how a session hiccup mid-Add-
+  // Inventory-submit could silently swallow a reviewed-but-unsubmitted
+  // batch from view — the data was still sitting in memory the whole
+  // time, just not visible anywhere obvious.
+  var appStarted = false;
   function startApp() {
     appEl.classList.remove("hidden");
-    // The orders list is already the visible section by default in the
-    // static markup, but the topbar's category/sub-nav state is dynamic
-    // (subNavBtn starts with no label at all) — needs an explicit call
-    // here, not just from the goTo* functions, to be correct on load.
-    setTopbarNav("orders", "Label Prep", goToLabelPrep);
+    if (appStarted) {
+      resumeCurrentView();
+    } else {
+      appStarted = true;
+      // The topbar's category/sub-nav state is dynamic (subNavBtn starts
+      // with no label at all) — needs an explicit call here, not just
+      // from the goTo* functions, to be correct on this first load.
+      setTopbarNav("orders", "Label Prep", goToLabelPrep);
+    }
     loadState();
     loadOrders();
     syncStateFromRemote();
     syncOrderActionsFromRemote();
   }
 
-  function showLoginGate() {
+  function resumeCurrentView() {
+    if (currentView === "inventory") goToInventory();
+    else if (currentView === "label-prep") goToLabelPrep();
+    else if (currentView === "manage-inventory") goToManageInventory();
+    else goToOrders();
+  }
+
+  function showLoginGate(message) {
     appEl.classList.add("hidden");
     loginGate.classList.remove("hidden");
+    if (message) {
+      loginGateError.textContent = message;
+      loginGateError.classList.remove("hidden");
+    }
     loginGatePassword.focus();
   }
 
