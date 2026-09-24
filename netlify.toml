@@ -82,11 +82,6 @@
   status = 200
 
 [[redirects]]
-  from = "/api/pirateship-export"
-  to = "/.netlify/functions/pirateship-export"
-  status = 200
-
-[[redirects]]
   from = "/api/site-login"
   to = "/.netlify/functions/site-login"
   status = 200
