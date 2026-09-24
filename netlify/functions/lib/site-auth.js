@@ -16,6 +16,18 @@ const { json } = require('./http');
 // own — Netlify Functions read env vars as they were at deploy time, not
 // live per-request, so a fresh deploy (even with no code changes) is
 // required afterward for a changed value to actually reach getPassword().
+//
+// Note: site-login.js sends this token two ways — a Set-Cookie header AND
+// as plain JSON for the frontend to self-set via document.cookie. Relying
+// on Set-Cookie alone bounced real users straight back to the login
+// screen: login succeeded (200 back), but the cookie never actually
+// landed in the jar in time for the very next fetch() call, which then
+// 401'd. Confirmed specific to "Chrome" on iOS, which — like every iOS
+// browser — is Safari's WebKit engine under the hood (Apple requires
+// it), and WebKit has a long history of unreliably applying Set-Cookie
+// from fetch() responses. document.cookie is a far older, more
+// universally reliable API, so the frontend uses that as the real
+// mechanism and treats Set-Cookie as a redundant, harmless extra.
 const COOKIE_NAME = 'bl_site_auth';
 const AUTHORIZED_VALUE = 'authorized';
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 180; // ~180 days
@@ -28,9 +40,12 @@ function sign(value) {
   return crypto.createHmac('sha256', getPassword()).update(value).digest('hex');
 }
 
+function makeSessionToken() {
+  return AUTHORIZED_VALUE + '.' + sign(AUTHORIZED_VALUE);
+}
+
 function makeSessionCookie() {
-  const token = AUTHORIZED_VALUE + '.' + sign(AUTHORIZED_VALUE);
-  return COOKIE_NAME + '=' + encodeURIComponent(token)
+  return COOKIE_NAME + '=' + encodeURIComponent(makeSessionToken())
     + '; Path=/; Max-Age=' + COOKIE_MAX_AGE_SECONDS + '; HttpOnly; Secure; SameSite=Lax';
 }
 
@@ -75,4 +90,4 @@ function requireAuth(handler) {
   };
 }
 
-module.exports = { requireAuth, isAuthorized, makeSessionCookie, clearedSessionCookie, getPassword };
+module.exports = { requireAuth, isAuthorized, makeSessionCookie, makeSessionToken, clearedSessionCookie, getPassword, COOKIE_NAME, COOKIE_MAX_AGE_SECONDS };

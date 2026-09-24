@@ -2962,6 +2962,18 @@
       body: JSON.stringify({ password: password }),
     }).then(function (res) {
       if (!res.ok) throw new Error("wrong");
+      return res.json();
+    }).then(function (data) {
+      // Setting the cookie here ourselves, not relying on the response's
+      // Set-Cookie header, is the actual fix for a real bug: on "Chrome"
+      // on iOS (which is Safari's WebKit engine under the hood — Apple
+      // requires every iOS browser to use it), Set-Cookie from a fetch()
+      // response wasn't reliably landing in the cookie jar in time for
+      // the very next request, which then 401'd and bounced back to this
+      // screen. document.cookie is a far older, more reliable API.
+      document.cookie = data.cookieName + "=" + encodeURIComponent(data.token)
+        + "; Path=/; Max-Age=" + data.maxAge + "; SameSite=Lax"
+        + (window.location.protocol === "https:" ? "; Secure" : "");
       hideLoginGate();
       startApp();
     }).catch(function () {
