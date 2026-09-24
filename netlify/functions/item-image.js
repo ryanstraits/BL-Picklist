@@ -1,4 +1,5 @@
 const { blGet } = require("./lib/bricklink");
+const { requireAuth } = require("./lib/site-auth");
 
 const TYPE_LETTERS = {
   PART: "P", SET: "S", MINIFIG: "M", BOOK: "B", GEAR: "G",
@@ -38,7 +39,7 @@ async function tryCatalogApiImage(itemType, itemNo) {
 // that BrickLink's hotlink protection blocks, even with no Referer sent —
 // but a plain server-side fetch (no such headers) goes through fine. So we
 // fetch the image here and stream the bytes back under our own origin.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   const params = event.queryStringParameters || {};
   const itemNo = params.no;
   if (!itemNo) {
@@ -103,4 +104,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 502, body: "Upstream error" };
   }
-};
+});

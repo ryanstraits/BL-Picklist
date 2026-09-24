@@ -1,7 +1,8 @@
 const { blPost } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -26,4 +27,4 @@ exports.handler = async (event) => {
   } catch (err) {
     return errorResponse(err);
   }
-};
+});

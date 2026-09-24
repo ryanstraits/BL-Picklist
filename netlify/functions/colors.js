@@ -1,5 +1,6 @@
 const { blGet } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -9,7 +10,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 let cache = null;
 let cacheTime = 0;
 
-exports.handler = async () => {
+exports.handler = requireAuth(async () => {
   try {
     if (cache && Date.now() - cacheTime < CACHE_TTL_MS) {
       return json(200, cache);
@@ -30,4 +31,4 @@ exports.handler = async () => {
   } catch (err) {
     return errorResponse(err);
   }
-};
+});

@@ -1,5 +1,6 @@
 const { blGet } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
 // Get Price Guide — GET /items/{type}/{no}/price — confirmed against two
 // independent real client libraries (go-bricklink-api and bricklink-py),
@@ -18,7 +19,7 @@ const { json, errorResponse } = require('./lib/http');
 // function re-filtered on seller_country_code as a defensive measure,
 // which — since that field doesn't exist — silently zeroed out every
 // result regardless of the real (correct) server-side filtering.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   try {
     const params = event.queryStringParameters || {};
     const itemType = params.type;
@@ -61,4 +62,4 @@ exports.handler = async (event) => {
   } catch (err) {
     return errorResponse(err);
   }
-};
+});

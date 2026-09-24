@@ -941,10 +941,88 @@
   }
 
   .hidden { display: none !important; }
+
+  .login-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .login-gate-card {
+    width: 100%;
+    max-width: 320px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 24px;
+    text-align: center;
+  }
+  .login-gate-logo { width: 44px; height: 44px; border-radius: 10px; }
+  .login-gate-card h1 {
+    margin: 12px 0 4px;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .login-gate-card p {
+    margin: 0 0 18px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .login-gate-card input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 15px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .login-gate-card button {
+    width: 100%;
+    margin-top: 10px;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-family: inherit;
+    font-size: 14.5px;
+    font-weight: 700;
+    padding: 11px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .login-gate-card button:disabled { opacity: 0.6; cursor: default; }
+  .login-gate-card button:active { filter: brightness(0.94); }
+  .login-gate-error {
+    margin-top: 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--danger);
+  }
 </style>
 </head>
 <body>
-<div id="app">
+<div class="login-gate hidden" id="loginGate">
+  <div class="login-gate-card">
+    <img class="login-gate-logo" src="/logo.png" alt="">
+    <h1>BrickLink Assistant</h1>
+    <p>Enter the site password to continue.</p>
+    <form id="loginGateForm">
+      <input type="password" id="loginGatePassword" placeholder="Password" autocomplete="current-password">
+      <button type="submit" id="loginGateSubmit">Unlock</button>
+    </form>
+    <div class="login-gate-error hidden" id="loginGateError"></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
   <header class="topbar">
     <div class="topbar-row">
       <button class="back-btn" id="backBtn" aria-label="Back to all orders">
@@ -1261,6 +1339,7 @@
 
   async function fetchJSON(url) {
     var res = await fetch(url);
+    if (res.status === 401) { showLoginGate(); throw new Error("Session expired — please log in again."); }
     var body = null;
     try { body = await res.json(); } catch (e) { /* non-JSON error body */ }
     if (!res.ok) {
@@ -1275,6 +1354,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (res.status === 401) { showLoginGate(); throw new Error("Session expired — please log in again."); }
     var body = null;
     try { body = await res.json(); } catch (e) { /* non-JSON error body */ }
     if (!res.ok) {
@@ -1311,6 +1391,13 @@
   var topbarNavRow = document.getElementById("topbarNavRow");
   var inventoryNavBtn = document.getElementById("inventoryNavBtn");
   var currentView = "orders";
+
+  var appEl = document.getElementById("app");
+  var loginGate = document.getElementById("loginGate");
+  var loginGateForm = document.getElementById("loginGateForm");
+  var loginGatePassword = document.getElementById("loginGatePassword");
+  var loginGateSubmit = document.getElementById("loginGateSubmit");
+  var loginGateError = document.getElementById("loginGateError");
 
   var lightbox = document.getElementById("lightbox");
   var lightboxImg = document.getElementById("lightboxImg");
@@ -2836,10 +2923,65 @@
     syncOrderActionsFromRemote();
   });
 
-  loadState();
-  loadOrders();
-  syncStateFromRemote();
-  syncOrderActionsFromRemote();
+  // App-level password gate — Netlify's own visitor-access-control isn't
+  // available on this team's plan (confirmed: the API rejects every
+  // variant with a 422), so this substitutes for it: every /api/* function
+  // rejects unauthenticated requests with 401 (see lib/site-auth.js), and
+  // this is the frontend half — nothing here renders real data until a
+  // session cookie is established via /api/site-login.
+  function startApp() {
+    appEl.classList.remove("hidden");
+    loadState();
+    loadOrders();
+    syncStateFromRemote();
+    syncOrderActionsFromRemote();
+  }
+
+  function showLoginGate() {
+    appEl.classList.add("hidden");
+    loginGate.classList.remove("hidden");
+    loginGatePassword.focus();
+  }
+
+  function hideLoginGate() {
+    loginGate.classList.add("hidden");
+    loginGateError.classList.add("hidden");
+    loginGatePassword.value = "";
+  }
+
+  loginGateForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var password = loginGatePassword.value;
+    if (!password) return;
+    loginGateSubmit.disabled = true;
+    loginGateSubmit.textContent = "Checking…";
+    loginGateError.classList.add("hidden");
+    fetch("/api/site-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: password }),
+    }).then(function (res) {
+      if (!res.ok) throw new Error("wrong");
+      hideLoginGate();
+      startApp();
+    }).catch(function () {
+      loginGateError.textContent = "Incorrect password. Try again.";
+      loginGateError.classList.remove("hidden");
+      loginGatePassword.value = "";
+      loginGatePassword.focus();
+    }).finally(function () {
+      loginGateSubmit.disabled = false;
+      loginGateSubmit.textContent = "Unlock";
+    });
+  });
+
+  // Checks for an existing valid session cookie before deciding whether
+  // to show the app or the password prompt — avoids a pointless flash of
+  // loading state (and a guaranteed 401 from loadOrders()) for a
+  // first-time or expired visitor.
+  fetch("/api/site-session").then(function (res) {
+    if (res.ok) { startApp(); } else { showLoginGate(); }
+  }).catch(function () { showLoginGate(); });
 })();
 </script>
 </body>

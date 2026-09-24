@@ -1,5 +1,6 @@
 const { blPost } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
 // BrickLink's feedback "rating" field is a plain integer code, not the
 // word itself — confirmed against a real client library's source
@@ -9,7 +10,7 @@ const { json, errorResponse } = require('./lib/http');
 // words; this is the only place that needs to know the numeric mapping.
 const RATING_CODES = { Praise: 0, Neutral: 1, Complaint: 2 };
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -33,4 +34,4 @@ exports.handler = async (event) => {
   } catch (err) {
     return errorResponse(err);
   }
-};
+});

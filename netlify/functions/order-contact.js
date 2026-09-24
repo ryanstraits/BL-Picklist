@@ -1,6 +1,7 @@
 const { blGet } = require('./lib/bricklink');
 const { extractOrderContact } = require('./lib/order-contact');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
 function extractOrderId(event) {
   if (event.queryStringParameters && event.queryStringParameters.id) {
@@ -10,7 +11,7 @@ function extractOrderId(event) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   try {
     const orderId = extractOrderId(event);
     if (!orderId) return json(400, { error: 'Missing order id' });
@@ -20,4 +21,4 @@ exports.handler = async (event) => {
   } catch (err) {
     return errorResponse(err);
   }
-};
+});

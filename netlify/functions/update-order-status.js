@@ -1,5 +1,6 @@
 const { blPut } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
 // Deliberately narrow: this app only ever drives an order from PAID to
 // PACKED (once everything's picked) or PACKED to SHIPPED, never a
@@ -7,7 +8,7 @@ const { json, errorResponse } = require('./lib/http');
 // BrickLink.
 const ALLOWED_STATUSES = new Set(['PACKED', 'SHIPPED']);
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -32,4 +33,4 @@ exports.handler = async (event) => {
   } catch (err) {
     return errorResponse(err);
   }
-};
+});

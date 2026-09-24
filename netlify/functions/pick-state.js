@@ -1,5 +1,6 @@
 const { getStore, connectLambda } = require('@netlify/blobs');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
 const STORE_NAME = 'pick-state';
 const DEFAULT_KEY = 'state';
@@ -20,7 +21,7 @@ const ALLOWED_KEYS = new Set(['state', 'actions']);
 // this function was added; the earlier getDeployStore() branching and
 // bad push-comparison logic were both real bugs, but neither was the
 // actual blocker.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   connectLambda(event);
 
   const requestedKey = (event.queryStringParameters && event.queryStringParameters.key) || DEFAULT_KEY;
@@ -64,4 +65,4 @@ exports.handler = async (event) => {
   }
 
   return { statusCode: 405, body: 'Method not allowed' };
-};
+});

@@ -1,6 +1,7 @@
 const { blGet } = require('./lib/bricklink');
 const { extractOrderContact } = require('./lib/order-contact');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
 // Candidate rows for a PirateShip CSV export: every PAID order paid via
 // Stripe. The list endpoint (GET /orders) doesn't include buyer_email,
@@ -11,7 +12,7 @@ const { json, errorResponse } = require('./lib/http');
 // actions store (same pattern as driveThruSent/feedbackSent), not here —
 // this endpoint has no notion of export history, it just reports what's
 // currently eligible.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   try {
     const list = await blGet('/orders?direction=in&status=paid');
     const paidOrders = list || [];
@@ -38,4 +39,4 @@ exports.handler = async (event) => {
   } catch (err) {
     return errorResponse(err);
   }
-};
+});

@@ -1,5 +1,6 @@
 const { blPost } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
 // Create Inventory — POST /inventories — confirmed against a real client
 // library's Item struct (go-bricklink-api): the request body nests the
@@ -32,7 +33,7 @@ async function createOne(item) {
   return { key: item.key, success: true, inventoryId: (data && data.inventory_id) || null };
 }
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   try {
     if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method not allowed' };
 
@@ -71,4 +72,4 @@ exports.handler = async (event) => {
   } catch (err) {
     return errorResponse(err);
   }
-};
+});

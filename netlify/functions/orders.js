@@ -1,9 +1,10 @@
 const { blGet } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
+const { requireAuth } = require('./lib/site-auth');
 
 const EXCLUDED_STATUS = 'COMPLETED';
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   try {
     // direction=in: orders where this API user is the seller (orders coming
     // in from buyers). direction=out would be orders this user placed as a
@@ -32,4 +33,4 @@ exports.handler = async (event) => {
   } catch (err) {
     return errorResponse(err);
   }
-};
+});
