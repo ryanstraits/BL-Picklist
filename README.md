@@ -326,8 +326,20 @@ Token Secret as sensitive as an API key that can move money.
   earlier), having Ryan hit it against a real item with 20+ known
   listings, and reading the actual field names instead of trusting the
   struct a second time.
-- **Label Prep** — a third page (nav button next to "+ Add Inventory"),
-  unrelated to BrickLink itself: shrinks a 4x6 Pirate Ship shipping-label
+- **Top nav** — two persistent category buttons, Orders and Inventory,
+  always visible (except while drilled into a single order's detail
+  view, which keeps the old "< All orders" back button instead — a
+  drill-down, not a top-level page switch). Everything else collapses
+  under one of the two: Orders category = order list (default) + Label
+  Prep; Inventory category = Manage Inventory (default) + Add
+  Inventory. A single secondary "jump to the sibling page" link/button
+  sits under the active category rather than a separate button per page
+  — its label and click handler are swapped in JS per view
+  (`setTopbarNav()`) instead of keeping four always-present buttons
+  around, since only one sibling is ever relevant at a time.
+- **Label Prep** — a page under the Orders category (shipping labels are
+  part of order fulfillment, not inventory), unrelated to BrickLink
+  itself: shrinks a 4x6 Pirate Ship shipping-label
   PDF/image, rotates it, and places it in one corner of a fresh 4x6
   canvas, so the blank remainder can be used as tape on small boxes
   (Ryan's own workflow — Labelife, his label printer's app, is too
@@ -375,7 +387,8 @@ Token Secret as sensitive as an API key that can move money.
   so it degrades gracefully rather than silently failing. The downloaded
   file keeps the uploaded label's own filename with `-2x3` appended
   (e.g. `label-2x3.pdf`), not a generic name.
-- **Manage Inventory** — a fourth nav tab, for editing Ryan's *existing*
+- **Manage Inventory** — the default page under the Inventory category,
+  for editing Ryan's *existing*
   live BrickLink listings (hundreds of parts/figs, a few dozen sets) —
   different from Add Inventory, which only stages brand-new rows for a
   one-time bulk create. Search-first by design: `GET /inventories`

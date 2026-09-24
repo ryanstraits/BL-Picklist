@@ -169,6 +169,21 @@
     cursor: pointer;
   }
   .nav-tab-btn:active { background: var(--surface-alt); }
+  /* Category row (Orders/Inventory) is the persistent top-level switch —
+     solid fill on whichever side is active. */
+  .nav-tab-btn.active { background: var(--accent); color: var(--accent-contrast); border-style: solid; }
+  /* Sub-nav is one secondary "jump to the sibling page" link, so it reads
+     lighter/smaller than the two primary category buttons above it. */
+  .topbar-row-subnav { margin-top: 8px; }
+  .topbar-row-subnav .nav-tab-btn {
+    flex: none;
+    border-style: none;
+    background: none;
+    font-size: 12.5px;
+    padding: 4px 2px;
+    text-decoration: underline;
+  }
+  .topbar-row-subnav .nav-tab-btn:active { background: none; opacity: 0.7; }
 
   main { flex: 1; padding: 4px 16px 32px; }
 
@@ -1068,10 +1083,12 @@
         Refresh
       </button>
     </div>
-    <div class="topbar-row topbar-row-nav" id="topbarNavRow">
-      <button class="nav-tab-btn" id="inventoryNavBtn">+ Add Inventory</button>
-      <button class="nav-tab-btn" id="labelPrepNavBtn">Label Prep</button>
-      <button class="nav-tab-btn" id="manageInventoryNavBtn">Manage Inventory</button>
+    <div class="topbar-row topbar-row-nav" id="topbarCategoryRow">
+      <button class="nav-tab-btn" id="categoryOrdersBtn">Orders</button>
+      <button class="nav-tab-btn" id="categoryInventoryBtn">Inventory</button>
+    </div>
+    <div class="topbar-row topbar-row-nav topbar-row-subnav" id="topbarSubNavRow">
+      <button class="nav-tab-btn" id="subNavBtn"></button>
     </div>
   </header>
 
@@ -1421,11 +1438,26 @@
   var backBtn = document.getElementById("backBtn");
   var brandSub = document.getElementById("brandSub");
   var refreshBtn = document.getElementById("refreshBtn");
-  var topbarNavRow = document.getElementById("topbarNavRow");
-  var inventoryNavBtn = document.getElementById("inventoryNavBtn");
-  var labelPrepNavBtn = document.getElementById("labelPrepNavBtn");
-  var manageInventoryNavBtn = document.getElementById("manageInventoryNavBtn");
+  var topbarCategoryRow = document.getElementById("topbarCategoryRow");
+  var topbarSubNavRow = document.getElementById("topbarSubNavRow");
+  var categoryOrdersBtn = document.getElementById("categoryOrdersBtn");
+  var categoryInventoryBtn = document.getElementById("categoryInventoryBtn");
+  var subNavBtn = document.getElementById("subNavBtn");
   var currentView = "orders";
+
+  // Two top-level categories — Orders (order list + Label Prep, since
+  // prepping a shipping label is part of order fulfillment) and Inventory
+  // (Manage Inventory + Add Inventory) — each with one secondary page to
+  // jump to via subNavBtn, whose label/handler this swaps per view rather
+  // than keeping a separate button element for every page.
+  function setTopbarNav(category, subLabel, subHandler) {
+    topbarCategoryRow.style.display = "";
+    topbarSubNavRow.style.display = "";
+    categoryOrdersBtn.classList.toggle("active", category === "orders");
+    categoryInventoryBtn.classList.toggle("active", category === "inventory");
+    subNavBtn.textContent = subLabel;
+    subNavBtn.onclick = subHandler;
+  }
 
   var appEl = document.getElementById("app");
   var loginGate = document.getElementById("loginGate");
@@ -2414,7 +2446,8 @@
     orderView.classList.remove("hidden");
     inventoryView.classList.add("hidden");
     backBtn.style.display = "inline-flex";
-    topbarNavRow.style.display = "none";
+    topbarCategoryRow.style.display = "none";
+    topbarSubNavRow.style.display = "none";
     brandSub.textContent = "Order #" + order.orderId;
 
     // Make sure picks (and Drive Thru/feedback completion) reflect the
@@ -3456,7 +3489,7 @@
     manageInventoryView.classList.add("hidden");
     ordersView.classList.remove("hidden");
     backBtn.style.display = "none";
-    topbarNavRow.style.display = "";
+    setTopbarNav("orders", "Label Prep", goToLabelPrep);
     refreshBtn.style.display = "";
     brandSub.textContent = "Open BrickLink orders";
     renderOrdersList();
@@ -3469,8 +3502,8 @@
     labelPrepView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
     inventoryView.classList.remove("hidden");
-    backBtn.style.display = "inline-flex";
-    topbarNavRow.style.display = "none";
+    backBtn.style.display = "none";
+    setTopbarNav("inventory", "Manage Inventory", goToManageInventory);
     // Refresh only ever reloads Orders data (orders list, order items,
     // pick-state) — nothing on this screen, so hide it here rather than
     // leave a button that looks live but silently does nothing visible.
@@ -3486,8 +3519,8 @@
     inventoryView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
     labelPrepView.classList.remove("hidden");
-    backBtn.style.display = "inline-flex";
-    topbarNavRow.style.display = "none";
+    backBtn.style.display = "none";
+    setTopbarNav("orders", "Order List", goToOrders);
     refreshBtn.style.display = "none";
     brandSub.textContent = "Label Prep";
     renderLabelPrepView();
@@ -3500,8 +3533,8 @@
     inventoryView.classList.add("hidden");
     labelPrepView.classList.add("hidden");
     manageInventoryView.classList.remove("hidden");
-    backBtn.style.display = "inline-flex";
-    topbarNavRow.style.display = "none";
+    backBtn.style.display = "none";
+    setTopbarNav("inventory", "+ Add Inventory", goToInventory);
     refreshBtn.style.display = "none";
     brandSub.textContent = "Manage Inventory";
     renderManageInventoryView();
@@ -3509,9 +3542,8 @@
   }
 
   backBtn.addEventListener("click", goToOrders);
-  inventoryNavBtn.addEventListener("click", goToInventory);
-  labelPrepNavBtn.addEventListener("click", goToLabelPrep);
-  manageInventoryNavBtn.addEventListener("click", goToManageInventory);
+  categoryOrdersBtn.addEventListener("click", goToOrders);
+  categoryInventoryBtn.addEventListener("click", goToManageInventory);
   refreshBtn.addEventListener("click", function () {
     itemsCache = {};
     loadOrders();
@@ -3527,6 +3559,11 @@
   // session cookie is established via /api/site-login.
   function startApp() {
     appEl.classList.remove("hidden");
+    // The orders list is already the visible section by default in the
+    // static markup, but the topbar's category/sub-nav state is dynamic
+    // (subNavBtn starts with no label at all) — needs an explicit call
+    // here, not just from the goTo* functions, to be correct on load.
+    setTopbarNav("orders", "Label Prep", goToLabelPrep);
     loadState();
     loadOrders();
     syncStateFromRemote();
