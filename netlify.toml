@@ -97,6 +97,12 @@
   status = 200
 
 [[redirects]]
-  from = "/api/debug-inventories"
-  to = "/.netlify/functions/debug-inventories"
+  from = "/api/inventory-list"
+  to = "/.netlify/functions/inventory-list"
   status = 200
+
+[[redirects]]
+  from = "/api/inventory-update"
+  to = "/.netlify/functions/inventory-update"
+  status = 200
+

@@ -375,3 +375,32 @@ Token Secret as sensitive as an API key that can move money.
   so it degrades gracefully rather than silently failing. The downloaded
   file keeps the uploaded label's own filename with `-2x3` appended
   (e.g. `label-2x3.pdf`), not a generic name.
+- **Manage Inventory** — a fourth nav tab, for editing Ryan's *existing*
+  live BrickLink listings (hundreds of parts/figs, a few dozen sets) —
+  different from Add Inventory, which only stages brand-new rows for a
+  one-time bulk create. Search-first by design: `GET /inventories`
+  returns everything in one unpaginated call (confirmed against real
+  data — 842 real rows, no `page`/`cursor` params in the response), so
+  the page fetches the whole list once and filters client-side rather
+  than rendering ~800 cards at once, which would be slow on a phone and
+  mostly useless to scroll through. Results are capped at 50 matches
+  with a "refine your search" note past that. Color and the item itself
+  aren't editable — both are part of a listing's identity, not something
+  you'd change after the fact — and there's no Bin field: BrickLink's
+  own inventory data has no such concept at all (confirmed against the
+  same real response), so the Bin shown on Add Inventory only ever came
+  from Ryan's own CSV export, not from BrickLink.
+  Edits are staged locally (same "review, then submit" batch model as
+  Add Inventory, not auto-save-per-field) and tracked as dirty against a
+  snapshot of what was actually loaded — surviving a change of search
+  term — until Submit pushes only the changed rows to
+  `PUT /inventories/{id}` (`inventory-update.js`), a partial update per
+  BrickLink's documented behavior for that endpoint (only the sent
+  fields change; nothing else on the listing is touched). Field names
+  for both endpoints (`bulk`, `bind_id`, etc.) were confirmed against a
+  real response via a temporary debug endpoint, hit directly by Ryan
+  from his phone (same live-verification pattern used earlier for order
+  contact/payment fields and price guide data), rather than assumed from
+  memory of BrickLink's API — real field names turned out to differ from
+  what general knowledge of the API would have guessed (`bulk`, not
+  `bulk_qty`).
