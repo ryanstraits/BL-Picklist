@@ -258,6 +258,19 @@
   .status-action-btn.to-packed { color: var(--info); border-color: var(--info); }
   .status-action-btn.to-shipped { color: var(--success); border-color: var(--success); }
   .status-action-btn.list-drive-thru-btn { color: var(--accent); border-color: var(--accent); }
+  .status-action-btn.pickup-btn { color: var(--accent); border-color: var(--accent); }
+
+  .pickup-reminder-row {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: var(--accent-soft);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
   .order-top-row {
     display: flex;
     justify-content: space-between;
@@ -1128,6 +1141,7 @@
   var ratingsCache = {};
   var driveThruSent = {};
   var feedbackSent = {};
+  var pickupScheduled = {};
   var colorsMap = null;
 
   function loadState() {
@@ -1253,7 +1267,7 @@
   }
 
   function pushOrderActions() {
-    postJSON("/api/pick-state?key=actions", { driveThruSent: driveThruSent, feedbackSent: feedbackSent })
+    postJSON("/api/pick-state?key=actions", { driveThruSent: driveThruSent, feedbackSent: feedbackSent, pickupScheduled: pickupScheduled })
       .catch(function () { /* offline — ignore, same as picks */ });
   }
 
@@ -1264,10 +1278,13 @@
         if (remote && typeof remote === "object") {
           var mergedDriveThru = mergeActionMap(driveThruSent, remote.driveThruSent);
           var mergedFeedback = mergeActionMap(feedbackSent, remote.feedbackSent);
+          var mergedPickup = mergeActionMap(pickupScheduled, remote.pickupScheduled);
           var remoteNeedsUpdate = JSON.stringify(mergedDriveThru) !== JSON.stringify(remote.driveThruSent || {})
-            || JSON.stringify(mergedFeedback) !== JSON.stringify(remote.feedbackSent || {});
+            || JSON.stringify(mergedFeedback) !== JSON.stringify(remote.feedbackSent || {})
+            || JSON.stringify(mergedPickup) !== JSON.stringify(remote.pickupScheduled || {});
           driveThruSent = mergedDriveThru;
           feedbackSent = mergedFeedback;
+          pickupScheduled = mergedPickup;
           if (remoteNeedsUpdate) pushOrderActions();
           if (currentView === "orders") renderOrdersList();
         }
@@ -1757,6 +1774,13 @@
     var toPickCount = orders.filter(function (o) { return o.status === "PAID"; }).length;
     var toShipCount = orders.filter(function (o) { return o.status === "PACKED"; }).length;
 
+    // Manual "mental note" reminder, not tied to any single order or to
+    // where pickup happens to fall in Ryan's picking workflow (it varies
+    // day to day). Tracked per order, same durable-sync pattern as Drive
+    // Thru/feedback, so a newly-packed order surfaces the reminder again
+    // even after an earlier batch's pickup was already confirmed.
+    var ordersAwaitingPickup = orders.filter(function (o) { return o.status === "PACKED" && !pickupScheduled[o.orderId]; });
+
     var inProcessOrders = orders.filter(function (o) {
       var meta = STATUS_META[o.status];
       return o.orderTotal && (!meta || meta.tone !== "problem");
@@ -1775,7 +1799,11 @@
       + '<div>Total orders to be picked: <strong>' + toPickCount + '</strong></div>'
       + '<div>Total orders to be shipped: <strong>' + toShipCount + '</strong></div>'
       + (inProcessTotal !== null ? '<div>Total value of orders in process: <strong>' + escapeHtml(formatCurrency(inProcessTotal, inProcessCurrency)) + '</strong></div>' : '')
-      + '</div>';
+      + '</div>'
+      + (ordersAwaitingPickup.length ? '<div class="pickup-reminder-row">'
+        + '<span>' + ordersAwaitingPickup.length + ' order' + (ordersAwaitingPickup.length === 1 ? '' : 's') + ' packed, ready for USPS pickup</span>'
+        + '<button class="status-action-btn pickup-btn" id="pickupScheduledBtn">I’ve scheduled pickup</button>'
+        + '</div>' : '');
     orders.forEach(function (order) {
       var total = order.totalCount || 0;
       var lineCount = order.uniqueCount || 0;
@@ -1828,7 +1856,7 @@
       });
     });
 
-    ordersView.querySelectorAll(".status-action-btn:not(.list-drive-thru-btn)").forEach(function (btn) {
+    ordersView.querySelectorAll(".status-action-btn:not(.list-drive-thru-btn):not(.pickup-btn)").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         handleStatusChange(btn);
@@ -1841,6 +1869,15 @@
         handleListDriveThru(btn);
       });
     });
+
+    var pickupBtn = document.getElementById("pickupScheduledBtn");
+    if (pickupBtn) {
+      pickupBtn.addEventListener("click", function () {
+        ordersAwaitingPickup.forEach(function (o) { pickupScheduled[o.orderId] = true; });
+        pushOrderActions();
+        renderOrdersList();
+      });
+    }
   }
 
   function handleStatusChange(btn) {

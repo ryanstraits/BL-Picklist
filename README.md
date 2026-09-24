@@ -217,6 +217,23 @@ Token Secret as sensitive as an API key that can move money.
     (unlike `drive_thru_sent`), so it's a best guess — worth watching
     the first few real orders to see whether it's actually catching
     this correctly.
+- **USPS pickup reminder** — a highlighted banner on the orders list
+  (only, never on an individual order page — Ryan's own workflow varies
+  on when pickup gets scheduled relative to picking an order, so it
+  isn't tied to any single order's state machine) showing a count of
+  PACKED orders not yet confirmed, with a single "I've scheduled pickup"
+  button. Deliberately not a link out to USPS or PirateShip's own
+  sites — Ryan schedules pickup by hand through PirateShip's web app
+  (having given up on pulling shipping/carrier data in after hitting a
+  wall with UPS's API, with USPS looking harder still for the payoff),
+  and an in-app link would likely open logged out anyway. The button is
+  a manual "mental note cleared" acknowledgment, not a real action
+  against any API. Tracked per order (`pickupScheduled`, keyed by
+  orderId) via the same durable `/api/pick-state?key=actions` store and
+  union-merge pattern as Drive Thru/feedback — clicking it marks every
+  currently-unconfirmed PACKED order at once, but a *new* order reaching
+  PACKED afterward surfaces the banner again for just that order, since
+  an earlier confirmed pickup obviously doesn't cover it.
 - **Order detail page layout** — top to bottom: order summary (with a
   "Mark as packed"/"Mark as shipped" button right there when the order
   is PAID/PACKED — the same `/api/update-order-status` write the orders
