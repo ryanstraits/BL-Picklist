@@ -132,15 +132,23 @@ Token Secret as sensitive as an API key that can move money.
   Ryan just wants to jump out to BrickLink's own page from here.
   `onclick="event.stopPropagation()"` keeps a tap on the link from also
   toggling the row's picked state, the same guard the price-guide link
-  already used. This surfaced the same "(Not Applicable)" color-name bug
+  already used. This surfaced the same "Not Applicable" color-name bug
   fixed once before on the Add Inventory and Manage Inventory screens —
   BrickLink's own colors list has a real, non-zero-id color literally
-  named "Not Applicable" (used for colorless items like minifigs), so
-  filtering on `colorId` truthiness alone doesn't catch it; the
-  order-detail item block was still checking only `colorId` and needed
-  the same string-based guard (skip rendering when the name,
-  case-insensitively, is exactly "not applicable") the other two screens
-  already had.
+  named "Not Applicable" (used for colorless items like minifigs, sets,
+  instructions), so filtering on `colorId` truthiness alone doesn't
+  catch it. The first fix filtered the exact string "Not Applicable",
+  which the order-detail block was missing entirely — but Ryan's real
+  data kept showing the tag afterward on all three item types anyway,
+  on every screen, meaning the exact-string guard itself was wrong
+  somewhere (BrickLink's actual value likely isn't the bare, unpunctuated
+  string the earlier fix assumed). Replaced with one shared
+  `isRealColorName()` (used by all three screens instead of three
+  independent copies of the same check, which is exactly how the exact
+  first fix quietly went stale) that matches on the substring
+  "applicable" rather than the whole string — no real BrickLink color
+  name would ever contain that word, so it's a punctuation-proof
+  catch-all regardless of the exact wording BrickLink sends.
 - Items with quantity > 1 don't pick in a single tap — Ryan's own idea,
   after flagging that it's too easy to mark a 6- or 12-piece lot picked
   after physically counting out only one. Each tap adds 1 to a per-lot

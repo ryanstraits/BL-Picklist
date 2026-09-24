@@ -1590,6 +1590,27 @@
     return entityDecoder.value;
   }
 
+  // BrickLink has a real, non-zero-id color literally named "Not
+  // Applicable" (used for colorless items — minifigs, sets,
+  // instructions, ...), so filtering on colorId truthiness alone never
+  // catches it. A previous fix filtered the exact string "Not
+  // Applicable", but Ryan's real data still showed the tag afterward for
+  // minifigs, sets, AND instructions — a wider miss than one exact
+  // string would explain, so rather than guess at the precise wording/
+  // punctuation BrickLink actually sends (parens? a trailing period? a
+  // different case?), this matches on the substring "applicable"
+  // instead — no genuine BrickLink color name (Trans-Light Blue, Dark
+  // Bluish Gray, ...) would ever contain that word, so it's a safe,
+  // punctuation-proof catch-all. Shared by every screen that shows a
+  // color name, so there's one guard to fix instead of three copies
+  // quietly drifting out of sync with each other (which is exactly how
+  // this slipped through the first time).
+  function isRealColorName(name) {
+    if (!name) return false;
+    var normalized = name.trim().toLowerCase();
+    return normalized !== "" && normalized.indexOf("applicable") === -1;
+  }
+
   function formatDate(iso) {
     if (!iso) return "";
     var d = new Date(iso);
@@ -2252,7 +2273,7 @@
         + '</div>'
         + (isMulti ? itemProgressRowHtml(progress) : '')
         + '<div class="item-name">' + escapeHtml(item.name) + '</div>'
-        + (item.colorName && item.colorName.trim().toLowerCase() !== "not applicable" ? '<div class="item-color">' + escapeHtml(item.colorName) + '</div>' : '')
+        + (isRealColorName(item.colorName) ? '<div class="item-color">' + escapeHtml(item.colorName) + '</div>' : '')
         + (item.description ? '<div class="item-color">' + escapeHtml(item.description) + '</div>' : '')
         + (item.remarks ? '<div class="item-remarks">' + escapeHtml(item.remarks) + '</div>' : '')
         + '<a class="item-bl-link" href="' + escapeHtml(bricklinkCatalogUrl(item, item.newOrUsed === "U" ? "U" : "N")) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>'
@@ -3133,7 +3154,7 @@
         + '<span class="item-line1-right"><span class="item-type-tag">' + escapeHtml(row.type) + '</span></span>'
         + '</div>'
         + '<div class="item-name">' + escapeHtml(row.name || "(name unknown)") + '</div>'
-        + (row.colorName && row.colorName.trim().toLowerCase() !== "not applicable" ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
+        + (isRealColorName(row.colorName) ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
         + (row.location ? '<div class="item-color">Bin: ' + escapeHtml(row.location) + '</div>' : '')
         + '<div class="inventory-fields">'
         + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="quantity" value="' + escapeHtml(row.quantity) + '"' + (locked ? ' disabled' : '') + '></div>'
@@ -3892,7 +3913,7 @@
       + '<span class="item-line1-right"><span class="item-type-tag">' + escapeHtml(row.type) + '</span></span>'
       + '</div>'
       + '<div class="item-name">' + escapeHtml(row.name || "(name unknown)") + '</div>'
-      + (row.colorName && row.colorName.trim().toLowerCase() !== "not applicable" ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
+      + (isRealColorName(row.colorName) ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
       + '<div class="inventory-fields">'
       + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="quantity" value="' + escapeHtml(row.quantity) + '"></div>'
       + '<div class="inventory-field"><label>Price</label><input type="text" inputmode="decimal" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="unitPrice" value="' + escapeHtml(row.unitPrice) + '"></div>'
