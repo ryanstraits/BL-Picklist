@@ -315,6 +315,14 @@
     gap: 10px;
     margin-top: 10px;
   }
+  .topbar-submit-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .topbar-submit-total { font-size: 15px; font-weight: 700; color: var(--text); }
   .progress-track {
     flex: 1;
     height: 6px;
@@ -826,6 +834,7 @@
     cursor: pointer;
   }
   .inventory-submit-btn:disabled { opacity: 0.5; cursor: default; }
+  .topbar-submit-btn { flex: none; width: auto; padding: 8px 16px; font-size: 13px; }
   .inventory-submit-btn:active { filter: brightness(0.94); }
 
   .item-row.inventory-row { flex-wrap: wrap; }
@@ -1196,6 +1205,13 @@
     <div class="order-progress-row hidden" id="topbarProgressRow">
       <div class="progress-track"><div class="progress-fill" id="topbarProgressFill" style="width:0%"></div></div>
       <span class="progress-label" id="topbarProgressLabel">0/0</span>
+    </div>
+    <div class="topbar-submit-row hidden" id="topbarInventorySubmitRow">
+      <span class="topbar-submit-total mono" id="topbarInventoryTotalValue">$0.00</span>
+      <button class="inventory-submit-btn topbar-submit-btn" id="topbarInventorySubmitBtn" disabled>Submit 0 items to BrickLink</button>
+    </div>
+    <div class="topbar-submit-row hidden" id="topbarManageSubmitRow">
+      <button class="inventory-submit-btn topbar-submit-btn" id="topbarManageSubmitBtn" disabled>Submit 0 changes to BrickLink</button>
     </div>
   </header>
 
@@ -1687,6 +1703,11 @@
   var topbarProgressRow = document.getElementById("topbarProgressRow");
   var topbarProgressFill = document.getElementById("topbarProgressFill");
   var topbarProgressLabel = document.getElementById("topbarProgressLabel");
+  var topbarInventorySubmitRow = document.getElementById("topbarInventorySubmitRow");
+  var topbarInventoryTotalValue = document.getElementById("topbarInventoryTotalValue");
+  var topbarInventorySubmitBtn = document.getElementById("topbarInventorySubmitBtn");
+  var topbarManageSubmitRow = document.getElementById("topbarManageSubmitRow");
+  var topbarManageSubmitBtn = document.getElementById("topbarManageSubmitBtn");
   var currentView = "orders";
 
   // Two top-level categories — Orders (order list + Label Prep, since
@@ -1698,6 +1719,8 @@
     topbarCategoryRow.style.display = "";
     topbarSubNavRow.style.display = "";
     topbarProgressRow.classList.add("hidden");
+    topbarInventorySubmitRow.classList.add("hidden");
+    topbarManageSubmitRow.classList.add("hidden");
     categoryOrdersBtn.classList.toggle("active", category === "orders");
     categoryInventoryBtn.classList.toggle("active", category === "inventory");
     subNavBtn.textContent = subLabel;
@@ -3004,6 +3027,9 @@
   }
 
   function renderInventoryUpload(errorMessage) {
+    // Nothing to submit yet at this step (also covers "Start over",
+    // which returns here without a setTopbarNav call to hide it for us).
+    topbarInventorySubmitRow.classList.add("hidden");
     inventoryView.innerHTML = ""
       + '<div class="inventory-intro">Upload a BrickScan CSV export to review items before adding them to your BrickLink inventory. Nothing is sent to BrickLink until you approve it on the next screen.</div>'
       + '<div class="inventory-upload">'
@@ -3123,6 +3149,15 @@
       + '<button type="button" class="inv-start-over-btn">Start over</button>'
       + '</div>';
 
+    // Mirrors the total + submit button into the sticky topbar so both
+    // stay reachable while scrolling a long review list — the in-page
+    // ones at top/bottom of the list stay too, same dual pattern as the
+    // order-detail page's sticky pick-progress bar.
+    topbarInventorySubmitRow.classList.remove("hidden");
+    topbarInventoryTotalValue.textContent = inventoryTotalText();
+    topbarInventorySubmitBtn.textContent = submitLabel;
+    topbarInventorySubmitBtn.disabled = pendingCount === 0 || inventorySubmitting;
+
     wireThumbLinks(inventoryView);
     sizeThumbsToRows(inventoryView);
 
@@ -3158,6 +3193,7 @@
           // would otherwise drop focus mid-edit (see comment above).
           var totalEl = document.getElementById("inventoryTotalValue");
           if (totalEl) totalEl.textContent = inventoryTotalText();
+          topbarInventoryTotalValue.textContent = inventoryTotalText();
         }
       });
     });
@@ -3804,6 +3840,7 @@
       + '<div class="inventory-field description-field"><label>Description <span class="field-hint">(shown to buyer)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="description">' + escapeHtml(row.description) + '</textarea></div>'
       + '<div class="inventory-field remarks-field"><label>Remarks <span class="field-hint">(private, only you see this)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks">' + escapeHtml(row.remarks) + '</textarea></div>'
       + '</div>'
+      + '<a class="item-bl-link" href="' + escapeHtml(bricklinkCatalogUrl(row, row.newOrUsed === "U" ? "U" : "N")) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>'
       + resultHtml
       + '</div>'
       + '</div>';
@@ -3815,12 +3852,24 @@
   // elsewhere on the page the way re-rendering the whole card list would.
   function updateManageInventorySubmitBar() {
     var dirtyCount = (manageInventoryRows || []).filter(isManageInventoryRowDirty).length;
+    var label = manageInventorySubmitting ? "Submitting…" : "Submit " + dirtyCount + " change" + (dirtyCount === 1 ? "" : "s") + " to BrickLink";
+    var disabled = dirtyCount === 0 || manageInventorySubmitting;
+
     var row = document.getElementById("manageInventorySubmitRow");
     var btn = document.getElementById("manageInventorySubmitBtn");
-    if (!row || !btn) return;
-    row.style.display = dirtyCount ? "" : "none";
-    btn.textContent = manageInventorySubmitting ? "Submitting…" : "Submit " + dirtyCount + " change" + (dirtyCount === 1 ? "" : "s") + " to BrickLink";
-    btn.disabled = dirtyCount === 0 || manageInventorySubmitting;
+    if (row && btn) {
+      row.style.display = dirtyCount ? "" : "none";
+      btn.textContent = label;
+      btn.disabled = disabled;
+    }
+
+    // Sticky topbar mirror — a static node outside the re-rendered
+    // results area, so it's kept in sync here too rather than only in
+    // the innerHTML string above (same dual pattern as Add Inventory's
+    // topbarInventorySubmitRow).
+    topbarManageSubmitRow.classList.toggle("hidden", !dirtyCount);
+    topbarManageSubmitBtn.textContent = label;
+    topbarManageSubmitBtn.disabled = disabled;
   }
 
   // Rebuilds only the results area below the search box, leaving the
@@ -3867,6 +3916,7 @@
     }
 
     container.innerHTML = body;
+    updateManageInventorySubmitBar();
 
     wireThumbLinks(container);
     sizeThumbsToRows(container);
@@ -4057,6 +4107,13 @@
   }
 
   backBtn.addEventListener("click", goToOrders);
+  // Wired once here rather than per-render like the in-page submit
+  // buttons — these topbar mirrors are static DOM nodes that live inside
+  // <header>, never rebuilt by innerHTML, so a listener attached once
+  // never needs re-attaching (and re-attaching on every render would
+  // stack duplicate listeners).
+  topbarInventorySubmitBtn.addEventListener("click", handleInventorySubmit);
+  topbarManageSubmitBtn.addEventListener("click", handleManageInventorySubmit);
   categoryOrdersBtn.addEventListener("click", goToOrders);
   categoryInventoryBtn.addEventListener("click", goToManageInventory);
   refreshBtn.addEventListener("click", function () {

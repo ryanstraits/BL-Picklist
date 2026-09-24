@@ -351,7 +351,12 @@ Token Secret as sensitive as an API key that can move money.
   and stayed clickable even with nothing left to actually submit. The
   running total (sum of price × qty across checked rows) got its own
   prominent bold line above the row count, instead of being buried as a
-  clause in that small subheading text.
+  clause in that small subheading text. Both the total and the submit
+  button are also mirrored into a sticky row in the topbar header
+  (`#topbarInventorySubmitRow`, kept in sync alongside the in-page
+  copies — same dual pattern as the order-detail page's sticky
+  pick-progress bar), so they stay reachable while scrolling a long
+  review list instead of only living at the very top/bottom of it.
   There's no staging/review endpoint in BrickLink's Store API itself
   (unlike its website's own upload flow) — everything up to the actual
   `POST` happens entirely in this app, which is what makes the review
@@ -572,3 +577,13 @@ Token Secret as sensitive as an API key that can move money.
   quietly don't appear if not, rather than offering a feature that can't
   work — so this needs Ryan's next real visit to Manage Inventory to
   confirm one way or the other.
+  Every card here (search results, a theme's item list, Recently Added —
+  they all reuse `manageInventoryCardHtml()`) also has the same "View on
+  BrickLink ↗" link the order-detail page's item blocks have, built by
+  the same `bricklinkCatalogUrl()`. Submitting is a "Submit N changes to
+  BrickLink" button that, like Add Inventory's, is mirrored into a
+  sticky topbar row (`#topbarManageSubmitRow`, synced from the same
+  `updateManageInventorySubmitBar()` that already kept the in-page one
+  current on every field edit) so it's reachable without scrolling to
+  the bottom of a long edit session — shown only while there's at least
+  one unsaved change, same as the in-page copy.
