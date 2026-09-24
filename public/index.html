@@ -1090,6 +1090,10 @@
     <div class="topbar-row topbar-row-nav topbar-row-subnav" id="topbarSubNavRow">
       <button class="nav-tab-btn" id="subNavBtn"></button>
     </div>
+    <div class="order-progress-row hidden" id="topbarProgressRow">
+      <div class="progress-track"><div class="progress-fill" id="topbarProgressFill" style="width:0%"></div></div>
+      <span class="progress-label" id="topbarProgressLabel">0/0</span>
+    </div>
   </header>
 
   <main>
@@ -1288,6 +1292,26 @@
     return n;
   }
 
+  // Updates the in-page "X of Y lots picked" line and the sticky header
+  // progress bar directly, without touching any other DOM — called after
+  // every single pick toggle, so it has to stay cheap and can't re-render
+  // the item list (see the item-row click handler in renderOrderDetail).
+  function updatePickedProgress(order, items) {
+    var picked = pickedCount(order.orderId, items);
+    var total = items.length;
+    var allDone = total > 0 && picked === total;
+    var pct = total > 0 ? Math.round((picked / total) * 100) : 0;
+
+    var inlineCount = document.getElementById("pickedCountText");
+    if (inlineCount) {
+      inlineCount.innerHTML = "<strong>" + picked + " of " + total + "</strong> lots picked" + (allDone ? " — ready to pack" : "");
+    }
+
+    topbarProgressFill.style.width = pct + "%";
+    topbarProgressFill.classList.toggle("done", allDone);
+    topbarProgressLabel.textContent = picked + "/" + total;
+  }
+
   // Keys a pick by the item's content (number + color + condition) rather
   // than its position in the list, so picks survive BrickLink returning an
   // order's items in a different sequence on a later fetch (which is what
@@ -1443,6 +1467,9 @@
   var categoryOrdersBtn = document.getElementById("categoryOrdersBtn");
   var categoryInventoryBtn = document.getElementById("categoryInventoryBtn");
   var subNavBtn = document.getElementById("subNavBtn");
+  var topbarProgressRow = document.getElementById("topbarProgressRow");
+  var topbarProgressFill = document.getElementById("topbarProgressFill");
+  var topbarProgressLabel = document.getElementById("topbarProgressLabel");
   var currentView = "orders";
 
   // Two top-level categories — Orders (order list + Label Prep, since
@@ -1453,6 +1480,7 @@
   function setTopbarNav(category, subLabel, subHandler) {
     topbarCategoryRow.style.display = "";
     topbarSubNavRow.style.display = "";
+    topbarProgressRow.classList.add("hidden");
     categoryOrdersBtn.classList.toggle("active", category === "orders");
     categoryInventoryBtn.classList.toggle("active", category === "inventory");
     subNavBtn.textContent = subLabel;
@@ -1987,7 +2015,7 @@
       + '<span>' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + ' <span class="buyer-rating" id="buyerRatingBadge"></span></span>'
       + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
       + '</div>'
-      + '<div class="picked-count"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>'
+      + '<div class="picked-count" id="pickedCountText"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>'
       + (detailStatusAction ? '<div class="drive-thru-row">' + detailStatusAction + '</div>' : '')
       + (canSendDriveThru ? '<div class="drive-thru-row">'
         + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>'
@@ -2013,12 +2041,25 @@
     wireThumbLinks(orderView);
     sizeThumbsToRows(orderView);
 
+    // A full renderOrderDetail() re-render on every single pick toggle
+    // used to rebuild the entire item list — including re-running
+    // sizeThumbsToRows()'s per-row layout measurement — on every tap.
+    // Harmless-looking on desktop, but caused a real bug on iOS: tapping
+    // an item near the bottom of a long list would visibly "jump" to a
+    // different scroll position, almost certainly WebKit's scroll
+    // position heuristics getting confused by the wholesale DOM
+    // replacement. Toggling the "picked" class directly on just the
+    // tapped row (all its visual states are pure CSS, no layout-affecting
+    // properties — see .item-row.picked) avoids the rebuild entirely.
     orderView.querySelectorAll(".item-row").forEach(function (row) {
       row.addEventListener("click", function () {
-        togglePicked(order.orderId, row.getAttribute("data-key"));
-        renderOrderDetail(order, items, messages, contact);
+        var key = row.getAttribute("data-key");
+        togglePicked(order.orderId, key);
+        row.classList.toggle("picked", isPicked(order.orderId, key));
+        updatePickedProgress(order, items);
       });
     });
+    updatePickedProgress(order, items);
 
     orderView.querySelectorAll(".reset-btn").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
@@ -2448,6 +2489,7 @@
     backBtn.style.display = "inline-flex";
     topbarCategoryRow.style.display = "none";
     topbarSubNavRow.style.display = "none";
+    topbarProgressRow.classList.remove("hidden");
     brandSub.textContent = "Order #" + order.orderId;
 
     // Make sure picks (and Drive Thru/feedback completion) reflect the

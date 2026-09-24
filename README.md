@@ -109,6 +109,22 @@ Token Secret as sensitive as an API key that can move money.
   items in the same order on every fetch — an old install's
   position-keyed picks get migrated to the new keying automatically the
   first time each order is reopened.
+- Tapping an item to pick it toggles just that row's `.picked` class
+  directly rather than re-rendering the whole order-detail view — it used
+  to call the full render function on every tap, which rebuilds the
+  entire item list (including re-running the per-row thumbnail sizing
+  pass) each time. Harmless on desktop, but real-world testing on iOS
+  turned up a visible bug from it: tapping an item near the bottom of a
+  long list would jump to a different scroll position, consistent with
+  WebKit's scroll-anchoring heuristics getting confused by the wholesale
+  DOM replacement (`.item-row.picked`'s CSS — background, opacity,
+  strikethrough, checkmark — has no layout-affecting properties, so the
+  surgical class toggle needed no other changes to look right). A sticky
+  progress bar in the header (`#topbarProgressRow`, visible only on the
+  order-detail view) updates the same way, off the same
+  `updatePickedProgress()` call, so picking progress stays visible while
+  scrolling through a long list instead of only showing at the top of
+  the page.
 - There's no auto-refresh; tap "Refresh" in the header to re-pull orders,
   which keeps usage well under BrickLink's 5,000 requests/day limit.
   The list is sorted newest to oldest by `date_ordered`, matching
