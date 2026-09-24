@@ -326,3 +326,25 @@ Token Secret as sensitive as an API key that can move money.
   earlier), having Ryan hit it against a real item with 20+ known
   listings, and reading the actual field names instead of trusting the
   struct a second time.
+- **Label Prep** — a third page (nav button next to "+ Add Inventory"),
+  unrelated to BrickLink itself: shrinks a 4x6 Pirate Ship shipping-label
+  PDF/image to half size, rotates it, and places it in one corner of a
+  fresh 4x6 canvas, so the blank remainder can be used as tape on small
+  boxes (Ryan's own workflow — Labelife, his label printer's app, is too
+  clunky to do this shrink/rotate/position itself). Entirely client-side:
+  no server round-trip, nothing touches a Netlify Function, so shipping
+  labels (real customer addresses) never leave the browser. Rotation and
+  position are one-time settings (persisted to `localStorage`), not a
+  per-label adjustment — set once for however Ryan actually tapes boxes,
+  then every label after that gets the same treatment automatically.
+  PDF rendering uses `pdfjs-dist`, vendored locally under
+  `public/vendor/pdfjs/` rather than pulled from a CDN (this app has no
+  other external script dependencies, and CDN reachability had already
+  been flaky more than once in this session). Deliberately pinned to the
+  4.x line, not latest (6.x): 6.3.289 uses
+  `Map.prototype.getOrInsertComputed`, a very new JS proposal not yet
+  universally supported — it threw `getOrInsertComputed is not a
+  function` in real testing. Since `index.html`'s own script is one big
+  classic (non-module) script but `pdfjs-dist` ships ESM-only, a small
+  bridge module (`public/vendor/pdfjs/pdfjs-bridge.js`) imports it and
+  hands it to the rest of the app via `window.pdfjsLib`.

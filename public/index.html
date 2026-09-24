@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script type="module" src="/vendor/pdfjs/pdfjs-bridge.js"></script>
 <style>
   :root {
     --bg: #F5F3EF;
@@ -153,9 +154,9 @@
   .refresh-btn.spinning svg { animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .topbar-row-nav { margin-top: 10px; }
+  .topbar-row-nav { margin-top: 10px; display: flex; gap: 8px; }
   .nav-tab-btn {
-    width: 100%;
+    flex: 1;
     border: 1px dashed var(--accent);
     background: none;
     color: var(--accent);
@@ -586,6 +587,15 @@
     text-align: center;
   }
   .inventory-file-input { font-size: 13.5px; font-family: inherit; }
+  .label-prep-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fff;
+  }
   .inventory-summary-row {
     display: flex;
     justify-content: space-between;
@@ -1043,6 +1053,7 @@
     </div>
     <div class="topbar-row topbar-row-nav" id="topbarNavRow">
       <button class="nav-tab-btn" id="inventoryNavBtn">+ Add Inventory</button>
+      <button class="nav-tab-btn" id="labelPrepNavBtn">Label Prep</button>
     </div>
   </header>
 
@@ -1050,6 +1061,7 @@
     <section id="view-orders"></section>
     <section id="view-order" class="hidden"></section>
     <section id="view-inventory" class="hidden"></section>
+    <section id="view-label-prep" class="hidden"></section>
   </main>
 </div>
 
@@ -1385,11 +1397,13 @@
   var ordersView = document.getElementById("view-orders");
   var orderView = document.getElementById("view-order");
   var inventoryView = document.getElementById("view-inventory");
+  var labelPrepView = document.getElementById("view-label-prep");
   var backBtn = document.getElementById("backBtn");
   var brandSub = document.getElementById("brandSub");
   var refreshBtn = document.getElementById("refreshBtn");
   var topbarNavRow = document.getElementById("topbarNavRow");
   var inventoryNavBtn = document.getElementById("inventoryNavBtn");
+  var labelPrepNavBtn = document.getElementById("labelPrepNavBtn");
   var currentView = "orders";
 
   var appEl = document.getElementById("app");
@@ -2887,10 +2901,204 @@
     });
   }
 
+  // ---- Label Prep ----
+  // Shrinks a 4x6 Pirate Ship shipping label PDF/image to half size,
+  // rotates it, and places it in one corner of a fresh 4x6 canvas — the
+  // blank remainder doubles as tape for small-box orders. Rotation/
+  // position are a one-time setting (persisted to localStorage), not a
+  // per-label adjustment: Ryan dials them in once for how he actually
+  // tapes boxes, and every label after that gets the same treatment.
+  var LABEL_DPI = 300;
+  var LABEL_CANVAS_W = 4 * LABEL_DPI;
+  var LABEL_CANVAS_H = 6 * LABEL_DPI;
+  var LABEL_PREP_SETTINGS_KEY = "labelPrepSettings";
+
+  function loadLabelPrepSettings() {
+    var defaults = { rotation: 90, position: "top-left" };
+    try {
+      var raw = window.localStorage.getItem(LABEL_PREP_SETTINGS_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        return { rotation: parsed.rotation || defaults.rotation, position: parsed.position || defaults.position };
+      }
+    } catch (e) { /* fall through to defaults */ }
+    return defaults;
+  }
+  function saveLabelPrepSettings() {
+    try { window.localStorage.setItem(LABEL_PREP_SETTINGS_KEY, JSON.stringify(labelPrepSettings)); } catch (e) { /* best-effort */ }
+  }
+
+  var labelPrepSettings = loadLabelPrepSettings();
+  var labelPrepSource = null; // { el: <img|canvas>, naturalWidth, naturalHeight }
+  var labelPrepFileName = "";
+  var labelPrepError = "";
+  var labelPrepLoading = false;
+
+  var LABEL_PREP_POSITIONS = [
+    ["top-left", "Top-left"],
+    ["top-right", "Top-right"],
+    ["bottom-left", "Bottom-left"],
+    ["bottom-right", "Bottom-right"],
+    ["center", "Center"],
+  ];
+
+  function renderLabelPrepView() {
+    labelPrepView.innerHTML = ""
+      + '<div class="inventory-intro">Shrink a 4×6 Pirate Ship shipping label to half size, rotate it, and tuck it into one corner — the blank half doubles as tape for small-box orders. Rotation and position are remembered, so you only need to set them once.</div>'
+      + '<div class="inventory-upload"><input type="file" accept="application/pdf,image/*" class="inventory-file-input" id="labelPrepFileInput"></div>'
+      + '<div class="inventory-fields">'
+      + '<div class="inventory-field"><label>Rotation</label><select id="labelPrepRotation">'
+      + [0, 90, 180, 270].map(function (deg) {
+          return '<option value="' + deg + '"' + (labelPrepSettings.rotation === deg ? ' selected' : '') + '>' + deg + '°</option>';
+        }).join('')
+      + '</select></div>'
+      + '<div class="inventory-field"><label>Position</label><select id="labelPrepPosition">'
+      + LABEL_PREP_POSITIONS.map(function (p) {
+          return '<option value="' + p[0] + '"' + (labelPrepSettings.position === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
+        }).join('')
+      + '</select></div>'
+      + '</div>'
+      + (labelPrepLoading ? '<div class="state-block">Loading label…</div>' : '')
+      + (labelPrepError ? '<div class="state-block error">' + escapeHtml(labelPrepError) + '</div>' : '')
+      + (labelPrepSource ? '<canvas id="labelPrepCanvas" class="label-prep-canvas"></canvas>' : '')
+      + (labelPrepSource ? '<div class="inventory-submit-row"><button type="button" class="inventory-submit-btn" id="labelPrepDownloadBtn">Download PNG</button></div>' : '');
+
+    document.getElementById("labelPrepFileInput").addEventListener("change", handleLabelPrepFile);
+
+    document.getElementById("labelPrepRotation").addEventListener("change", function (e) {
+      labelPrepSettings.rotation = parseInt(e.target.value, 10);
+      saveLabelPrepSettings();
+      drawLabelPrepOutput();
+    });
+
+    document.getElementById("labelPrepPosition").addEventListener("change", function (e) {
+      labelPrepSettings.position = e.target.value;
+      saveLabelPrepSettings();
+      drawLabelPrepOutput();
+    });
+
+    if (labelPrepSource) {
+      drawLabelPrepOutput();
+      document.getElementById("labelPrepDownloadBtn").addEventListener("click", downloadLabelPrepPng);
+    }
+  }
+
+  function handleLabelPrepFile(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    labelPrepError = "";
+    labelPrepSource = null;
+    labelPrepLoading = true;
+    labelPrepFileName = file.name || "label";
+    renderLabelPrepView();
+
+    var isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+    var loadPromise = isPdf ? loadLabelPrepFromPdf(file) : loadLabelPrepFromImage(file);
+
+    loadPromise.then(function (source) {
+      labelPrepSource = source;
+      labelPrepLoading = false;
+      renderLabelPrepView();
+    }).catch(function (err) {
+      labelPrepError = "Couldn't read that file: " + err.message;
+      labelPrepLoading = false;
+      renderLabelPrepView();
+    });
+  }
+
+  function loadLabelPrepFromImage(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () {
+        resolve({ el: img, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+      };
+      img.onerror = function () { reject(new Error("Not a readable image file")); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  // Renders the PDF's first page to an offscreen canvas at LABEL_DPI, so
+  // the rest of the pipeline treats a PDF upload exactly like an image
+  // upload — just another drawable source with a known pixel size.
+  function loadLabelPrepFromPdf(file) {
+    if (!window.pdfjsLib) return Promise.reject(new Error("PDF support is still loading — try again in a second"));
+    return file.arrayBuffer().then(function (buf) {
+      return window.pdfjsLib.getDocument({
+        data: buf,
+        standardFontDataUrl: "/vendor/pdfjs/standard_fonts/",
+      }).promise;
+    }).then(function (pdf) {
+      return pdf.getPage(1);
+    }).then(function (page) {
+      // Page geometry is in points (1/72in) — scale to LABEL_DPI for a
+      // print-quality raster, whatever the label's actual page size is.
+      var viewport = page.getViewport({ scale: LABEL_DPI / 72 });
+      var canvas = document.createElement("canvas");
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      var ctx = canvas.getContext("2d");
+      return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
+        return { el: canvas, naturalWidth: canvas.width, naturalHeight: canvas.height };
+      });
+    });
+  }
+
+  function drawLabelPrepOutput() {
+    if (!labelPrepSource) return;
+    var canvas = document.getElementById("labelPrepCanvas");
+    if (!canvas) return;
+    canvas.width = LABEL_CANVAS_W;
+    canvas.height = LABEL_CANVAS_H;
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, LABEL_CANVAS_W, LABEL_CANVAS_H);
+
+    var scaledW = labelPrepSource.naturalWidth * 0.5;
+    var scaledH = labelPrepSource.naturalHeight * 0.5;
+
+    var angle = labelPrepSettings.rotation;
+    var angleRad = angle * Math.PI / 180;
+    // A 90°/270° rotation swaps which of the scaled label's own
+    // dimensions determines the on-canvas footprint's width vs height.
+    var rotated = angle === 90 || angle === 270;
+    var footprintW = rotated ? scaledH : scaledW;
+    var footprintH = rotated ? scaledW : scaledH;
+
+    var x, y;
+    switch (labelPrepSettings.position) {
+      case "top-right": x = LABEL_CANVAS_W - footprintW; y = 0; break;
+      case "bottom-left": x = 0; y = LABEL_CANVAS_H - footprintH; break;
+      case "bottom-right": x = LABEL_CANVAS_W - footprintW; y = LABEL_CANVAS_H - footprintH; break;
+      case "center": x = (LABEL_CANVAS_W - footprintW) / 2; y = (LABEL_CANVAS_H - footprintH) / 2; break;
+      default: x = 0; y = 0; // top-left
+    }
+
+    // Rotating around the block's own center (after translating to where
+    // that center should land) correctly handles all four angles and all
+    // five position presets through one code path, rather than
+    // special-casing each rotation's placement math separately.
+    ctx.save();
+    ctx.translate(x + footprintW / 2, y + footprintH / 2);
+    ctx.rotate(angleRad);
+    ctx.drawImage(labelPrepSource.el, -scaledW / 2, -scaledH / 2, scaledW, scaledH);
+    ctx.restore();
+  }
+
+  function downloadLabelPrepPng() {
+    var canvas = document.getElementById("labelPrepCanvas");
+    if (!canvas) return;
+    var base = (labelPrepFileName || "label").replace(/\.[^.]+$/, "");
+    var link = document.createElement("a");
+    link.download = base + "-half.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
   function goToOrders() {
     currentView = "orders";
     orderView.classList.add("hidden");
     inventoryView.classList.add("hidden");
+    labelPrepView.classList.add("hidden");
     ordersView.classList.remove("hidden");
     backBtn.style.display = "none";
     topbarNavRow.style.display = "";
@@ -2903,6 +3111,7 @@
     currentView = "inventory";
     ordersView.classList.add("hidden");
     orderView.classList.add("hidden");
+    labelPrepView.classList.add("hidden");
     inventoryView.classList.remove("hidden");
     backBtn.style.display = "inline-flex";
     topbarNavRow.style.display = "none";
@@ -2914,8 +3123,22 @@
     renderInventoryView();
   }
 
+  function goToLabelPrep() {
+    currentView = "label-prep";
+    ordersView.classList.add("hidden");
+    orderView.classList.add("hidden");
+    inventoryView.classList.add("hidden");
+    labelPrepView.classList.remove("hidden");
+    backBtn.style.display = "inline-flex";
+    topbarNavRow.style.display = "none";
+    refreshBtn.style.display = "none";
+    brandSub.textContent = "Label Prep";
+    renderLabelPrepView();
+  }
+
   backBtn.addEventListener("click", goToOrders);
   inventoryNavBtn.addEventListener("click", goToInventory);
+  labelPrepNavBtn.addEventListener("click", goToLabelPrep);
   refreshBtn.addEventListener("click", function () {
     itemsCache = {};
     loadOrders();
