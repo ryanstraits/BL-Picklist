@@ -630,11 +630,27 @@
     border-radius: 10px;
     background: #fff;
   }
+  .inventory-total-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .inventory-total-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .inventory-total-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+  }
   .inventory-summary-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 14px;
+    margin-top: 8px;
     font-size: 13px;
     color: var(--text-secondary);
   }
@@ -2905,11 +2921,16 @@
 
   function inventorySummaryText() {
     var includedCount = inventoryRows.filter(function (r) { return r.include; }).length;
-    return includedCount + " of " + inventoryRows.length + " selected · Total " + formatCurrency(computeInventoryTotal(), "USD");
+    return includedCount + " of " + inventoryRows.length + " selected";
+  }
+
+  function inventoryTotalText() {
+    return formatCurrency(computeInventoryTotal(), "USD");
   }
 
   function renderInventoryReview() {
     var includedCount = inventoryRows.filter(function (r) { return r.include; }).length;
+    var pendingCount = inventoryRows.filter(function (r) { return r.include && !(r.result && r.result.success); }).length;
 
     var cards = inventoryRows.map(function (row) {
       var locked = !!(row.result && row.result.success);
@@ -2957,8 +2978,20 @@
         + '</div>';
     }).join("");
 
+    var submitLabel;
+    if (inventorySubmitting) {
+      submitLabel = "Submitting…";
+    } else if (includedCount === 0) {
+      submitLabel = "Nothing selected";
+    } else if (pendingCount === 0) {
+      submitLabel = "All items added";
+    } else {
+      submitLabel = "Submit " + pendingCount + " item" + (pendingCount === 1 ? "" : "s") + " to BrickLink";
+    }
+
     inventoryView.innerHTML = ""
       + '<div class="inventory-intro">Review each item before it goes live on BrickLink. Uncheck anything you don’t want to add yet, edit price/qty/condition as needed, then submit.</div>'
+      + '<div class="inventory-total-row"><span class="inventory-total-label">Total</span><span class="inventory-total-value mono" id="inventoryTotalValue">' + escapeHtml(inventoryTotalText()) + '</span></div>'
       + '<div class="inventory-summary-row">'
       + '<span id="inventorySummaryText">' + escapeHtml(inventorySummaryText()) + '</span>'
       + '<div class="inventory-bulk-actions">'
@@ -2968,8 +3001,8 @@
       + '</div>'
       + cards
       + '<div class="inventory-submit-row">'
-      + '<button class="inventory-submit-btn" id="inventorySubmitBtn"' + (includedCount === 0 || inventorySubmitting ? ' disabled' : '') + '>'
-      + (inventorySubmitting ? "Submitting…" : "Submit " + includedCount + " item" + (includedCount === 1 ? "" : "s") + " to BrickLink")
+      + '<button class="inventory-submit-btn" id="inventorySubmitBtn"' + (pendingCount === 0 || inventorySubmitting ? ' disabled' : '') + '>'
+      + submitLabel
       + '</button>'
       + '<button type="button" class="inv-start-over-btn">Start over</button>'
       + '</div>';
@@ -3007,8 +3040,8 @@
         } else if (field === "quantity" || field === "unitPrice") {
           // Keep the running total live without a full re-render, which
           // would otherwise drop focus mid-edit (see comment above).
-          var summaryEl = document.getElementById("inventorySummaryText");
-          if (summaryEl) summaryEl.textContent = inventorySummaryText();
+          var totalEl = document.getElementById("inventoryTotalValue");
+          if (totalEl) totalEl.textContent = inventoryTotalText();
         }
       });
     });

@@ -325,7 +325,16 @@ Token Secret as sensitive as an API key that can move money.
   Inventory" endpoint), sequentially so one bad row can't take down the
   rest of the batch, and returns a per-row success/error result the
   review screen displays inline — a row that fails stays editable to fix
-  and retry, one that succeeds locks and shows its new inventory ID.
+  and retry, one that succeeds locks and shows its new inventory ID. The
+  submit button itself tracks only what's still pending (checked and not
+  yet successfully submitted) rather than everything checked, so after a
+  partial success it re-labels to "Submit N items" for just what's left
+  and reads "All items added" (disabled) once nothing is — it used to
+  count every checked row regardless of outcome, so it never grayed out
+  and stayed clickable even with nothing left to actually submit. The
+  running total (sum of price × qty across checked rows) got its own
+  prominent bold line above the row count, instead of being buried as a
+  clause in that small subheading text.
   There's no staging/review endpoint in BrickLink's Store API itself
   (unlike its website's own upload flow) — everything up to the actual
   `POST` happens entirely in this app, which is what makes the review
