@@ -125,6 +125,31 @@ Token Secret as sensitive as an API key that can move money.
   `updatePickedProgress()` call, so picking progress stays visible while
   scrolling through a long list instead of only showing at the top of
   the page.
+- Items with quantity > 1 don't pick in a single tap — Ryan's own idea,
+  after flagging that it's too easy to mark a 6- or 12-piece lot picked
+  after physically counting out only one. Each tap adds 1 to a per-lot
+  counter (0/6 → 1/6 → … → 6/6), shown as its own small progress bar
+  under the item, with a visibly bigger quantity badge and a distinct
+  amber row tint while it's mid-count (vs. the usual green once actually
+  complete) — three separate visual cues so a half-picked multi-piece
+  lot never reads the same as either an untouched one or a done one.
+  Tapping again after reaching the full count wraps back to 0 (a
+  deliberate "start the count over" rather than picking past the end).
+  A lot only counts toward the order's overall "X of Y lots picked" once
+  its own counter is actually full — a qty-1 item's single tap still
+  works exactly as it always did.
+  Storage-wise, a pick is either the original bare `true`/`false`
+  (unchanged for every qty-1 item, and every pick made before this
+  feature existed) or `{n, of}` for a qty>1 item's count-in-progress.
+  The remote sync's merge logic had to change alongside this: the
+  original rule OR'd two sides together by truthiness, which — since a
+  `{n, of}` object is truthy regardless of how small `n` is — would have
+  silently flattened a genuinely-partial count (say 2 of 6 tapped) into
+  a false "fully picked" the moment it synced from a device with no
+  record of that lot yet. The merge now compares actual completeness
+  (`n >= of`, or the legacy bare `true`) and takes the greater tap count
+  when neither side is complete, preserving the same "never lose
+  progress" guarantee the original boolean-only merge had.
 - There's no auto-refresh; tap "Refresh" in the header to re-pull orders,
   which keeps usage well under BrickLink's 5,000 requests/day limit.
   The list is sorted newest to oldest by `date_ordered`, matching

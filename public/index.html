@@ -508,6 +508,27 @@
     background: var(--success);
     color: #fff;
   }
+  /* Multi-piece lots get a visibly bigger, bolder badge than a plain
+     qty-1 item — a poka-yoke cue so a >1 lot doesn't quietly get picked
+     as if it were a single piece. */
+  .qty-chip.multi {
+    min-width: 30px;
+    height: 30px;
+    top: -10px;
+    left: -10px;
+    border-width: 3px;
+    font-size: 13.5px;
+  }
+
+  /* A multi-piece lot mid-count (tapped at least once, not yet fully
+     tapped) — distinct from both "untouched" and "fully picked" (green,
+     via .item-row.picked above), so a half-picked lot never looks the
+     same as a done one. */
+  .item-row.partial { background: var(--accent-soft); border-color: transparent; }
+
+  .item-progress-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .item-progress-row .progress-track { height: 5px; }
+  .item-progress-row .progress-label { font-size: 11px; }
 
   .item-body { flex: 1; min-width: 0; }
   .item-line1 {
@@ -1163,6 +1184,29 @@
   // deliberate full replace of one order's picks and pushes immediately,
   // so it isn't undone by this — it only reconciles two states that both
   // grew from the same starting point.
+  // Merges one key's raw pick value from each side. Naively OR-ing (the
+  // original rule, back when every value was a plain boolean) would
+  // silently flatten a qty>1 item's in-progress {n,of} counter into a
+  // bare `true` the moment it syncs — any object is truthy in JS — which
+  // would mark a 2-of-3-tapped lot as fully picked. Whichever side is
+  // genuinely complete wins (a legacy `true` counts as complete); short
+  // of that, the greater tap count wins, same "never lose progress"
+  // philosophy as the original union, just aware of partial progress now.
+  function mergePickValue(v1, v2) {
+    var aFull = isRawPickFull(v1), bFull = isRawPickFull(v2);
+    if (aFull || bFull) {
+      if (v1 && typeof v1 === "object" && v1.n >= v1.of) return v1;
+      if (v2 && typeof v2 === "object" && v2.n >= v2.of) return v2;
+      return true;
+    }
+    var aObj = v1 && typeof v1 === "object";
+    var bObj = v2 && typeof v2 === "object";
+    if (aObj && bObj) return { n: Math.max(v1.n, v2.n), of: v1.of };
+    if (aObj) return v1;
+    if (bObj) return v2;
+    return false;
+  }
+
   function mergeStates(a, b) {
     var orderIds = {};
     Object.keys(a || {}).forEach(function (id) { orderIds[id] = true; });
@@ -1172,9 +1216,14 @@
     Object.keys(orderIds).forEach(function (orderId) {
       var picksA = (a && a[orderId]) || {};
       var picksB = (b && b[orderId]) || {};
+      var keys = {};
+      Object.keys(picksA).forEach(function (k) { keys[k] = true; });
+      Object.keys(picksB).forEach(function (k) { keys[k] = true; });
       var picks = {};
-      Object.keys(picksA).forEach(function (k) { if (picksA[k]) picks[k] = true; });
-      Object.keys(picksB).forEach(function (k) { if (picksB[k]) picks[k] = true; });
+      Object.keys(keys).forEach(function (k) {
+        var combined = mergePickValue(picksA[k], picksB[k]);
+        if (combined) picks[k] = combined;
+      });
       merged[orderId] = picks;
     });
     return merged;
@@ -1247,8 +1296,30 @@
     return orderActionsSyncPromise;
   }
 
+  // A pick's raw stored value is either the original boolean (true/false
+  // — every pick before qty>1 counting existed, and still every qty-1
+  // item today), or {n, of} for a qty>1 item being tapped up piece by
+  // piece. "Fully picked" needs to understand both shapes; keeping that
+  // logic in one place is what stops pickedCountFromState, isPicked, and
+  // the sync merge below from quietly disagreeing about what "done"
+  // means for a numeric value.
+  function isRawPickFull(v) {
+    if (v === true) return true;
+    if (v && typeof v === "object") return v.n >= v.of;
+    return false;
+  }
+
   function isPicked(orderId, key) {
-    return !!(state[orderId] && state[orderId][key]);
+    return isRawPickFull(state[orderId] && state[orderId][key]);
+  }
+
+  // For a qty>1 item's own mini progress bar. qty is the fallback target
+  // when nothing's been tapped yet (no stored value to read "of" from).
+  function pickProgress(orderId, key, qty) {
+    var v = state[orderId] && state[orderId][key];
+    if (v === true) return { n: qty, of: qty };
+    if (v && typeof v === "object") return { n: v.n, of: v.of };
+    return { n: 0, of: qty };
   }
 
   // Picked count straight from saved state, with no dependency on that
@@ -1261,13 +1332,25 @@
     var picks = state[orderId];
     if (!picks) return 0;
     var n = 0;
-    Object.keys(picks).forEach(function (k) { if (picks[k]) n++; });
+    Object.keys(picks).forEach(function (k) { if (isRawPickFull(picks[k])) n++; });
     return n;
   }
 
-  function togglePicked(orderId, key) {
+  // qty<=1 items keep the original single-tap toggle exactly as before.
+  // qty>1 items count taps instead — one tap per physical piece, the way
+  // Ryan actually wants to verify a multi-piece lot: tapping increments
+  // a per-lot counter, wrapping back to 0 once it reaches qty (a
+  // deliberate "start the count over" rather than picking past the end).
+  function togglePicked(orderId, key, qty) {
     if (!state[orderId]) state[orderId] = {};
-    state[orderId][key] = !state[orderId][key];
+    if (qty > 1) {
+      var current = state[orderId][key];
+      var n = current === true ? qty : (current && typeof current === "object" ? current.n : 0);
+      n = (n >= qty) ? 0 : n + 1;
+      state[orderId][key] = { n: n, of: qty };
+    } else {
+      state[orderId][key] = !state[orderId][key];
+    }
     saveState();
   }
 
@@ -1969,6 +2052,19 @@
       + '</span>';
   }
 
+  // A qty>1 item's own mini progress bar — fills in as it gets tapped,
+  // separate from (and in addition to) the enlarged qty badge and the
+  // row's own background tint, per Ryan's own suggestion for confirming
+  // a multi-piece lot is fully counted out rather than just "touched".
+  function itemProgressRowHtml(progress) {
+    var pct = progress.of > 0 ? Math.round((progress.n / progress.of) * 100) : 0;
+    var done = progress.n >= progress.of;
+    return '<div class="item-progress-row">'
+      + '<div class="progress-track"><div class="progress-fill' + (done ? ' done' : '') + '" style="width:' + pct + '%"></div></div>'
+      + '<span class="progress-label">' + progress.n + '/' + progress.of + '</span>'
+      + '</div>';
+  }
+
   function renderOrderDetail(order, items, messages, contact) {
     messages = messages || [];
     var picked = pickedCount(order.orderId, items);
@@ -1985,9 +2081,13 @@
 
     var rows = items.map(function (item, idx) {
       var isDone = isPicked(order.orderId, itemKeys[idx]);
+      var isMulti = item.qty > 1;
+      var progress = isMulti ? pickProgress(order.orderId, itemKeys[idx], item.qty) : null;
+      var isPartial = isMulti && !isDone && progress.n > 0;
+      var rowClass = isDone ? ' picked' : (isPartial ? ' partial' : '');
       return ""
-        + '<div class="item-row' + (isDone ? ' picked' : '') + '" data-key="' + escapeHtml(itemKeys[idx]) + '">'
-        + '<div class="item-thumb">' + thumbHtml(item) + '<span class="qty-chip">' + item.qty + '</span></div>'
+        + '<div class="item-row' + rowClass + '" data-key="' + escapeHtml(itemKeys[idx]) + '" data-qty="' + item.qty + '">'
+        + '<div class="item-thumb">' + thumbHtml(item) + '<span class="qty-chip' + (isMulti ? ' multi' : '') + '">' + item.qty + '</span></div>'
         + '<div class="item-body">'
         + '<div class="item-line1">'
         + '<span class="item-no mono">' + escapeHtml(item.itemNo) + '</span>'
@@ -1996,6 +2096,7 @@
         + (item.unitPrice ? '<span class="item-price mono">' + escapeHtml(formatCurrency(item.unitPrice, order.currencyCode)) + '</span>' : '')
         + '</span>'
         + '</div>'
+        + (isMulti ? itemProgressRowHtml(progress) : '')
         + '<div class="item-name">' + escapeHtml(item.name) + '</div>'
         + (item.colorName ? '<div class="item-color">' + escapeHtml(item.colorName) + '</div>' : '')
         + (item.description ? '<div class="item-color">' + escapeHtml(item.description) + '</div>' : '')
@@ -2054,8 +2155,18 @@
     orderView.querySelectorAll(".item-row").forEach(function (row) {
       row.addEventListener("click", function () {
         var key = row.getAttribute("data-key");
-        togglePicked(order.orderId, key);
-        row.classList.toggle("picked", isPicked(order.orderId, key));
+        var qty = parseInt(row.getAttribute("data-qty"), 10) || 1;
+        togglePicked(order.orderId, key, qty);
+
+        var isDone = isPicked(order.orderId, key);
+        var isMulti = qty > 1;
+        var progress = isMulti ? pickProgress(order.orderId, key, qty) : null;
+        row.classList.toggle("picked", isDone);
+        row.classList.toggle("partial", isMulti && !isDone && progress.n > 0);
+
+        var progressEl = row.querySelector(".item-progress-row");
+        if (progressEl) progressEl.outerHTML = itemProgressRowHtml(progress);
+
         updatePickedProgress(order, items);
       });
     });
