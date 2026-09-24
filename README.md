@@ -332,15 +332,26 @@ Token Secret as sensitive as an API key that can move money.
   step possible at all here.
   The CSV's `ITEMTYPE/ITEMID/COLOR/REMARKS/DESCRIPTION/QTY/CONDITION/PRICE`
   columns match BrickLink's own classic inventory-upload format exactly
-  (confirmed against a real BrickScan export); the request body's
-  `item.type` is sent as the full uppercase word ("MINIFIG", "PART", ...)
-  to match what BrickLink's Order Items endpoint is confirmed to return
-  elsewhere in this app — but that casing is **not** independently
-  confirmed for Create Inventory specifically, since there's no safe
-  read-only way to check it first (unlike shipping address or
-  `drive_thru_sent`, which were confirmed via a debug endpoint before
-  anything shipped). Worth watching the first real submission: a wrong
-  casing would show up as a clear per-row error, not a silent failure.
+  (confirmed against a real BrickScan export). The request body's
+  `item.type` was originally sent as the full uppercase word ("MINIFIG",
+  "PART", ...) to match what BrickLink's Order Items endpoint is
+  confirmed to return elsewhere in this app — flagged at the time as
+  unconfirmed for Create Inventory specifically, since there was no safe
+  read-only way to check it first. Ryan's first real submission confirmed
+  it wrong: every row came back `PARAMETER_MISSING_OR_INVALID`. Fixed by
+  mapping the word down to BrickLink's single-letter code ("P", "M",
+  "S", ...) before it reaches the request body — cross-checked against
+  `go-bricklink-api`'s own dedicated item-type-constants file
+  (`itemtypes.go`, a single source of truth for that struct field across
+  its whole library, not just one endpoint) and matches this app's own
+  existing letter map in `item-image.js` exactly except for
+  `UNSORTED_LOT`, where this app's "U" (confirmed earlier against a real
+  captured BrickLink catalog URL) is trusted over the Go library's "L"
+  for that one entry. Verified by exercising the real
+  `inventory-create.js` handler directly in Node with `blPost` mocked
+  out (not just a hand-written stub) to confirm the actual file now
+  serializes `"type":"P"` — not by a live BrickLink write, since that
+  would create real listings on Ryan's store.
 - **Active listings price check** — a "See active US listings" toggle on
   each review card in Add Inventory. `GET /api/price-guide` wraps
   BrickLink's Get Price Guide endpoint (`GET /items/{type}/{no}/price`

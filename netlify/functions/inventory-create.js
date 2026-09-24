@@ -11,16 +11,27 @@ const { requireAuth } = require('./lib/site-auth');
 // which is why the review step lives in the frontend instead: nothing
 // reaches BrickLink until the seller approves each row there.
 //
-// item.type is sent as the full uppercase word ("MINIFIG", "PART", ...),
-// matching the shape BrickLink's Order Items endpoint returns (confirmed
-// against real order data elsewhere in this app) — NOT independently
-// confirmed for this specific endpoint, since Create Inventory has no
-// safe read-only way to check it first. Worth watching the first real
-// submission closely; a wrong casing here would show up as a clear
-// per-item error below rather than silently doing the wrong thing.
+// item.type was originally sent as the full uppercase word ("MINIFIG",
+// "PART", ...) matching the shape BrickLink's Order Items endpoint
+// returns — that was flagged as unconfirmed for this specific endpoint,
+// and real testing confirmed it wrong: every item came back
+// PARAMETER_MISSING_OR_INVALID. go-bricklink-api's own item-type
+// constants file (itemtypes.go — a single source of truth used for this
+// same struct field across its whole library, not just one endpoint)
+// uses single-letter codes ("P", "M", "S", ...), so this maps the word
+// down to that letter before it reaches the request body. Matches this
+// app's own existing letter map in item-image.js exactly except for
+// UNSORTED_LOT, where this app's "U" (confirmed earlier against a real
+// captured BrickLink catalog URL — a first-party source) is trusted over
+// the Go library's "L" for that one entry.
+const TYPE_LETTERS = {
+  PART: 'P', SET: 'S', MINIFIG: 'M', BOOK: 'B', GEAR: 'G',
+  CATALOG: 'C', INSTRUCTION: 'I', ORIGINAL_BOX: 'O', UNSORTED_LOT: 'U',
+};
+
 async function createOne(item) {
   const payload = {
-    item: { no: item.itemNo, type: item.type },
+    item: { no: item.itemNo, type: TYPE_LETTERS[item.type] || item.type },
     color_id: item.colorId || 0,
     quantity: item.quantity,
     new_or_used: item.newOrUsed === 'U' ? 'U' : 'N',
