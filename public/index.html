@@ -1629,6 +1629,19 @@
     return (code ? code + " " : "") + num.toFixed(2);
   }
 
+  // BrickLink's own unit_price comes back with extra trailing zeros
+  // (e.g. "0.1500") — real cents precision, never fractions of a cent,
+  // so the editable Price field only needs two decimal places. Used
+  // wherever a row's unitPrice is set from a raw BrickLink/CSV/price-
+  // guide value, so the field itself (not just formatCurrency's
+  // display-only output) never shows that extra zero.
+  function formatPriceInput(value) {
+    if (value === null || value === undefined || value === "") return "";
+    var num = Number(value);
+    if (isNaN(num)) return String(value);
+    return num.toFixed(2);
+  }
+
   // tone: fresh = needs picking, packed = picked & boxed, done = shipped/received,
   // waiting = before payment, problem = cancelled/non-paying/etc.
   var STATUS_META = {
@@ -2952,7 +2965,7 @@
       name: decodeHtmlEntities(obj.ITEMNAME || ""),
       quantity: parseInt(obj.QTY, 10) || 1,
       newOrUsed: newOrUsed,
-      unitPrice: obj.PRICE || "",
+      unitPrice: formatPriceInput(obj.PRICE),
       description: description,
       remarks: remarks,
       location: obj.LOCATION || "",
@@ -3274,7 +3287,7 @@
       el.addEventListener("click", function () {
         var row = findInventoryRow(el.getAttribute("data-key"));
         if (!row) return;
-        row.unitPrice = el.getAttribute("data-price");
+        row.unitPrice = formatPriceInput(el.getAttribute("data-price"));
         // Tapping a Used-section listing while the row's still set to New
         // (or vice versa) would otherwise leave the price and the declared
         // Condition mismatched — syncing them here keeps a tapped price
@@ -3645,8 +3658,9 @@
       manageInventoryRows = (res.items || []).map(function (item) {
         var description = decodeHtmlEntities(item.description);
         var remarks = decodeHtmlEntities(item.remarks);
+        var unitPrice = formatPriceInput(item.unitPrice);
         var snapshot = {
-          quantity: item.quantity, newOrUsed: item.newOrUsed, unitPrice: item.unitPrice,
+          quantity: item.quantity, newOrUsed: item.newOrUsed, unitPrice: unitPrice,
           description: description, remarks: remarks,
         };
         return {
@@ -3660,7 +3674,7 @@
           colorName: item.colorName,
           quantity: item.quantity,
           newOrUsed: item.newOrUsed,
-          unitPrice: item.unitPrice,
+          unitPrice: unitPrice,
           description: description,
           remarks: remarks,
           dateCreated: item.dateCreated || null,
@@ -3753,7 +3767,7 @@
     return '<div class="manage-inventory-stats">'
       + '<span class="manage-inventory-stat"><strong>' + stats.lots + '</strong> lot' + (stats.lots === 1 ? '' : 's') + '</span>'
       + '<span class="manage-inventory-stat"><strong>' + stats.items + '</strong> item' + (stats.items === 1 ? '' : 's') + '</span>'
-      + '<span class="manage-inventory-stat"><strong>' + escapeHtml(formatCurrency(stats.value, "USD")) + '</strong>Total value</span>'
+      + '<span class="manage-inventory-stat"><strong>' + escapeHtml(formatCurrency(stats.value, "USD")) + '</strong>total value</span>'
       + '</div>';
   }
 

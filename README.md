@@ -606,8 +606,8 @@ Token Secret as sensitive as an API key that can move money.
   lots — which is also what the flat list's old plain "N items" count
   was actually mislabeling (it was counting lots, not pieces); that
   label is gone now that the full stats banner covers it. The $ figure
-  has its own "Total value" caption underneath, matching the "lots"/
-  "items" captions on the other two numbers.
+  has its own "total value" caption underneath, matching the "lots"/
+  "items" captions on the other two numbers (lowercase, same as those).
   A dirty row (unsaved edits) is highlighted with a plain amber
   background (`.item-row.row-dirty`, same `--accent-soft` tint
   `.item-row.partial` already uses for a mid-count multi-qty pick on
@@ -621,3 +621,11 @@ Token Secret as sensitive as an API key that can move money.
   since nothing's reached BrickLink yet at that point) after a confirm
   prompt, the same way Submit's own confirm prompt guards the opposite
   action.
+  Every editable Price field (here and on Add Inventory) is normalized
+  to exactly two decimal places by a shared `formatPriceInput()` at the
+  moment a row's `unitPrice` is first set — from BrickLink's own
+  `unit_price` on load, from a CSV import, or from tapping a
+  price-guide suggestion — rather than only at display time the way
+  `formatCurrency()` already worked. BrickLink's own value carries extra
+  trailing zeros past the cent (e.g. `"0.1500"`), which used to show up
+  verbatim in the editable field itself.
