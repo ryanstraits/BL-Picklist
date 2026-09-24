@@ -124,6 +124,23 @@ Token Secret as sensitive as an API key that can move money.
   `updatePickedProgress()` call, so picking progress stays visible while
   scrolling through a long list instead of only showing at the top of
   the page.
+- Each item block on the order-detail page has a small "View on
+  BrickLink ↗" link (`bricklinkCatalogUrl()`, the same deep-link builder
+  Add Inventory's price-guide panel already used) that opens that exact
+  item/color/condition's catalog page, scoped to US listings — a plain
+  external link, not the embedded price-guide panel Add Inventory has;
+  Ryan just wants to jump out to BrickLink's own page from here.
+  `onclick="event.stopPropagation()"` keeps a tap on the link from also
+  toggling the row's picked state, the same guard the price-guide link
+  already used. This surfaced the same "(Not Applicable)" color-name bug
+  fixed once before on the Add Inventory and Manage Inventory screens —
+  BrickLink's own colors list has a real, non-zero-id color literally
+  named "Not Applicable" (used for colorless items like minifigs), so
+  filtering on `colorId` truthiness alone doesn't catch it; the
+  order-detail item block was still checking only `colorId` and needed
+  the same string-based guard (skip rendering when the name,
+  case-insensitively, is exactly "not applicable") the other two screens
+  already had.
 - Items with quantity > 1 don't pick in a single tap — Ryan's own idea,
   after flagging that it's too easy to mark a 6- or 12-piece lot picked
   after physically counting out only one. Each tap adds 1 to a per-lot
