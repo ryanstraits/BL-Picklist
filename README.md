@@ -537,3 +537,21 @@ Token Secret as sensitive as an API key that can move money.
   still works exactly as before and takes over the results area
   regardless of where you've drilled into the browse screen; clearing the
   search returns to wherever you left off browsing.
+  Once you're down at a flat item list — either a theme's items or the
+  Recently Added list below — a sort control offers item number
+  (low→high, the longstanding default, or high→low) and, when dates are
+  available, newest/oldest first. A top-level "Recently Added" tile
+  (next to the type breakdown) shows items added in the last 15 or 30
+  days (toggleable, defaults to 30), counted and filtered from the same
+  `dateCreated` field the date sort uses. That field (BrickLink's
+  `date_created` on the Inventory resource) is passed through by
+  `inventory-list.js` but isn't yet confirmed against a real captured
+  response the way the rest of the shape is — it's documented by the
+  same real JS client library (`ryansh100/bricklink-api`) that already
+  proved reliable once this session (it correctly predicted the
+  `is_retain`/`is_stock_room` requirement Ryan's live API testing then
+  confirmed). Both the date sort options and the Recently Added tile
+  check at runtime whether any row actually has a `dateCreated` and
+  quietly don't appear if not, rather than offering a feature that can't
+  work — so this needs Ryan's next real visit to Manage Inventory to
+  confirm one way or the other.

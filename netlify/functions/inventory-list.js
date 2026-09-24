@@ -10,6 +10,16 @@ const { requireAuth } = require('./lib/site-auth');
 // absent from BrickLink's own data: any bin/location field — the "Bin"
 // shown on the Add Inventory page comes entirely from Ryan's own CSV
 // export, not from BrickLink, so this list can't show or search by bin.
+//
+// date_created is passed through as dateCreated but NOT yet confirmed
+// against that same real captured response the way the other fields
+// were — it's documented on the Inventory resource by a real client
+// library (ryansh100/bricklink-api) that already proved reliable once
+// (its is_retain/is_stock_room fields matched exactly what BrickLink's
+// live API demanded for Create Inventory), but the sort-by-date and
+// recently-added features on the frontend both check for its actual
+// presence at runtime and quietly hide themselves if it's missing,
+// rather than assuming it's there.
 exports.handler = requireAuth(async () => {
   try {
     const data = await blGet('/inventories');
@@ -27,6 +37,7 @@ exports.handler = requireAuth(async () => {
       unitPrice: row.unit_price || '',
       description: row.description || '',
       remarks: row.remarks || '',
+      dateCreated: row.date_created || null,
     }));
     return json(200, { items });
   } catch (err) {

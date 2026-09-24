@@ -737,6 +737,18 @@
   }
   .manage-inventory-hint { color: var(--text-secondary); font-size: 13px; margin-top: 14px; }
   .manage-inventory-cap-note { color: var(--text-secondary); font-size: 12px; text-align: center; margin-top: 10px; }
+  .manage-inventory-sort-select {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .browse-tile-recent { border-color: var(--accent); }
+  .browse-tile-recent .browse-tile-name { color: var(--accent); }
 
   .browse-breadcrumb {
     display: flex;
@@ -3501,7 +3513,17 @@
   // of this type, uncategorized by theme").
   var manageInventoryBrowseType = null;
   var manageInventoryBrowseCategory = null;
+  var manageInventoryBrowseRecent = false;
   var manageInventoryCategoriesLoading = false;
+  var manageInventorySortKey = "itemNoAsc"; // itemNoAsc | itemNoDesc | newest | oldest
+  var manageInventoryRecentDays = 30; // 15 | 30
+  // Whether any row actually came back with a dateCreated — BrickLink's
+  // date_created field isn't confirmed against a real response the way
+  // the rest of this shape is (see inventory-list.js), so the
+  // newest/oldest sort options and the Recently Added browse entry both
+  // check this and quietly hide themselves if it's not really there,
+  // rather than offering a feature that can't work.
+  var manageInventoryHasDates = false;
 
   function fetchManageInventory() {
     manageInventoryLoading = true;
@@ -3533,10 +3555,12 @@
           unitPrice: item.unitPrice,
           description: description,
           remarks: remarks,
+          dateCreated: item.dateCreated || null,
           orig: snapshot,
           result: null,
         };
       });
+      manageInventoryHasDates = manageInventoryRows.some(function (r) { return !!r.dateCreated; });
     }).catch(function (err) {
       manageInventoryError = "Couldn't load your inventory: " + err.message;
     }).finally(function () {
@@ -3555,6 +3579,51 @@
       || String(row.unitPrice) !== String(row.orig.unitPrice)
       || row.description !== row.orig.description
       || row.remarks !== row.orig.remarks;
+  }
+
+  // BrickLink item numbers mix pure-digit ("3001") and letter-prefixed
+  // ("sw0359") forms — { numeric: true } makes localeCompare treat the
+  // digit runs in each as numbers rather than comparing them character
+  // by character, so "87079" correctly sorts after "3001" instead of
+  // before it.
+  function compareManageInventoryItemNo(a, b) {
+    return (a.itemNo || "").localeCompare(b.itemNo || "", undefined, { numeric: true, sensitivity: "base" });
+  }
+  function compareManageInventoryDate(a, b) {
+    var ta = a.dateCreated ? new Date(a.dateCreated).getTime() : 0;
+    var tb = b.dateCreated ? new Date(b.dateCreated).getTime() : 0;
+    return ta - tb;
+  }
+  function manageInventorySortRows(rows) {
+    var key = manageInventorySortKey;
+    var sorted = rows.slice();
+    sorted.sort(function (a, b) {
+      if (key === "itemNoDesc") return compareManageInventoryItemNo(b, a);
+      if (key === "newest") return compareManageInventoryDate(b, a);
+      if (key === "oldest") return compareManageInventoryDate(a, b);
+      return compareManageInventoryItemNo(a, b);
+    });
+    return sorted;
+  }
+  function manageInventorySortSelectHtml() {
+    var dateOptions = manageInventoryHasDates
+      ? '<option value="newest"' + (manageInventorySortKey === "newest" ? ' selected' : '') + '>Newest first</option>'
+        + '<option value="oldest"' + (manageInventorySortKey === "oldest" ? ' selected' : '') + '>Oldest first</option>'
+      : '';
+    return '<select class="manage-inventory-sort-select" id="manageInventorySortSelect">'
+      + '<option value="itemNoAsc"' + (manageInventorySortKey === "itemNoAsc" ? ' selected' : '') + '>Item # (low→high)</option>'
+      + '<option value="itemNoDesc"' + (manageInventorySortKey === "itemNoDesc" ? ' selected' : '') + '>Item # (high→low)</option>'
+      + dateOptions
+      + '</select>';
+  }
+
+  function manageInventoryRecentRows(days) {
+    var cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return (manageInventoryRows || []).filter(function (r) {
+      if (!r.dateCreated) return false;
+      var t = new Date(r.dateCreated).getTime();
+      return !isNaN(t) && t >= cutoff;
+    });
   }
 
   function manageInventoryTypeCounts() {
@@ -3579,7 +3648,9 @@
 
   function manageInventoryBreadcrumb() {
     var parts = ['<button type="button" class="browse-crumb" data-browse-reset="type">All types</button>'];
-    if (manageInventoryBrowseType) {
+    if (manageInventoryBrowseRecent) {
+      parts.push('<span class="browse-crumb-current">Recently Added</span>');
+    } else if (manageInventoryBrowseType) {
       if (manageInventoryBrowseCategory !== null) {
         parts.push('<button type="button" class="browse-crumb" data-browse-reset="category">' + escapeHtml(manageInventoryBrowseType) + '</button>');
         parts.push('<span class="browse-crumb-current">' + escapeHtml(categoryDisplayNameById(manageInventoryBrowseCategory)) + '</span>');
@@ -3599,6 +3670,25 @@
       ? '<div class="manage-inventory-hint">You have ' + dirtyCount + ' unsaved change' + (dirtyCount === 1 ? '' : 's') + ' — browsing won’t lose them.</div>'
       : '';
 
+    if (manageInventoryBrowseRecent) {
+      var recentRows = manageInventorySortRows(manageInventoryRecentRows(manageInventoryRecentDays));
+      var cappedRecent = recentRows.slice(0, MANAGE_INVENTORY_RESULT_CAP);
+      return hint
+        + manageInventoryBreadcrumb()
+        + '<div class="inventory-summary-row">'
+        + '<span>' + recentRows.length + ' item' + (recentRows.length === 1 ? '' : 's') + '</span>'
+        + '<div class="inventory-bulk-actions">'
+        + '<select class="manage-inventory-sort-select" id="manageInventoryRecentWindowSelect">'
+        + '<option value="15"' + (manageInventoryRecentDays === 15 ? ' selected' : '') + '>Last 15 days</option>'
+        + '<option value="30"' + (manageInventoryRecentDays === 30 ? ' selected' : '') + '>Last 30 days</option>'
+        + '</select>'
+        + manageInventorySortSelectHtml()
+        + '</div>'
+        + '</div>'
+        + cappedRecent.map(manageInventoryCardHtml).join("")
+        + (recentRows.length > cappedRecent.length ? '<div class="manage-inventory-cap-note">Showing the first ' + cappedRecent.length + ' of ' + recentRows.length + ' items — search above to find a specific one.</div>' : '');
+    }
+
     if (!manageInventoryBrowseType) {
       var typeCounts = manageInventoryTypeCounts();
       var types = Object.keys(typeCounts).sort(function (a, b) { return typeCounts[b] - typeCounts[a]; });
@@ -3608,9 +3698,15 @@
           + '<span class="browse-tile-count">' + typeCounts[t] + '</span>'
           + '</button>';
       }).join("");
+      var recentTile = manageInventoryHasDates
+        ? '<button type="button" class="browse-tile browse-tile-recent" data-browse-recent="1">'
+          + '<span class="browse-tile-name">Recently Added</span>'
+          + '<span class="browse-tile-count">' + manageInventoryRecentRows(manageInventoryRecentDays).length + '</span>'
+          + '</button>'
+        : '';
       return hint
         + '<div class="manage-inventory-hint">Browse by item type, or search above by name or item number.</div>'
-        + '<div class="browse-tile-list">' + typeTiles + '</div>';
+        + '<div class="browse-tile-list">' + recentTile + typeTiles + '</div>';
     }
 
     if (!categoriesById) {
@@ -3646,15 +3742,18 @@
     }
 
     var catId = manageInventoryBrowseCategory;
-    var filtered = (manageInventoryRows || []).filter(function (r) {
+    var filtered = manageInventorySortRows((manageInventoryRows || []).filter(function (r) {
       if (r.type !== manageInventoryBrowseType) return false;
       var topId = r.categoryId ? topCategoryId(r.categoryId, categoriesById) : 0;
       return String(topId || 0) === catId;
-    });
+    }));
     var capped = filtered.slice(0, MANAGE_INVENTORY_RESULT_CAP);
     return hint
       + manageInventoryBreadcrumb()
-      + '<div class="inventory-summary-row"><span>' + filtered.length + ' item' + (filtered.length === 1 ? '' : 's') + '</span></div>'
+      + '<div class="inventory-summary-row">'
+      + '<span>' + filtered.length + ' item' + (filtered.length === 1 ? '' : 's') + '</span>'
+      + manageInventorySortSelectHtml()
+      + '</div>'
       + capped.map(manageInventoryCardHtml).join("")
       + (filtered.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + filtered.length + ' items — search above to find a specific one.</div>' : '');
   }
@@ -3779,6 +3878,7 @@
       el.addEventListener("click", function () {
         manageInventoryBrowseType = el.getAttribute("data-browse-type");
         manageInventoryBrowseCategory = null;
+        manageInventoryBrowseRecent = false;
         renderManageInventoryResults();
       });
     });
@@ -3788,14 +3888,35 @@
         renderManageInventoryResults();
       });
     });
+    container.querySelectorAll("[data-browse-recent]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        manageInventoryBrowseRecent = true;
+        renderManageInventoryResults();
+      });
+    });
     container.querySelectorAll("[data-browse-reset]").forEach(function (el) {
       el.addEventListener("click", function () {
         var level = el.getAttribute("data-browse-reset");
-        if (level === "type") manageInventoryBrowseType = null;
+        if (level === "type") { manageInventoryBrowseType = null; manageInventoryBrowseRecent = false; }
         manageInventoryBrowseCategory = null;
         renderManageInventoryResults();
       });
     });
+
+    var sortSelectEl = document.getElementById("manageInventorySortSelect");
+    if (sortSelectEl) {
+      sortSelectEl.addEventListener("change", function () {
+        manageInventorySortKey = sortSelectEl.value;
+        renderManageInventoryResults();
+      });
+    }
+    var recentWindowSelectEl = document.getElementById("manageInventoryRecentWindowSelect");
+    if (recentWindowSelectEl) {
+      recentWindowSelectEl.addEventListener("change", function () {
+        manageInventoryRecentDays = parseInt(recentWindowSelectEl.value, 10) || 30;
+        renderManageInventoryResults();
+      });
+    }
 
     var retryBtn = document.getElementById("manageInventoryRetryBtn");
     if (retryBtn) retryBtn.addEventListener("click", fetchManageInventory);
