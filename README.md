@@ -362,3 +362,16 @@ Token Secret as sensitive as an API key that can move money.
   classic (non-module) script but `pdfjs-dist` ships ESM-only, a small
   bridge module (`public/vendor/pdfjs/pdfjs-bridge.js`) imports it and
   hands it to the rest of the app via `window.pdfjsLib`.
+  Output is a PDF (not a PNG) at the label's own physical page size, via
+  `pdf-lib`, vendored the same way under `public/vendor/pdf-lib/` (its
+  own bridge module hands it to the classic script via `window.PDFLib`;
+  pdfjs-dist only reads PDFs, it can't write them). PNG-via-data-URL was
+  the original approach, but the download button did nothing on iOS
+  Safari/WebKit — the same engine that mishandled `Set-Cookie` from
+  `fetch()` earlier in this app — because WebKit doesn't reliably honor
+  `<a download>` for `data:` URLs. Switched to a `Blob`/Object URL
+  instead, which either downloads directly (desktop browsers) or opens
+  in Safari's own PDF viewer with a working Share/Save-to-Files button,
+  so it degrades gracefully rather than silently failing. The downloaded
+  file keeps the uploaded label's own filename with `-2x3` appended
+  (e.g. `label-2x3.pdf`), not a generic name.

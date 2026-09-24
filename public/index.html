@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script type="module" src="/vendor/pdfjs/pdfjs-bridge.js"></script>
+<script type="module" src="/vendor/pdf-lib/pdf-lib-bridge.js"></script>
 <style>
   :root {
     --bg: #F5F3EF;
@@ -2975,7 +2976,7 @@
       + (labelPrepLoading ? '<div class="state-block">Loading label…</div>' : '')
       + (labelPrepError ? '<div class="state-block error">' + escapeHtml(labelPrepError) + '</div>' : '')
       + (labelPrepSource ? '<canvas id="labelPrepCanvas" class="label-prep-canvas"></canvas>' : '')
-      + (labelPrepSource ? '<div class="inventory-submit-row"><button type="button" class="inventory-submit-btn" id="labelPrepDownloadBtn">Download PNG</button></div>' : '');
+      + (labelPrepSource ? '<div class="inventory-submit-row"><button type="button" class="inventory-submit-btn" id="labelPrepDownloadBtn">Download PDF</button></div>' : '');
 
     document.getElementById("labelPrepFileInput").addEventListener("change", handleLabelPrepFile);
 
@@ -2993,7 +2994,7 @@
 
     if (labelPrepSource) {
       drawLabelPrepOutput();
-      document.getElementById("labelPrepDownloadBtn").addEventListener("click", downloadLabelPrepPng);
+      document.getElementById("labelPrepDownloadBtn").addEventListener("click", downloadLabelPrepPdf);
     }
   }
 
@@ -3101,14 +3102,45 @@
     ctx.restore();
   }
 
-  function downloadLabelPrepPng() {
+  // Builds a PDF (not just a PNG) so the output can carry the label's own
+  // physical page size, and hands it off as a Blob URL rather than a data:
+  // URL — the old data:-URL `<a download>` click silently did nothing on
+  // iOS Safari/WebKit (Ryan's "Chrome on iOS", same underlying engine
+  // that mishandled Set-Cookie from fetch() earlier in this app): WebKit
+  // doesn't reliably honor the download attribute for data: URLs. A Blob
+  // URL either downloads directly (desktop browsers) or opens in Safari's
+  // own PDF viewer, which has a working Share/Save-to-Files button either
+  // way, so it degrades gracefully instead of doing nothing.
+  function downloadLabelPrepPdf() {
     var canvas = document.getElementById("labelPrepCanvas");
-    if (!canvas) return;
+    if (!canvas || !window.PDFLib) return;
     var base = (labelPrepFileName || "label").replace(/\.[^.]+$/, "");
-    var link = document.createElement("a");
-    link.download = base + "-half.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    var pageWidthPt = (LABEL_CANVAS_W / LABEL_DPI) * 72;
+    var pageHeightPt = (LABEL_CANVAS_H / LABEL_DPI) * 72;
+    canvas.toBlob(function (pngBlob) {
+      if (!pngBlob) return;
+      pngBlob.arrayBuffer().then(function (pngBytes) {
+        return window.PDFLib.PDFDocument.create().then(function (pdfDoc) {
+          return pdfDoc.embedPng(pngBytes).then(function (pngImage) {
+            var page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
+            page.drawImage(pngImage, { x: 0, y: 0, width: pageWidthPt, height: pageHeightPt });
+            return pdfDoc.save();
+          });
+        });
+      }).then(function (pdfBytes) {
+        var blob = new Blob([pdfBytes], { type: "application/pdf" });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement("a");
+        link.href = url;
+        link.download = base + "-2x3.pdf";
+        link.target = "_blank";
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+      });
+    }, "image/png");
   }
 
   function goToOrders() {
