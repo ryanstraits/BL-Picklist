@@ -66,9 +66,43 @@ Token Secret as sensitive as an API key that can move money.
 
 - `/api/orders` calls BrickLink with `direction=in` (orders where you're
   the seller) and returns every order status except `COMPLETED` by
-  default. Override with `/api/orders?status=paid,packed` etc. if you want
-  a narrower set. Order cards and the detail view show a color-coded
-  status badge (fresh/paid, packed, shipped/received, cancelled/problem).
+  default, with one exception: a `COMPLETED` order still shows for 7 days
+  after `date_status_changed` (`COMPLETED_RETENTION_MS` in `orders.js`) —
+  Ryan wants a completed order to stay visible for a while (whether the
+  buyer marked it Completed on their end, or Ryan used the order's own new
+  "Mark as completed" action) so anything actually wrong with it has a
+  chance to surface before it drops off the list for good, rather than
+  vanishing the instant it completes. `date_status_changed` isn't
+  independently confirmed against a real captured response the way
+  `total_weight` eventually was (see below) — it's documented by the same
+  real Go client library (`funwithbots/go-bricklink-api`'s `Header`
+  struct) that already got `is_retain`/`is_stock_room` right, and that
+  struct is what backs the orders-LIST call this endpoint already makes,
+  so (unlike `total_weight`) no extra per-order fetch is needed to read
+  it. If it's ever missing or unparseable on a real order, the order falls
+  back to being excluded immediately — today's behavior — rather than
+  guessing. Override with `/api/orders?status=paid,packed` etc. if you
+  want a narrower set (the retention window only applies to the default,
+  no-status-param request). Order cards and the detail view show a
+  color-coded status badge (fresh/paid, packed, shipped/received,
+  complete, cancelled/problem) — `complete` is a deliberately separate
+  tone from `waiting`, even though they render with the same neutral gray,
+  since conflating the two was exactly the kind of thing that caused the
+  "Not Applicable" color bug earlier in this app's history.
+  `/api/update-order-status` now also accepts `COMPLETED` as a target
+  (alongside the existing `PACKED`/`SHIPPED`), so a "Mark as completed"
+  button appears on the orders list and the order detail page once an
+  order is `SHIPPED` or `RECEIVED` — Ryan's own way to close out an order
+  without waiting on the buyer to do it from their end. On the orders
+  list this sits in the same single-action-button slot Send Drive Thru
+  already uses for a `SHIPPED` order, so it only shows once Drive Thru's
+  already been sent (or immediately for `RECEIVED`); on the order detail
+  page it's an independent row, so it appears alongside Send Drive Thru
+  rather than replacing it. The "Total value of orders in process" stat on
+  the orders list explicitly excludes `COMPLETED` orders now that they can
+  actually appear in the list — otherwise a completed order's total would
+  have kept counting as "in process" for the rest of its 7-day visibility
+  window.
 - `/api/item-image?type=&no=&color=&nu=` fetches up to three independent
   BrickLink photo sources concurrently — the official Catalog API's
   `image_url`, the color-specific catalog photo

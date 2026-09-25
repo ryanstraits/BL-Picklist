@@ -260,6 +260,7 @@
   .status-action-btn:disabled { opacity: 0.6; cursor: default; }
   .status-action-btn.to-packed { color: var(--info); border-color: var(--info); }
   .status-action-btn.to-shipped { color: var(--success); border-color: var(--success); }
+  .status-action-btn.to-completed { color: var(--text-secondary); border-color: var(--text-secondary); }
   .status-action-btn.list-drive-thru-btn { color: var(--accent); border-color: var(--accent); }
   .status-action-btn.pickup-btn { color: var(--accent); border-color: var(--accent); }
 
@@ -297,6 +298,7 @@
   .status-badge.tone-packed { color: var(--success); background: var(--success-bg); }
   .status-badge.tone-done { color: var(--info); background: var(--info-bg); }
   .status-badge.tone-waiting { color: var(--text-secondary); background: var(--surface-alt); }
+  .status-badge.tone-complete { color: var(--text-secondary); background: var(--surface-alt); }
   .status-badge.tone-problem { color: var(--danger); background: var(--surface-alt); }
   .order-buyer {
     display: flex;
@@ -1785,7 +1787,10 @@
   }
 
   // tone: fresh = needs picking, packed = picked & boxed, done = shipped/received,
-  // waiting = before payment, problem = cancelled/non-paying/etc.
+  // waiting = before payment, problem = cancelled/non-paying/etc, complete =
+  // fully done (a separate, deliberately neutral-gray tone from "waiting" —
+  // same visual color, but a different status entirely, so they're not
+  // conflated just because they happen to render the same).
   var STATUS_META = {
     PENDING: { label: "Pending", tone: "waiting" },
     UPDATED: { label: "Updated", tone: "waiting" },
@@ -1795,6 +1800,7 @@
     PACKED: { label: "Packed", tone: "done" },
     SHIPPED: { label: "Shipped", tone: "packed" },
     RECEIVED: { label: "Received", tone: "done" },
+    COMPLETED: { label: "Complete", tone: "complete" },
     CANCELLED: { label: "Cancelled", tone: "problem" },
     PURGED: { label: "Purged", tone: "problem" },
     NPB: { label: "NPB", tone: "problem" },
@@ -2158,9 +2164,14 @@
     // even after an earlier batch's pickup was already confirmed.
     var ordersAwaitingPickup = orders.filter(function (o) { return o.status === "PACKED" && !pickupScheduled[o.orderId]; });
 
+    // COMPLETED orders stick around in this list for a week now (so Ryan
+    // can catch anything the buyer flags), but their money isn't "in
+    // process" anymore — excluded here the same way a cancelled/problem
+    // order already was, so the stat doesn't inflate once completed
+    // orders started actually showing up in this array.
     var inProcessOrders = orders.filter(function (o) {
       var meta = STATUS_META[o.status];
-      return o.orderTotal && (!meta || meta.tone !== "problem");
+      return o.orderTotal && o.status !== "COMPLETED" && (!meta || meta.tone !== "problem");
     });
     var inProcessCurrency = inProcessOrders.length ? inProcessOrders[0].currencyCode : null;
     var inProcessTotal = null;
@@ -2198,6 +2209,8 @@
         statusAction = '<button class="status-action-btn to-shipped" data-order="' + escapeHtml(order.orderId) + '" data-target-status="SHIPPED">Mark as shipped</button>';
       } else if (order.status === "SHIPPED" && !driveThruSent[order.orderId]) {
         statusAction = '<button class="status-action-btn list-drive-thru-btn" data-order="' + escapeHtml(order.orderId) + '">Send Drive Thru</button>';
+      } else if (order.status === "SHIPPED" || order.status === "RECEIVED") {
+        statusAction = '<button class="status-action-btn to-completed" data-order="' + escapeHtml(order.orderId) + '" data-target-status="COMPLETED">Mark as completed</button>';
       }
       html += ""
         + '<div class="order-card' + (needsPick ? ' needs-pick' : '') + '" role="button" tabindex="0" data-order="' + escapeHtml(order.orderId) + '">'
@@ -2260,7 +2273,7 @@
   function handleStatusChange(btn) {
     var orderId = btn.getAttribute("data-order");
     var targetStatus = btn.getAttribute("data-target-status");
-    var label = targetStatus === "PACKED" ? "Packed" : "Shipped";
+    var label = STATUS_META[targetStatus].label;
 
     if (!window.confirm("Mark order #" + orderId + " as " + label + " on BrickLink?")) return;
 
@@ -2407,6 +2420,8 @@
       detailStatusAction = '<button class="status-action-btn to-packed" id="detailStatusBtn" data-target-status="PACKED">Mark as packed</button>';
     } else if (order.status === "PACKED") {
       detailStatusAction = '<button class="status-action-btn to-shipped" id="detailStatusBtn" data-target-status="SHIPPED">Mark as shipped</button>';
+    } else if (order.status === "SHIPPED" || order.status === "RECEIVED") {
+      detailStatusAction = '<button class="status-action-btn to-completed" id="detailStatusBtn" data-target-status="COMPLETED">Mark as completed</button>';
     }
 
     var rows = items.map(function (item, idx) {
@@ -2526,7 +2541,7 @@
       detailStatusBtn.addEventListener("click", function (e) {
         e.stopPropagation();
         var targetStatus = detailStatusBtn.getAttribute("data-target-status");
-        var label = targetStatus === "PACKED" ? "Packed" : "Shipped";
+        var label = STATUS_META[targetStatus].label;
         if (!window.confirm("Mark order #" + order.orderId + " as " + label + " on BrickLink?")) return;
 
         var originalText = detailStatusBtn.textContent;

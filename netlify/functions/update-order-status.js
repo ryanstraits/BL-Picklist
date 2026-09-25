@@ -3,10 +3,14 @@ const { json, errorResponse } = require('./lib/http');
 const { requireAuth } = require('./lib/site-auth');
 
 // Deliberately narrow: this app only ever drives an order from PAID to
-// PACKED (once everything's picked) or PACKED to SHIPPED, never a
-// free-form status picker. Anything else gets rejected before it reaches
-// BrickLink.
-const ALLOWED_STATUSES = new Set(['PACKED', 'SHIPPED']);
+// PACKED (once everything's picked), PACKED to SHIPPED, or SHIPPED/RECEIVED
+// to COMPLETED (Ryan's own "Mark as completed", separate from the buyer
+// marking it Completed on their end) — never a free-form status picker.
+// Anything else gets rejected before it reaches BrickLink. COMPLETED is
+// confirmed settable by either buyer or seller per a real client library's
+// status enum (funwithbots/go-bricklink-api), the same source that already
+// got is_retain/is_stock_room right.
+const ALLOWED_STATUSES = new Set(['PACKED', 'SHIPPED', 'COMPLETED']);
 
 exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -22,7 +26,7 @@ exports.handler = requireAuth(async (event) => {
 
   const { orderId, status } = payload;
   if (!orderId || !ALLOWED_STATUSES.has(status)) {
-    return { statusCode: 400, body: 'orderId and a supported status (PACKED or SHIPPED) are required' };
+    return { statusCode: 400, body: 'orderId and a supported status (PACKED, SHIPPED, or COMPLETED) are required' };
   }
 
   try {
