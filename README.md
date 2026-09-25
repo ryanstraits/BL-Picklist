@@ -634,3 +634,22 @@ Token Secret as sensitive as an API key that can move money.
   rounding to two decimals the way `formatCurrency()`'s aggregate-total
   display does would have silently truncated a real sub-cent price
   rather than just trimming a padding zero.
+  Each card also has a "Delete" button — a dedicated one, not a
+  quantity-zero workaround (BrickLink's real delete is its own endpoint,
+  `DELETE /inventories/{id}`, confirmed against the same client library
+  that already proved accurate once for Create Inventory's `is_retain`/
+  `is_stock_room` requirement). Marking a row for delete fits the same
+  "review, then submit" staging model as an edit rather than deleting
+  immediately: it counts as dirty, tints the whole card the danger color
+  (same `--danger-soft`-on-transparent-border pattern `.row-dirty`
+  already uses with `--accent-soft`), disables its fields (nothing to
+  edit on something about to be deleted), and shows an "Undo delete" in
+  the button's place until Submit is actually tapped and confirmed. A
+  submit with both edits and deletions pending fires `PUT
+  /inventories/{id}` for the edited rows and the new `inventory-delete.js`
+  (`DELETE /inventories/{id}`) for the marked ones in parallel, one
+  request per endpoint; a deleted row that succeeds is spliced out of the
+  list entirely on response, rather than lingering as a "deleted" success
+  card for something that no longer exists on BrickLink to edit or
+  delete again. Cancel clears a pending delete mark the same way it
+  reverts a field edit.

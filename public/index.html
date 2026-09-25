@@ -23,6 +23,7 @@
     --success: #2F8F5B;
     --success-bg: #E3F3EA;
     --danger: #B4483A;
+    --danger-soft: #F5DCD7;
     --info: #2E5FA3;
     --info-bg: #E3EAF5;
   }
@@ -40,6 +41,7 @@
       --success: #4FAE7B;
       --success-bg: #1C3327;
       --danger: #E0685A;
+      --danger-soft: #3A1F1B;
       --info: #7BB0FA;
       --info-bg: #1C2A40;
     }
@@ -57,6 +59,7 @@
     --success: #4FAE7B;
     --success-bg: #1C3327;
     --danger: #E0685A;
+    --danger-soft: #3A1F1B;
     --info: #7BB0FA;
     --info-bg: #1C2A40;
   }
@@ -594,6 +597,33 @@
     margin-top: 5px;
   }
   .item-bl-link:active { color: var(--accent); }
+  .inventory-row-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 5px;
+  }
+  .inventory-row-actions .item-bl-link { margin-top: 0; }
+  .delete-row-btn {
+    background: none;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .delete-row-btn:active { background: var(--surface-alt); }
+  .delete-row-btn.marked { border-color: var(--border); color: var(--text-secondary); }
+  .item-row.marked-for-delete { background: var(--danger-soft); border-color: transparent; }
+  .delete-pending-note {
+    font-size: 12px;
+    color: var(--danger);
+    font-weight: 600;
+    margin-top: 4px;
+  }
 
   .checkmark {
     flex: none;
@@ -3683,6 +3713,7 @@
           dateCreated: item.dateCreated || null,
           orig: snapshot,
           result: null,
+          markedForDelete: false,
         };
       });
       manageInventoryHasDates = manageInventoryRows.some(function (r) { return !!r.dateCreated; });
@@ -3699,7 +3730,8 @@
   }
 
   function isManageInventoryRowDirty(row) {
-    return row.quantity !== row.orig.quantity
+    return row.markedForDelete
+      || row.quantity !== row.orig.quantity
       || row.newOrUsed !== row.orig.newOrUsed
       || String(row.unitPrice) !== String(row.orig.unitPrice)
       || row.description !== row.orig.description
@@ -3921,8 +3953,10 @@
         ? '<div class="inventory-row-result success">Updated on BrickLink</div>'
         : '<div class="inventory-row-result error">' + escapeHtml(row.result.error) + '</div>';
     }
+    var marked = row.markedForDelete;
+    var fieldsDisabled = marked ? ' disabled' : '';
     return ""
-      + '<div class="item-row inventory-row' + (isManageInventoryRowDirty(row) ? ' row-dirty' : '') + '" data-key="' + escapeHtml(row.key) + '">'
+      + '<div class="item-row inventory-row' + (isManageInventoryRowDirty(row) ? ' row-dirty' : '') + (marked ? ' marked-for-delete' : '') + '" data-key="' + escapeHtml(row.key) + '">'
       + '<div class="item-thumb">' + thumbHtml(row) + '<span class="qty-chip">' + row.quantity + '</span></div>'
       + '<div class="item-body">'
       + '<div class="item-line1">'
@@ -3931,17 +3965,21 @@
       + '</div>'
       + '<div class="item-name">' + escapeHtml(row.name || "(name unknown)") + '</div>'
       + (isRealColorName(row.colorName) ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
+      + (marked ? '<div class="delete-pending-note">Marked for deletion — submit to remove from BrickLink</div>' : '')
       + '<div class="inventory-fields">'
-      + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="quantity" value="' + escapeHtml(row.quantity) + '"></div>'
-      + '<div class="inventory-field"><label>Price</label><input type="text" inputmode="decimal" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="unitPrice" value="' + escapeHtml(row.unitPrice) + '"></div>'
-      + '<div class="inventory-field"><label>Condition</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="newOrUsed">'
+      + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="quantity" value="' + escapeHtml(row.quantity) + '"' + fieldsDisabled + '></div>'
+      + '<div class="inventory-field"><label>Price</label><input type="text" inputmode="decimal" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="unitPrice" value="' + escapeHtml(row.unitPrice) + '"' + fieldsDisabled + '></div>'
+      + '<div class="inventory-field"><label>Condition</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="newOrUsed"' + fieldsDisabled + '>'
       + '<option value="N"' + (row.newOrUsed === "N" ? ' selected' : '') + '>New</option>'
       + '<option value="U"' + (row.newOrUsed === "U" ? ' selected' : '') + '>Used</option>'
       + '</select></div>'
-      + '<div class="inventory-field description-field"><label>Description <span class="field-hint">(shown to buyer)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="description">' + escapeHtml(row.description) + '</textarea></div>'
-      + '<div class="inventory-field remarks-field"><label>Remarks <span class="field-hint">(private, only you see this)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks">' + escapeHtml(row.remarks) + '</textarea></div>'
+      + '<div class="inventory-field description-field"><label>Description <span class="field-hint">(shown to buyer)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="description"' + fieldsDisabled + '>' + escapeHtml(row.description) + '</textarea></div>'
+      + '<div class="inventory-field remarks-field"><label>Remarks <span class="field-hint">(private, only you see this)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks"' + fieldsDisabled + '>' + escapeHtml(row.remarks) + '</textarea></div>'
       + '</div>'
+      + '<div class="inventory-row-actions">'
       + '<a class="item-bl-link" href="' + escapeHtml(bricklinkCatalogUrl(row, row.newOrUsed === "U" ? "U" : "N")) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>'
+      + '<button type="button" class="delete-row-btn' + (marked ? ' marked' : '') + '" data-key="' + escapeHtml(row.key) + '">' + (marked ? 'Undo delete' : 'Delete') + '</button>'
+      + '</div>'
       + resultHtml
       + '</div>'
       + '</div>';
@@ -4039,6 +4077,15 @@
       });
     });
 
+    container.querySelectorAll(".delete-row-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var row = findManageInventoryRow(el.getAttribute("data-key"));
+        if (!row) return;
+        row.markedForDelete = !row.markedForDelete;
+        renderManageInventoryResults();
+      });
+    });
+
     container.querySelectorAll("[data-browse-type]").forEach(function (el) {
       el.addEventListener("click", function () {
         manageInventoryBrowseType = el.getAttribute("data-browse-type");
@@ -4118,30 +4165,66 @@
   function handleManageInventorySubmit() {
     var dirtyRows = (manageInventoryRows || []).filter(isManageInventoryRowDirty);
     if (!dirtyRows.length) return;
-    if (!window.confirm("Push " + dirtyRows.length + " change" + (dirtyRows.length === 1 ? "" : "s") + " live to BrickLink now?")) return;
+    var toDelete = dirtyRows.filter(function (r) { return r.markedForDelete; });
+    var toUpdate = dirtyRows.filter(function (r) { return !r.markedForDelete; });
+
+    var confirmMsg;
+    if (toUpdate.length && toDelete.length) {
+      confirmMsg = "Push " + toUpdate.length + " change" + (toUpdate.length === 1 ? "" : "s")
+        + " and delete " + toDelete.length + " listing" + (toDelete.length === 1 ? "" : "s")
+        + " on BrickLink now? Deleted listings can't be recovered.";
+    } else if (toDelete.length) {
+      confirmMsg = "Delete " + toDelete.length + " listing" + (toDelete.length === 1 ? "" : "s")
+        + " from BrickLink now? This can't be recovered.";
+    } else {
+      confirmMsg = "Push " + toUpdate.length + " change" + (toUpdate.length === 1 ? "" : "s") + " live to BrickLink now?";
+    }
+    if (!window.confirm(confirmMsg)) return;
 
     manageInventorySubmitting = true;
     updateManageInventorySubmitBar();
 
-    postJSON("/api/inventory-update", {
-      items: dirtyRows.map(function (r) {
-        return {
-          key: r.key, inventoryId: r.inventoryId, quantity: r.quantity, newOrUsed: r.newOrUsed,
-          unitPrice: r.unitPrice, description: r.description, remarks: r.remarks,
-        };
-      }),
-    }).then(function (res) {
-      (res.results || []).forEach(function (result) {
+    // Two separate live-write endpoints (Update Inventory vs Delete
+    // Inventory are different BrickLink API calls), run in parallel —
+    // each item still only ever hits the one endpoint it actually needs.
+    var requests = [];
+    if (toUpdate.length) {
+      requests.push(postJSON("/api/inventory-update", {
+        items: toUpdate.map(function (r) {
+          return {
+            key: r.key, inventoryId: r.inventoryId, quantity: r.quantity, newOrUsed: r.newOrUsed,
+            unitPrice: r.unitPrice, description: r.description, remarks: r.remarks,
+          };
+        }),
+      }));
+    }
+    if (toDelete.length) {
+      requests.push(postJSON("/api/inventory-delete", {
+        items: toDelete.map(function (r) { return { key: r.key, inventoryId: r.inventoryId }; }),
+      }));
+    }
+
+    Promise.all(requests).then(function (responses) {
+      var allResults = [];
+      responses.forEach(function (res) { allResults = allResults.concat((res && res.results) || []); });
+      allResults.forEach(function (result) {
         var row = findManageInventoryRow(result.key);
         if (!row) return;
-        if (result.success) {
+        if (!result.success) {
+          row.result = { success: false, error: result.error };
+          return;
+        }
+        if (row.markedForDelete) {
+          // Gone from BrickLink for real — drop it from the list rather
+          // than showing a lingering "deleted" success state for a row
+          // that no longer exists to edit or delete again.
+          manageInventoryRows = manageInventoryRows.filter(function (r) { return r.key !== row.key; });
+        } else {
           row.orig = {
             quantity: row.quantity, newOrUsed: row.newOrUsed, unitPrice: row.unitPrice,
             description: row.description, remarks: row.remarks,
           };
           row.result = { success: true };
-        } else {
-          row.result = { success: false, error: result.error };
         }
       });
     }).catch(function (err) {
@@ -4165,6 +4248,7 @@
       row.unitPrice = row.orig.unitPrice;
       row.description = row.orig.description;
       row.remarks = row.orig.remarks;
+      row.markedForDelete = false;
     });
     renderManageInventoryResults();
   }

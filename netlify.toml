@@ -106,3 +106,8 @@
   to = "/.netlify/functions/inventory-update"
   status = 200
 
+[[redirects]]
+  from = "/api/inventory-delete"
+  to = "/.netlify/functions/inventory-delete"
+  status = 200
+

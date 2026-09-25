@@ -80,4 +80,8 @@ function blPost(path, payload) {
   return blRequest('POST', path, payload);
 }
 
-module.exports = { blGet, blPut, blPost };
+function blDelete(path) {
+  return blRequest('DELETE', path);
+}
+
+module.exports = { blGet, blPut, blPost, blDelete };
