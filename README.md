@@ -449,13 +449,23 @@ Token Secret as sensitive as an API key that can move money.
   own Condition (editing color refetches both; changing Condition doesn't
   refetch anything, since both are already loaded; qty/price/remarks
   don't affect it either) so re-opening an already-checked panel doesn't
-  re-hit the API. Each condition's stats line also links out to
-  BrickLink's own catalog page (`View on BrickLink`), pre-scoped to that
-  condition, the row's color (if any), and US-only — the URL shape
+  re-hit the API. A single "View on BrickLink" link sits above the two
+  stats lines (there used to be one per condition — Ryan only wants the
+  one, since he doesn't split his own browsing by condition either),
+  pre-scoped to the row's color (if any) and US-only but *not* to a
+  condition, so it opens BrickLink's own catalog page showing New and
+  Used together. `bricklinkCatalogUrl(row, cond)`'s `cond` argument is
+  optional for exactly this — passed by the order-detail and Manage
+  Inventory item links (which do want one specific condition), omitted
+  here, which drops the `"cond"` key from the URL's `O={...}` fragment
+  entirely rather than sending an empty/invalid value. The URL shape
   (including the odd `O={...}` fragment encoding, and color showing up
   twice — once as its own `C=` param, once inside `O`) was confirmed
   against two real URLs Ryan captured live off bricklink.com, not
-  reconstructed from guesswork. `country_code=US` filtering itself is
+  reconstructed from guesswork — dropping the `cond` key for the
+  combined-conditions case is an inference from that same shape, not
+  independently confirmed against a captured no-condition URL.
+  `country_code=US` filtering itself is
   confirmed working correctly against a real response (20 of 64 total
   listings), which ruled out an early bug's first suspect. The actual bug
   was a defensive client-side re-filter on `seller_country_code` — a

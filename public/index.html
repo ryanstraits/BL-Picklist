@@ -3214,15 +3214,21 @@
   //   with color (3001 in Blue/7, New, US):
   //     ...?P=3001#T=S&C=7&O={"color":"7","cond":"N","loc":"US","iconly":0}
   // Color shows up twice — once as its own C= fragment param, once as a
-  // string inside O — so both are included when row.colorId is set.
+  // string inside O — so both are included when row.colorId is set. `cond`
+  // is optional — omit it (Add Inventory's price-guide panel does, since
+  // Ryan wants one combined link rather than a separate New/Used one) to
+  // drop the "cond" key from O entirely, which reads as BrickLink's own
+  // catalog page does with no condition filter applied: both New and Used
+  // together, still US-only.
   function bricklinkCatalogUrl(row, cond) {
     var typeCode = INVENTORY_TYPE_WORD_TO_CODE[row.type] || "P";
     var base = "https://www.bricklink.com/v2/catalog/catalogitem.page?" + typeCode + "=" + encodeURIComponent(row.itemNo);
+    var condPart = cond ? "%22cond%22:%22" + cond + "%22," : "";
     if (row.colorId) {
       return base + "#T=S&C=" + row.colorId
-        + "&O=%7B%22color%22:%22" + row.colorId + "%22,%22cond%22:%22" + cond + "%22,%22loc%22:%22US%22,%22iconly%22:0%7D";
+        + "&O=%7B%22color%22:%22" + row.colorId + "%22," + condPart + "%22loc%22:%22US%22,%22iconly%22:0%7D";
     }
-    return base + "#T=S&O=%7B%22cond%22:%22" + cond + "%22,%22loc%22:%22US%22,%22iconly%22:0%7D";
+    return base + "#T=S&O=%7B" + condPart + "%22loc%22:%22US%22,%22iconly%22:0%7D";
   }
 
   // One condition's stats line (New or Used) — always both fetched,
@@ -3230,38 +3236,44 @@
   // pricing across conditions before deciding how to list an item. Min/
   // Avg/Max/for-sale count are BrickLink's own aggregate across *all* of
   // that condition's listings, not just however many of the merged
-  // cheapest-25 end up being this condition below.
+  // cheapest-25 end up being this condition below. No per-condition
+  // "View on BrickLink" link here anymore — Ryan wants just the one
+  // combined link the panel already shows once, not a separate New-only
+  // and Used-only link he has no use for.
   function renderPriceGuideStatsLine(row, cond) {
     var label = cond === "U" ? "Used" : "New";
-    var viewOnBricklink = '<a class="price-guide-view-link" href="' + escapeHtml(bricklinkCatalogUrl(row, cond)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>';
     var state = priceGuideCache[priceGuideKey(row, cond)];
     if (state.error) {
-      return '<div class="price-guide-stats error">' + label + ' — Couldn’t load listings: ' + escapeHtml(state.error) + ' ' + viewOnBricklink + '</div>';
+      return '<div class="price-guide-stats error">' + label + ' — Couldn’t load listings: ' + escapeHtml(state.error) + '</div>';
     }
     var data = state.data;
     if (!data.listings.length) {
-      return '<div class="price-guide-stats">' + label + ' — No active US listings found. ' + viewOnBricklink + '</div>';
+      return '<div class="price-guide-stats">' + label + ' — No active US listings found.</div>';
     }
     var statsLine = label
       + " · Min " + formatCurrency(data.minPrice, data.currencyCode)
       + " · Avg " + formatCurrency(data.avgPrice, data.currencyCode)
       + " · Max " + formatCurrency(data.maxPrice, data.currencyCode)
       + " · " + data.totalQuantity + " for sale";
-    return '<div class="price-guide-stats">' + escapeHtml(statsLine) + ' ' + viewOnBricklink + '</div>';
+    return '<div class="price-guide-stats">' + escapeHtml(statsLine) + '</div>';
   }
 
   // New and Used used to render as two full, independently-scrolled lists
-  // of up to 25 listings each — a lot of scrolling on a phone for what's
-  // really one decision (cheapest active price). Merged into one list,
-  // cheapest-first across both conditions combined and capped at 25
-  // total, with each row tagged New/Used next to its price instead of
-  // condition being implied by which list it's in.
+  // of up to 25 listings each (each with its own "View on BrickLink" link)
+  // — a lot of scrolling on a phone, and two links to a page Ryan only
+  // ever wants filtered to US anyway, condition included or not. Merged
+  // into one list, cheapest-first across both conditions combined and
+  // capped at 25 total, with each row tagged New/Used next to its price
+  // instead of condition being implied by which list it's in, and one
+  // "View on BrickLink" link (both conditions, US-only — bricklinkCatalogUrl
+  // with no cond arg) instead of a separate one per condition.
   function renderPriceGuidePanel(row) {
     if (!row.priceExpanded) return "";
+    var viewOnBricklink = '<a class="price-guide-view-link" href="' + escapeHtml(bricklinkCatalogUrl(row)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>';
     var stateN = priceGuideCache[priceGuideKey(row, "N")];
     var stateU = priceGuideCache[priceGuideKey(row, "U")];
     if (!stateN || !stateU || stateN.loading || stateU.loading) {
-      return '<div class="price-guide-panel">Loading active US listings…</div>';
+      return '<div class="price-guide-panel">Loading active US listings… ' + viewOnBricklink + '</div>';
     }
 
     var combined = [];
@@ -3294,6 +3306,7 @@
     }).join("");
 
     return '<div class="price-guide-panel">'
+      + '<div class="price-guide-stats"><span>Active US listings</span>' + viewOnBricklink + '</div>'
       + renderPriceGuideStatsLine(row, "N")
       + renderPriceGuideStatsLine(row, "U")
       + (combined.length ? '<div class="price-guide-hint">Tap a listing to use its price (also sets Condition)</div>' + rows : '')
