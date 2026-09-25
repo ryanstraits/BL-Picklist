@@ -653,3 +653,29 @@ Token Secret as sensitive as an API key that can move money.
   card for something that no longer exists on BrickLink to edit or
   delete again. Cancel clears a pending delete mark the same way it
   reverts a field edit.
+- **Order weight + box choice** — on the order detail page, toward the
+  start of laying groundwork for a future shipping-box-size suggestion.
+  Weight shows in lbs/oz (`formatWeightLbOz()`) under the order total,
+  sourced from `contact.weightG`. That field comes from BrickLink's own
+  `total_weight` on the single-order detail call (`GET /orders/{id}`) —
+  confirmed via a temporary debug endpoint
+  (`netlify/functions/debug-box-baseline.js`, still present, not yet
+  deleted) against 7 of Ryan's real orders: `total_weight` isn't present
+  on the orders-list endpoint at all (always null there), only shows up
+  on the per-order detail call, and its value is in **grams**, not
+  kilograms as an initial third-party source suggested — confirmed by
+  matching it exactly against a manual per-item weight × quantity sum on
+  every order checked.
+  Below that, a "Box used" row (Large/Medium/Small/Mailer buttons,
+  `renderBoxChoiceSection()`) lets Ryan record which of his three box
+  sizes or the small mailer he actually used for that order. This is
+  manual by design for now — Ryan is building up a real dataset (his own
+  choices cross-referenced against each order's piece count, weight, and
+  value: small/cheap → mailer, figs/expensive → box "to ensure shipping
+  integrity" is the working hypothesis) over the next few weeks/months,
+  which will eventually replace this manual field with an automatic
+  suggestion. Tracked as `boxChoice` (orderId → "large"/"medium"/"small"/
+  "mailer"), synced durably the same way as `driveThruSent`/
+  `feedbackSent`/`pickupScheduled` — `/api/pick-state?key=actions`, merged
+  with `mergeChoiceMap()` (value-preferring, since a string choice has no
+  meaningful boolean OR the way the other three's completion flags do).

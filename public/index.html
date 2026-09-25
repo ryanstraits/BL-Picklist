@@ -312,6 +312,11 @@
     font-weight: 600;
     color: var(--text);
   }
+  .order-weight {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
   .order-progress-row {
     display: flex;
     align-items: center;
@@ -1051,6 +1056,42 @@
   .message-body { font-size: 13px; color: var(--text); white-space: pre-wrap; }
 
   /* ---- Feedback ---- */
+  .box-choice-section {
+    margin-top: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .box-choice-heading {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 10px;
+  }
+  .box-choice-row {
+    display: flex;
+    gap: 8px;
+  }
+  .box-choice-btn {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .box-choice-btn.selected {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
   .feedback-section {
     margin-top: 16px;
     background: var(--surface);
@@ -1314,6 +1355,12 @@
   var driveThruSent = {};
   var feedbackSent = {};
   var pickupScheduled = {};
+  // orderId -> "large" | "medium" | "small" | "mailer". Manual for now —
+  // Ryan records which box/mailer he actually used per order so this
+  // becomes a real dataset (cross-referenced against each order's
+  // pieces/weight/value) to eventually replace with an automatic
+  // suggestion.
+  var boxChoice = {};
   var colorsMap = null;
   var categoriesById = null; // categoryId -> { name, parentId }
 
@@ -1439,8 +1486,28 @@
     return merged;
   }
 
+  // Same idea as mergeActionMap but for a per-order *value* (which box)
+  // rather than a plain boolean flag — an OR doesn't mean anything for
+  // two different box choices, so this just prefers whichever side
+  // actually has a value, local first (a fresh tap on this device is
+  // more likely to be the intended one than a stale remote value).
+  function mergeChoiceMap(a, b) {
+    var merged = {};
+    var keys = {};
+    Object.keys(a || {}).forEach(function (k) { keys[k] = true; });
+    Object.keys(b || {}).forEach(function (k) { keys[k] = true; });
+    Object.keys(keys).forEach(function (k) {
+      var v = (a && a[k]) || (b && b[k]);
+      if (v) merged[k] = v;
+    });
+    return merged;
+  }
+
   function pushOrderActions() {
-    postJSON("/api/pick-state?key=actions", { driveThruSent: driveThruSent, feedbackSent: feedbackSent, pickupScheduled: pickupScheduled })
+    postJSON("/api/pick-state?key=actions", {
+      driveThruSent: driveThruSent, feedbackSent: feedbackSent, pickupScheduled: pickupScheduled,
+      boxChoice: boxChoice,
+    })
       .catch(function () { /* offline — ignore, same as picks */ });
   }
 
@@ -1452,12 +1519,15 @@
           var mergedDriveThru = mergeActionMap(driveThruSent, remote.driveThruSent);
           var mergedFeedback = mergeActionMap(feedbackSent, remote.feedbackSent);
           var mergedPickup = mergeActionMap(pickupScheduled, remote.pickupScheduled);
+          var mergedBoxChoice = mergeChoiceMap(boxChoice, remote.boxChoice);
           var remoteNeedsUpdate = JSON.stringify(mergedDriveThru) !== JSON.stringify(remote.driveThruSent || {})
             || JSON.stringify(mergedFeedback) !== JSON.stringify(remote.feedbackSent || {})
-            || JSON.stringify(mergedPickup) !== JSON.stringify(remote.pickupScheduled || {});
+            || JSON.stringify(mergedPickup) !== JSON.stringify(remote.pickupScheduled || {})
+            || JSON.stringify(mergedBoxChoice) !== JSON.stringify(remote.boxChoice || {});
           driveThruSent = mergedDriveThru;
           feedbackSent = mergedFeedback;
           pickupScheduled = mergedPickup;
+          boxChoice = mergedBoxChoice;
           if (remoteNeedsUpdate) pushOrderActions();
           if (currentView === "orders") renderOrdersList();
         }
@@ -1673,6 +1743,21 @@
     var num = Number(value);
     if (isNaN(num)) return String(value);
     return num.toFixed(3);
+  }
+
+  // BrickLink's order weight is grams (confirmed against Ryan's real
+  // orders — matched a manual per-item weight × quantity sum exactly);
+  // Ryan wants it read as pounds/ounces, the units he actually thinks
+  // in for picking a shipping box. 1 lb = 453.592 g, 1 oz = 28.3495 g.
+  // Most orders here are under a pound, so "0 lb" is dropped rather
+  // than always showing both units.
+  function formatWeightLbOz(grams) {
+    if (grams === null || grams === undefined || isNaN(grams)) return "";
+    var totalOz = grams / 28.3495;
+    var lb = Math.floor(totalOz / 16);
+    var oz = totalOz - lb * 16;
+    if (oz.toFixed(1) === "16.0") { lb += 1; oz = 0; }
+    return (lb > 0 ? lb + " lb " : "") + oz.toFixed(1) + " oz";
   }
 
   // tone: fresh = needs picking, packed = picked & boxed, done = shipped/received,
@@ -2338,6 +2423,7 @@
       + '<span>' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + ' <span class="buyer-rating" id="buyerRatingBadge"></span></span>'
       + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
       + '</div>'
+      + (contact.weightG ? '<div class="order-weight mono">' + escapeHtml(formatWeightLbOz(contact.weightG)) + '</div>' : '')
       + '<div class="picked-count" id="pickedCountText"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>'
       + (detailStatusAction ? '<div class="drive-thru-row">' + detailStatusAction + '</div>' : '')
       + (canSendDriveThru ? '<div class="drive-thru-row">'
@@ -2345,6 +2431,7 @@
         + '</div>' : '')
       + '</div>'
       + (items.length ? '<button class="jump-to-items-btn" id="jumpToItemsBtn">Jump to items ↓</button>' : '')
+      + renderBoxChoiceSection(order)
       + renderContactSection(contact)
       + renderFinancialSection(contact, order)
       + renderMessagesSection(messages)
@@ -2445,6 +2532,18 @@
         handleSendDriveThru(order, items, messages, contact);
       });
     }
+
+    orderView.querySelectorAll(".box-choice-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var value = btn.getAttribute("data-box");
+        boxChoice[order.orderId] = boxChoice[order.orderId] === value ? "" : value;
+        pushOrderActions();
+        orderView.querySelectorAll(".box-choice-btn").forEach(function (b) {
+          b.classList.toggle("selected", b.getAttribute("data-box") === boxChoice[order.orderId]);
+        });
+      });
+    });
 
     var copyAddressBtn = document.getElementById("copyAddressBtn");
     if (copyAddressBtn) {
@@ -2669,6 +2768,30 @@
   ];
 
   var DEFAULT_FEEDBACK_COMMENT = "A+ buyer! Thanks for your order with The Brick Stud, come back again soon :)";
+
+  // Manual for now — Ryan records which box/mailer he actually used per
+  // order so this becomes a real dataset (cross-referenced against each
+  // order's pieces/weight/value) to eventually replace with an automatic
+  // suggestion. Sizes match his actual boxes: Large 6x4x3, Medium 4x4x2,
+  // Small 4x3x2, Mailer ~4x6 (used for small/individual parts).
+  var BOX_OPTIONS = [
+    { value: "large", label: "Large" },
+    { value: "medium", label: "Medium" },
+    { value: "small", label: "Small" },
+    { value: "mailer", label: "Mailer" }
+  ];
+
+  function renderBoxChoiceSection(order) {
+    var current = boxChoice[order.orderId] || "";
+    var btns = BOX_OPTIONS.map(function (opt) {
+      return '<button type="button" class="box-choice-btn' + (current === opt.value ? ' selected' : '') + '" data-box="' + opt.value + '">' + opt.label + '</button>';
+    }).join("");
+    return ""
+      + '<div class="box-choice-section">'
+      + '<div class="box-choice-heading">Box used</div>'
+      + '<div class="box-choice-row">' + btns + '</div>'
+      + '</div>';
+  }
 
   function renderFeedbackSection(order) {
     if (feedbackSent[order.orderId]) {

@@ -7,6 +7,13 @@ function extractOrderContact(order) {
   const cost = order.cost || {};
   return {
     email: order.buyer_email || '',
+    // total_weight only lives on this per-order detail call, not the
+    // orders-list one — confirmed against Ryan's real account (matched
+    // a manual per-item weight × quantity sum exactly on every order
+    // checked), in grams despite carrying no unit in the field itself.
+    weightG: order.total_weight !== undefined && order.total_weight !== null && order.total_weight !== ''
+      ? Number(order.total_weight)
+      : null,
     name: (addr.name && addr.name.full) || '',
     address1: addr.address1 || '',
     address2: addr.address2 || '',
