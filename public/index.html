@@ -1032,6 +1032,11 @@
     font-size: 12px;
   }
 
+  .buyer-real-name {
+    color: var(--text-secondary);
+    font-weight: 400;
+  }
+
   /* ---- Drive Thru ---- */
   .drive-thru-row { margin-top: 12px; }
   .drive-thru-btn {
@@ -2459,10 +2464,12 @@
       + statusBadgeHtml(order.status)
       + '</div>'
       + '<div class="order-buyer">'
-      + '<span>' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + ' <span class="buyer-rating" id="buyerRatingBadge"></span></span>'
+      + '<span>' + escapeHtml(order.buyer || "")
+      + (contact && contact.name ? ' <span class="buyer-real-name">(' + escapeHtml(contact.name) + ')</span>' : '')
+      + ' · ' + escapeHtml(formatDate(order.date)) + ' <span class="buyer-rating" id="buyerRatingBadge"></span></span>'
       + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
       + '</div>'
-      + (contact.weightG ? '<div class="order-weight mono">' + escapeHtml(formatWeightLbOz(contact.weightG)) + '</div>' : '')
+      + (contact && contact.weightG ? '<div class="order-weight mono">' + escapeHtml(formatWeightLbOz(contact.weightG)) + '</div>' : '')
       + '<div class="picked-count" id="pickedCountText"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>'
       + (detailStatusAction ? '<div class="drive-thru-row">' + detailStatusAction + '</div>' : '')
       + (canSendDriveThru ? '<div class="drive-thru-row">'

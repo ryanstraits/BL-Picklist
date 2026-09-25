@@ -332,6 +332,16 @@ Token Secret as sensitive as an API key that can move money.
   `GET /api/orders/:id/contact` (`GET /orders/{id}` — the only endpoint
   that returns `buyer_email` and the fully-separated `shipping.address`
   fields; the list endpoint doesn't — mapped in `lib/order-contact.js`).
+  The order detail page's buyer line also shows the shipping address's
+  real name in parens next to the BrickLink username (`minifigmomma
+  (Jane "JJ" Doe)`) — `contact.name`, the same field the "Ship to" block
+  already uses, no new fetch. Ryan asked for this because that's the name
+  PirateShip shows him when he switches over there to check shipping
+  status, and the username alone doesn't match it. Both this and the
+  order-weight line below it read off `contact`, which can be `null` if
+  that fetch failed (a deliberate "nice to have, don't block the order
+  view" failure mode — see `openOrder()`), so both are guarded with a
+  `contact &&` check rather than assuming it's always populated.
   Two buttons:
   "Copy name & address" copies a standard multi-line name/address block
   (ready to paste into PirateShip's manual address entry) and "Copy
