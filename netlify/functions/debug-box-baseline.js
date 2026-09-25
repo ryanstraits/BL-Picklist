@@ -11,50 +11,32 @@ const { requireAuth } = require('./lib/site-auth');
 // BrickLink credentials in front of Claude directly.
 //
 // For every non-completed order (same set the Orders screen shows):
-// piece count comes straight from the orders list (`total_count`, no
-// extra call). Weight isn't on that list — only the per-order items
-// call has it — so this fetches each order's items too and sums
-// weight * quantity. BrickLink's per-item `weight` field is documented
-// as that item's own unit weight in grams, not a line total, so this
-// assumes multiplying by quantity gives the real order weight; flag it
-// if a known order's total looks obviously wrong.
+// piece count and total weight both come straight from the orders list
+// itself — no per-order items call needed. Originally this fetched each
+// order's items and summed a per-piece weight × quantity, on the
+// assumption BrickLink didn't hand back an order-level total; Ryan
+// correctly guessed otherwise. The Order resource's own `total_weight`
+// field (confirmed via a real client library's struct definition —
+// funwithbots/go-bricklink-api's orders.Header) is BrickLink's own
+// computed total for the order, a string in kilograms (a real captured
+// example value of "1.03" only makes sense as kilograms — as grams
+// that's a single sliver of plastic, not a shippable order), which is
+// both more authoritative than a manual per-item sum and cheaper to
+// fetch.
 exports.handler = requireAuth(async () => {
   try {
     const orders = await blGet('/orders?direction=in');
     const nonCompleted = (orders || []).filter((o) => o.status !== 'COMPLETED');
 
-    const rows = [];
-    for (const o of nonCompleted) {
-      let totalWeightG = null;
-      try {
-        const batches = await blGet(`/orders/${encodeURIComponent(o.order_id)}/items`);
-        let sum = 0;
-        let sawWeight = false;
-        (batches || []).forEach((batch) => {
-          (batch || []).forEach((entry) => {
-            const w = parseFloat(entry.weight);
-            const qty = parseFloat(entry.quantity) || 0;
-            if (!isNaN(w)) {
-              sum += w * qty;
-              sawWeight = true;
-            }
-          });
-        });
-        totalWeightG = sawWeight ? Math.round(sum * 100) / 100 : null;
-      } catch (e) {
-        totalWeightG = null;
-      }
-
-      rows.push({
-        orderId: String(o.order_id),
-        buyer: o.buyer_name,
-        status: o.status,
-        date: o.date_ordered,
-        pieces: o.total_count,
-        uniqueLots: o.unique_count,
-        totalWeightG,
-      });
-    }
+    const rows = nonCompleted.map((o) => ({
+      orderId: String(o.order_id),
+      buyer: o.buyer_name,
+      status: o.status,
+      date: o.date_ordered,
+      pieces: o.total_count,
+      uniqueLots: o.unique_count,
+      totalWeightKg: o.total_weight !== undefined && o.total_weight !== null ? Number(o.total_weight) : null,
+    }));
 
     return json(200, { rows });
   } catch (err) {
