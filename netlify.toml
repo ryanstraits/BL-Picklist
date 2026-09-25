@@ -111,3 +111,8 @@
   to = "/.netlify/functions/inventory-delete"
   status = 200
 
+[[redirects]]
+  from = "/api/debug-box-baseline"
+  to = "/.netlify/functions/debug-box-baseline"
+  status = 200
+
