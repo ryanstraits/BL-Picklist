@@ -314,6 +314,11 @@
     font-weight: 600;
     color: var(--text);
   }
+  .order-lots-items {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
   .order-weight {
     font-size: 12.5px;
     color: var(--text-secondary);
@@ -1721,6 +1726,20 @@
     return entityDecoder.value;
   }
 
+  // A few real BrickLink shipping names come back ALL CAPS (however the
+  // buyer happened to type their address) — title-cased here for
+  // readability, on both the orders list buyer line and the order detail
+  // page's own Ship to block/copy text, since they all read off the same
+  // contact.name. Only touches a name that's entirely uppercase; a name
+  // that's already mixed case (e.g. a nickname in quotes, like
+  // Jane "JJ" Doe) is left exactly as typed — blindly re-casing every
+  // word would also lowercase a legitimate all-caps initialism such as
+  // "JJ" inside an otherwise normally-cased name.
+  function titleCaseName(name) {
+    if (!name || name !== name.toUpperCase()) return name;
+    return name.toLowerCase().replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); });
+  }
+
   // BrickLink has a real, non-zero-id color literally named "Not
   // Applicable" (used for colorless items — minifigs, sets,
   // instructions, ...), so filtering on colorId truthiness alone never
@@ -2184,7 +2203,7 @@
       contactCache[order.orderId] = null;
       fetchJSON("/api/orders/" + encodeURIComponent(order.orderId) + "/contact")
         .then(function (contact) {
-          contact.name = decodeHtmlEntities(contact.name);
+          contact.name = titleCaseName(decodeHtmlEntities(contact.name));
           contactCache[order.orderId] = contact;
           if (!contact.name) return;
           var el = ordersView.querySelector('.order-card[data-order="' + order.orderId + '"] .buyer-real-name');
@@ -2268,9 +2287,10 @@
         + '<span class="order-date">' + escapeHtml(formatDate(order.date)) + '</span>'
         + '</div>'
         + '<div class="order-buyer">'
-        + '<span>' + escapeHtml(order.buyer || "") + buyerRealNameHtml(order.orderId) + ' · ' + lineCount + ' lots · ' + total + ' items</span>'
+        + '<span>' + escapeHtml(order.buyer || "") + buyerRealNameHtml(order.orderId) + '</span>'
         + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
         + '</div>'
+        + '<div class="order-lots-items">' + lineCount + ' lots · ' + total + ' items</div>'
         + '<div class="order-progress-row">'
         + '<div class="progress-track"><div class="progress-fill' + (done ? ' done' : '') + '" style="width:' + pct + '%"></div></div>'
         + '<span class="progress-label">' + picked + '/' + knownTotal + '</span>'
@@ -3085,7 +3105,7 @@
       var contact = null;
       try {
         contact = await fetchJSON("/api/orders/" + encodeURIComponent(orderId) + "/contact");
-        contact.name = decodeHtmlEntities(contact.name);
+        contact.name = titleCaseName(decodeHtmlEntities(contact.name));
       } catch (e) { /* ignore — just show the order without the contact block */ }
       contactCache[orderId] = contact;
 

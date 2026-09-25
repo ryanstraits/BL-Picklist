@@ -232,7 +232,18 @@ Token Secret as sensitive as an API key that can move money.
   `renderOrdersList()` firing more than once in quick succession during
   initial load (a remote pick-state sync re-render lands shortly after
   the first), which without it would fire a duplicate fetch per order for
-  every render that lands before the first one resolves.
+  every render that lands before the first one resolves. The card's
+  "N lots · N items" line moved to its own row below the buyer/total line
+  (`.order-lots-items`) once the real name started sharing that line —
+  otherwise the two could wrap together in a cramped way on longer names.
+  A few real BrickLink shipping names come back ALL CAPS (`titleCaseName()`,
+  applied everywhere `contact.name` gets set — this card, the order detail
+  page's Ship to block, and its "Copy name & address" text, since they all
+  read off the same field), title-cased for readability. It only touches
+  a name that's entirely uppercase; a name that's already mixed case (a
+  nickname in quotes, like `Jane "JJ" Doe`) is left exactly as typed,
+  since blindly re-casing every word would also lowercase a legitimate
+  all-caps initialism like "JJ" inside an otherwise normally-cased name.
 - The orders list can push a real status change back to BrickLink: a
   "Mark as packed" button on PAID orders and "Mark as shipped" on PACKED
   ones. `/api/update-order-status` only accepts those two target
