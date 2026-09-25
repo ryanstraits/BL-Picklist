@@ -213,6 +213,26 @@ Token Secret as sensitive as an API key that can move money.
   The list is sorted newest to oldest by `date_ordered`, matching
   BrickLink's own Orders Received page — `/api/orders` doesn't guarantee
   an order, so this sorts client-side right after every fetch.
+- **Buyer real name on each card** — Ryan asked for the shipping address's
+  real name next to the BrickLink username on the orders list itself
+  (`minifigmomma (Jane "JJ" Doe)`), not the order detail page (he sees it
+  there already, in the "Ship to" block) — it's how PirateShip identifies
+  the buyer when he switches over there to check shipping status, and the
+  username alone doesn't match. The orders-LIST endpoint doesn't carry
+  this field the way the per-order detail call does (see the contact
+  block below), so there's no way to get it into the one `/api/orders`
+  response — each card's name is instead filled in by a background
+  `/api/orders/:id/contact` fetch per order (`fetchMissingBuyerRealNames()`),
+  same "render fast, enrich after" pattern as the buyer rating badge on
+  the order detail page. Reuses `contactCache` (the same cache `openOrder()`
+  already populates), so a card's name costs one fetch the first time an
+  order is seen — here or by opening it directly — and is free on every
+  render or Refresh after that; a `contactCache[orderId] = null` claim
+  happens synchronously before the fetch starts specifically to survive
+  `renderOrdersList()` firing more than once in quick succession during
+  initial load (a remote pick-state sync re-render lands shortly after
+  the first), which without it would fire a duplicate fetch per order for
+  every render that lands before the first one resolves.
 - The orders list can push a real status change back to BrickLink: a
   "Mark as packed" button on PAID orders and "Mark as shipped" on PACKED
   ones. `/api/update-order-status` only accepts those two target
@@ -332,16 +352,10 @@ Token Secret as sensitive as an API key that can move money.
   `GET /api/orders/:id/contact` (`GET /orders/{id}` — the only endpoint
   that returns `buyer_email` and the fully-separated `shipping.address`
   fields; the list endpoint doesn't — mapped in `lib/order-contact.js`).
-  The order detail page's buyer line also shows the shipping address's
-  real name in parens next to the BrickLink username (`minifigmomma
-  (Jane "JJ" Doe)`) — `contact.name`, the same field the "Ship to" block
-  already uses, no new fetch. Ryan asked for this because that's the name
-  PirateShip shows him when he switches over there to check shipping
-  status, and the username alone doesn't match it. Both this and the
-  order-weight line below it read off `contact`, which can be `null` if
-  that fetch failed (a deliberate "nice to have, don't block the order
-  view" failure mode — see `openOrder()`), so both are guarded with a
-  `contact &&` check rather than assuming it's always populated.
+  The order-weight line above this block reads off `contact`, which can
+  be `null` if the fetch failed (a deliberate "nice to have, don't block
+  the order view" failure mode — see `openOrder()`), so it's guarded with
+  a `contact &&` check rather than assuming it's always populated.
   Two buttons:
   "Copy name & address" copies a standard multi-line name/address block
   (ready to paste into PirateShip's manual address entry) and "Copy

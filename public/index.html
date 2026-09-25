@@ -2153,6 +2153,47 @@
     });
   }
 
+  // Same "resolve slow enrichment asynchronously, don't block the initial
+  // screen" pattern as fetchAndShowBuyerRating below — the orders-LIST
+  // endpoint doesn't carry the shipping address name the way the
+  // per-order detail call does (confirmed earlier, see order-contact.js
+  // and README), so getting the buyer's real name onto every card here
+  // means a background contact fetch per order rather than something
+  // bundled into the one list response. Reuses contactCache (the same
+  // cache openOrder() already fills), so once an order's been seen here
+  // — or opened directly — it's free on every later render or Refresh;
+  // only genuinely new orders cost a fetch.
+  function buyerRealNameHtml(orderId) {
+    var cached = contactCache[orderId];
+    return '<span class="buyer-real-name" data-order="' + escapeHtml(orderId) + '">'
+      + (cached && cached.name ? ' (' + escapeHtml(cached.name) + ')' : '')
+      + '</span>';
+  }
+
+  function fetchMissingBuyerRealNames(orderList) {
+    orderList.forEach(function (order) {
+      // undefined = never attempted. null or a resolved object both mean
+      // "already attempted" (even a nameless result), so a single order
+      // with no shipping name on file doesn't get refetched every render.
+      if (contactCache[order.orderId] !== undefined) return;
+      // Claim it synchronously, before the fetch even starts — renderOrdersList()
+      // fires again in quick succession during initial load (remote sync
+      // re-renders), and without this, a second call landing before the
+      // first fetch resolves would still see undefined here and kick off
+      // a duplicate request for the same order.
+      contactCache[order.orderId] = null;
+      fetchJSON("/api/orders/" + encodeURIComponent(order.orderId) + "/contact")
+        .then(function (contact) {
+          contact.name = decodeHtmlEntities(contact.name);
+          contactCache[order.orderId] = contact;
+          if (!contact.name) return;
+          var el = ordersView.querySelector('.order-card[data-order="' + order.orderId + '"] .buyer-real-name');
+          if (el) el.textContent = " (" + contact.name + ")";
+        })
+        .catch(function () { /* already claimed null above */ });
+    });
+  }
+
   function renderOrdersList() {
     if (!orders.length) {
       ordersView.innerHTML = '<div class="state-block">No open orders right now.</div>';
@@ -2227,7 +2268,7 @@
         + '<span class="order-date">' + escapeHtml(formatDate(order.date)) + '</span>'
         + '</div>'
         + '<div class="order-buyer">'
-        + '<span>' + escapeHtml(order.buyer || "") + ' · ' + lineCount + ' lots · ' + total + ' items</span>'
+        + '<span>' + escapeHtml(order.buyer || "") + buyerRealNameHtml(order.orderId) + ' · ' + lineCount + ' lots · ' + total + ' items</span>'
         + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
         + '</div>'
         + '<div class="order-progress-row">'
@@ -2238,6 +2279,7 @@
         + '</div>';
     });
     ordersView.innerHTML = html;
+    fetchMissingBuyerRealNames(orders);
 
     ordersView.querySelectorAll(".order-card").forEach(function (card) {
       card.addEventListener("click", function () {
@@ -2464,9 +2506,7 @@
       + statusBadgeHtml(order.status)
       + '</div>'
       + '<div class="order-buyer">'
-      + '<span>' + escapeHtml(order.buyer || "")
-      + (contact && contact.name ? ' <span class="buyer-real-name">(' + escapeHtml(contact.name) + ')</span>' : '')
-      + ' · ' + escapeHtml(formatDate(order.date)) + ' <span class="buyer-rating" id="buyerRatingBadge"></span></span>'
+      + '<span>' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + ' <span class="buyer-rating" id="buyerRatingBadge"></span></span>'
       + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
       + '</div>'
       + (contact && contact.weightG ? '<div class="order-weight mono">' + escapeHtml(formatWeightLbOz(contact.weightG)) + '</div>' : '')
