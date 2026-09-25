@@ -425,31 +425,42 @@ Token Secret as sensitive as an API key that can move money.
   else here) — the query param is `new_or_used`, not `condition`; the Go
   client's own internal option-builder actually gets that one wrong,
   caught by cross-checking a second source rather than trusting either
-  alone. Shows both New and Used sections side by side — always both,
-  regardless of the row's own Condition dropdown, so Ryan can compare
-  pricing across conditions before deciding how to list — each with its
-  own min/avg/max and its cheapest 25 listings (the backend sorts then
-  caps to 25; a common item can have 60+ active listings, and Ryan only
-  ever prices off the bottom of the list anyway). Tapping a listing fills
-  that row's Price field and syncs its Condition dropdown to match
-  whichever section it came from, so a tapped price and the declared
-  condition never end up mismatched. Cached per item+color+condition
-  combination independently of the row's own Condition (editing color
-  refetches both; changing Condition doesn't refetch anything, since both
-  are already loaded; qty/price/remarks don't affect it either) so
-  re-opening an already-checked panel doesn't re-hit the API. Each
-  section also links out to BrickLink's own catalog page (`View on
-  BrickLink`), pre-scoped to that section's condition, the row's color
-  (if any), and US-only — the URL shape (including the odd `O={...}`
-  fragment encoding, and color showing up twice — once as its own `C=`
-  param, once inside `O`) was confirmed against two real URLs Ryan
-  captured live off bricklink.com, not reconstructed from guesswork.
-  `country_code=US` filtering itself is confirmed working correctly
-  against a real response (20 of 64 total listings), which ruled out an
-  early bug's first suspect. The actual bug was a defensive client-side
-  re-filter on `seller_country_code` — a field the Go client's
-  `PriceDetail` struct claimed existed but doesn't: each `price_detail`
-  entry really only has `quantity`, `unit_price`, and
+  alone. Still fetches both New and Used — always both, regardless of the
+  row's own Condition dropdown, so Ryan can compare pricing across
+  conditions before deciding how to list — but the two sides used to
+  render as fully separate lists of up to 25 listings each, which on a
+  phone meant a lot of scrolling to compare them or to get back to the
+  toggle button afterward. The listing rows are now merged into one
+  cheapest-first list, capped at 25 total across both conditions
+  combined, with a small New/Used badge on each row next to its price
+  instead of condition being implied by which section a row sat in (the
+  backend still returns each condition's own cheapest-25 independently —
+  merging and re-capping happens client-side). The min/avg/max/for-sale
+  stats stay as two separate lines above the list, one per condition,
+  since those are BrickLink's own aggregate across *all* of that
+  condition's active listings, not just whichever of them made the
+  merged top 25. A "▲ Collapse" button repeats at the bottom of the list,
+  doing the same thing as tapping the toggle button back at the top —
+  added after the merge still left up to 25 rows to scroll back up past
+  otherwise. Tapping a listing fills that row's Price field and syncs the
+  Condition dropdown to match whichever condition that row actually was,
+  so a tapped price and the declared condition never end up mismatched.
+  Cached per item+color+condition combination independently of the row's
+  own Condition (editing color refetches both; changing Condition doesn't
+  refetch anything, since both are already loaded; qty/price/remarks
+  don't affect it either) so re-opening an already-checked panel doesn't
+  re-hit the API. Each condition's stats line also links out to
+  BrickLink's own catalog page (`View on BrickLink`), pre-scoped to that
+  condition, the row's color (if any), and US-only — the URL shape
+  (including the odd `O={...}` fragment encoding, and color showing up
+  twice — once as its own `C=` param, once inside `O`) was confirmed
+  against two real URLs Ryan captured live off bricklink.com, not
+  reconstructed from guesswork. `country_code=US` filtering itself is
+  confirmed working correctly against a real response (20 of 64 total
+  listings), which ruled out an early bug's first suspect. The actual bug
+  was a defensive client-side re-filter on `seller_country_code` — a
+  field the Go client's `PriceDetail` struct claimed existed but doesn't:
+  each `price_detail` entry really only has `quantity`, `unit_price`, and
   `shipping_available` (plus a redundant, identically-typo'd
   `"qunatity"` field BrickLink's own API ships). That re-filter matched
   nothing on every request and silently zeroed the whole list — caught

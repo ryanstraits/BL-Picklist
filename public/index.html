@@ -932,7 +932,6 @@
     padding: 10px;
     font-size: 12.5px;
   }
-  .price-guide-panel.error { color: var(--danger); }
   .price-guide-stats {
     display: flex;
     align-items: baseline;
@@ -941,6 +940,8 @@
     font-weight: 600;
     color: var(--text-secondary);
   }
+  .price-guide-stats + .price-guide-stats { margin-top: 3px; }
+  .price-guide-stats.error { color: var(--danger); }
   .price-guide-view-link {
     flex: none;
     font-weight: 400;
@@ -979,6 +980,15 @@
     color: var(--text-secondary);
   }
   .price-guide-price { flex: 1; font-weight: 600; }
+  .price-guide-cond {
+    flex: none;
+    font-size: 10.5px;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  .price-guide-cond.new { color: var(--success); background: var(--success-bg); }
+  .price-guide-cond.used { color: var(--info); background: var(--info-bg); }
   .price-guide-noship {
     flex: none;
     font-size: 10.5px;
@@ -986,6 +996,20 @@
     border: 1px solid var(--danger);
     border-radius: 4px;
     padding: 1px 4px;
+  }
+  .price-guide-collapse-btn {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    border: none;
+    background: none;
+    color: var(--info);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 6px 0 0;
+    text-align: center;
+    cursor: pointer;
   }
   .reset-btn, .bottom-back-btn, .select-all-btn {
     background: none;
@@ -3201,46 +3225,80 @@
     return base + "#T=S&O=%7B%22cond%22:%22" + cond + "%22,%22loc%22:%22US%22,%22iconly%22:0%7D";
   }
 
-  // Renders one condition's block (New or Used) — always both, regardless
-  // of the row's own Condition dropdown, so Ryan can compare pricing
-  // across conditions before deciding how to list an item.
-  function renderPriceGuideSection(row, cond) {
+  // One condition's stats line (New or Used) — always both fetched,
+  // regardless of the row's own Condition dropdown, so Ryan can compare
+  // pricing across conditions before deciding how to list an item. Min/
+  // Avg/Max/for-sale count are BrickLink's own aggregate across *all* of
+  // that condition's listings, not just however many of the merged
+  // cheapest-25 end up being this condition below.
+  function renderPriceGuideStatsLine(row, cond) {
     var label = cond === "U" ? "Used" : "New";
     var viewOnBricklink = '<a class="price-guide-view-link" href="' + escapeHtml(bricklinkCatalogUrl(row, cond)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>';
     var state = priceGuideCache[priceGuideKey(row, cond)];
-    if (!state || state.loading) {
-      return '<div class="price-guide-panel">' + label + ' — Loading active US listings… ' + viewOnBricklink + '</div>';
-    }
     if (state.error) {
-      return '<div class="price-guide-panel error">' + label + ' — Couldn’t load listings: ' + escapeHtml(state.error) + ' ' + viewOnBricklink + '</div>';
+      return '<div class="price-guide-stats error">' + label + ' — Couldn’t load listings: ' + escapeHtml(state.error) + ' ' + viewOnBricklink + '</div>';
     }
     var data = state.data;
     if (!data.listings.length) {
-      return '<div class="price-guide-panel">' + label + ' — No active US listings found. ' + viewOnBricklink + '</div>';
+      return '<div class="price-guide-stats">' + label + ' — No active US listings found. ' + viewOnBricklink + '</div>';
     }
     var statsLine = label
       + " · Min " + formatCurrency(data.minPrice, data.currencyCode)
       + " · Avg " + formatCurrency(data.avgPrice, data.currencyCode)
       + " · Max " + formatCurrency(data.maxPrice, data.currencyCode)
       + " · " + data.totalQuantity + " for sale";
-    var rows = data.listings.map(function (l, idx) {
-      return '<div class="price-guide-row" data-key="' + escapeHtml(row.key) + '" data-price="' + escapeHtml(l.unitPrice) + '" data-condition="' + cond + '">'
+    return '<div class="price-guide-stats">' + escapeHtml(statsLine) + ' ' + viewOnBricklink + '</div>';
+  }
+
+  // New and Used used to render as two full, independently-scrolled lists
+  // of up to 25 listings each — a lot of scrolling on a phone for what's
+  // really one decision (cheapest active price). Merged into one list,
+  // cheapest-first across both conditions combined and capped at 25
+  // total, with each row tagged New/Used next to its price instead of
+  // condition being implied by which list it's in.
+  function renderPriceGuidePanel(row) {
+    if (!row.priceExpanded) return "";
+    var stateN = priceGuideCache[priceGuideKey(row, "N")];
+    var stateU = priceGuideCache[priceGuideKey(row, "U")];
+    if (!stateN || !stateU || stateN.loading || stateU.loading) {
+      return '<div class="price-guide-panel">Loading active US listings…</div>';
+    }
+
+    var combined = [];
+    ["N", "U"].forEach(function (cond) {
+      var state = cond === "N" ? stateN : stateU;
+      if (state.error || !state.data) return;
+      state.data.listings.forEach(function (l) {
+        combined.push({
+          cond: cond,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          shippingAvailable: l.shippingAvailable,
+          currencyCode: state.data.currencyCode,
+        });
+      });
+    });
+    combined.sort(function (a, b) { return Number(a.unitPrice) - Number(b.unitPrice); });
+    combined = combined.slice(0, 25);
+
+    var rows = combined.map(function (l, idx) {
+      var condLabel = l.cond === "U" ? "Used" : "New";
+      var condClass = l.cond === "U" ? "used" : "new";
+      return '<div class="price-guide-row" data-key="' + escapeHtml(row.key) + '" data-price="' + escapeHtml(l.unitPrice) + '" data-condition="' + l.cond + '">'
         + '<span class="price-guide-rank">' + (idx + 1) + '</span>'
+        + '<span class="price-guide-cond ' + condClass + '">' + condLabel + '</span>'
         + '<span class="price-guide-qty">×' + l.quantity + '</span>'
-        + '<span class="price-guide-price mono">' + escapeHtml(formatCurrency(l.unitPrice, data.currencyCode)) + '</span>'
+        + '<span class="price-guide-price mono">' + escapeHtml(formatCurrency(l.unitPrice, l.currencyCode)) + '</span>'
         + (l.shippingAvailable ? '' : '<span class="price-guide-noship">no ship</span>')
         + '</div>';
     }).join("");
-    return '<div class="price-guide-panel">'
-      + '<div class="price-guide-stats">' + escapeHtml(statsLine) + ' ' + viewOnBricklink + '</div>'
-      + '<div class="price-guide-hint">Tap a listing to use its price (also sets Condition)</div>'
-      + rows
-      + '</div>';
-  }
 
-  function renderPriceGuidePanel(row) {
-    if (!row.priceExpanded) return "";
-    return renderPriceGuideSection(row, "N") + renderPriceGuideSection(row, "U");
+    return '<div class="price-guide-panel">'
+      + renderPriceGuideStatsLine(row, "N")
+      + renderPriceGuideStatsLine(row, "U")
+      + (combined.length ? '<div class="price-guide-hint">Tap a listing to use its price (also sets Condition)</div>' + rows : '')
+      + '<button type="button" class="price-guide-collapse-btn" data-key="' + escapeHtml(row.key) + '">▴ Collapse</button>'
+      + '</div>';
   }
 
   // null = show the upload screen; an array (even empty after filtering)
@@ -3435,6 +3493,15 @@
         if (!row) return;
         row.priceExpanded = !row.priceExpanded;
         if (row.priceExpanded) fetchPriceGuide(row);
+        renderInventoryReview();
+      });
+    });
+
+    inventoryView.querySelectorAll(".price-guide-collapse-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var row = findInventoryRow(el.getAttribute("data-key"));
+        if (!row) return;
+        row.priceExpanded = false;
         renderInventoryReview();
       });
     });
