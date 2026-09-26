@@ -630,12 +630,18 @@ Token Secret as sensitive as an API key that can move money.
   "backend fetches, frontend rolls up" split Manage Inventory's stats
   banner already uses. `CANCELLED`/`PURGED`/`NPB`/`NPX`/`NRS`/`NSS`/`OCR`
   orders are excluded from the totals entirely (a cancelled or disputed
-  order was never a real sale) rather than counted as $0, with a
-  footnote naming how many were excluded so the totals aren't silently
-  short; a footnote also calls out any order in a different currency
-  than the rest — still counted toward orders/items, just excluded from
-  the $ total, the same defensive single-currency assumption the orders
-  list's own "in process" total already makes.
+  order was never a real sale) rather than counted as $0 — but kept as
+  full rows (`excludedRows`), not reduced to a count, behind a collapsed
+  "N cancelled/problem orders" toggle showing each one's date, status,
+  order ID, and amount. Ryan asked for this specifically: some of these
+  are old enough that BrickLink's own site no longer shows them ("wiped
+  from BL history" in his words), but the order record itself — date,
+  amount — still comes back from the API, so reducing it to just a count
+  would have thrown away the one place that detail is still visible at
+  all. A footnote also calls out any order in a different currency than
+  the rest — still counted toward orders/items, just excluded from the $
+  total, the same defensive single-currency assumption the orders list's
+  own "in process" total already makes.
   Fetched once per session (`statsRows`, cached like `manageInventoryRows`)
   rather than on every visit to the page.
 - **Label Prep** — a page under the Orders category (shipping labels are
