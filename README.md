@@ -102,7 +102,14 @@ Token Secret as sensitive as an API key that can move money.
   the orders list explicitly excludes `COMPLETED` orders now that they can
   actually appear in the list — otherwise a completed order's total would
   have kept counting as "in process" for the rest of its 7-day visibility
-  window.
+  window. A `COMPLETED` order's card also gets a dashed border in place of
+  the usual solid one (`.order-card.is-complete`), and its picks progress
+  bar is grayed out regardless of the bar's own fill color — overriding
+  `.done`'s green, since pick state doesn't matter anymore once an order's
+  actually complete. Ryan asked for this so a lingering completed order
+  reads as visually "put away" among the still-active ones during its
+  week of extra visibility, rather than looking like just another normal
+  card.
 - `/api/item-image?type=&no=&color=&nu=` fetches up to three independent
   BrickLink photo sources concurrently — the official Catalog API's
   `image_url`, the color-specific catalog photo

@@ -240,6 +240,14 @@
   .order-card:active { background: var(--surface-alt); }
   .order-card.needs-pick { background: var(--accent-soft); }
   .order-card.needs-pick:active { background: var(--accent-soft); filter: brightness(0.94); }
+  /* A Completed order lingers in the list for a week (see orders.js) so
+     Ryan can catch anything the buyer flags, but it's done — nothing left
+     to act on — so it reads as visually "put away" rather than an active
+     card: a dashed border in place of the usual solid one, and the picks
+     bar grayed out regardless of its own fill color (overriding .done's
+     green — pick state doesn't matter anymore once an order's complete). */
+  .order-card.is-complete { border-style: dashed; }
+  .order-card.is-complete .progress-fill { background: var(--text-secondary); }
 
   .order-status-row {
     display: flex;
@@ -2267,6 +2275,7 @@
       var pct = knownTotal > 0 ? Math.round((picked / knownTotal) * 100) : 0;
       var meta = STATUS_META[order.status];
       var needsPick = meta && meta.tone === "fresh";
+      var isComplete = order.status === "COMPLETED";
       var statusAction = "";
       if (order.status === "PAID") {
         statusAction = '<button class="status-action-btn to-packed" data-order="' + escapeHtml(order.orderId) + '" data-target-status="PACKED">Mark as packed</button>';
@@ -2278,7 +2287,7 @@
         statusAction = '<button class="status-action-btn to-completed" data-order="' + escapeHtml(order.orderId) + '" data-target-status="COMPLETED">Mark as completed</button>';
       }
       html += ""
-        + '<div class="order-card' + (needsPick ? ' needs-pick' : '') + '" role="button" tabindex="0" data-order="' + escapeHtml(order.orderId) + '">'
+        + '<div class="order-card' + (needsPick ? ' needs-pick' : '') + (isComplete ? ' is-complete' : '') + '" role="button" tabindex="0" data-order="' + escapeHtml(order.orderId) + '">'
         + '<div class="order-top-row">'
         + '<span class="order-id-group">'
         + '<span class="order-id mono">#' + escapeHtml(order.orderId) + '</span>'
