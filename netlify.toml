@@ -116,3 +116,8 @@
   to = "/.netlify/functions/debug-box-baseline"
   status = 200
 
+[[redirects]]
+  from = "/api/debug-feedback"
+  to = "/.netlify/functions/debug-feedback"
+  status = 200
+
