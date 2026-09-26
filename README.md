@@ -611,12 +611,21 @@ Token Secret as sensitive as an API key that can move money.
   data (which is what a theme/category breakdown would need) means one
   extra API call per historical order, versus the single call this page
   actually costs. `GET /api/order-stats` wraps `GET /orders?direction=in`
-  with no status filter — confirmed via a real client library's own
-  docstring that omitting `status` returns orders in *every* status
-  (unlike this app's own `/api/orders`, which is built for the pick list
-  and defaults to excluding `COMPLETED`) — so pulling full multi-year
-  order history costs exactly the same one unpaginated call `/api/orders`
-  already makes, not one call per order or per year. Aggregation by
+  — but no status filter alone isn't enough for true full history:
+  BrickLink's Get Orders also splits orders into "filed" (archived off
+  the Orders Received page — Ryan's own normal habit for keeping that
+  page manageable) and "unfiled" (still showing there), independent of
+  status, via a `filed` query param that defaults to unfiled-only (two
+  independent client libraries agree on this). First shipped without it
+  and Ryan immediately caught the gap ("only pulling in the orders that
+  are on the orders page") — fixed by firing both `filed=false` and
+  `filed=true` calls and merging/de-duping the results by `order_id`,
+  rather than assuming "no status filter" alone meant "everything" (it
+  doesn't — `filed` is a separate, independent axis this app's own
+  `/api/orders` never needed to touch, since a pick list only wants
+  current/unfiled work anyway, so that endpoint was deliberately left
+  alone). Two unpaginated calls total for full order history either way,
+  not one per order or per year. Aggregation by
   year/month happens client-side (`computeOrderStats()`), same
   "backend fetches, frontend rolls up" split Manage Inventory's stats
   banner already uses. `CANCELLED`/`PURGED`/`NPB`/`NPX`/`NRS`/`NSS`/`OCR`
