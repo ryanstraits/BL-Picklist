@@ -836,6 +836,65 @@
     color: var(--text);
     font-weight: 700;
   }
+
+  /* ---- Sales Stats ---- */
+  .stats-summary {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+  }
+  .stats-summary-tile {
+    flex: 1;
+    text-align: center;
+    padding: 12px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .stats-summary-tile strong {
+    display: block;
+    font-size: 18px;
+    color: var(--text);
+    font-weight: 700;
+  }
+  .stats-summary-tile span {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+  .stats-footnote {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    margin-top: 10px;
+  }
+  .stats-year-block {
+    margin-top: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .stats-year-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 10px 12px;
+    background: var(--surface-alt);
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .stats-month-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .stats-month-row + .stats-month-row { border-top: 1px solid var(--border); }
+  .stats-month-label { flex: none; width: 36px; font-weight: 600; color: var(--text); }
+  .stats-month-orders { flex: 1; }
+  .stats-month-revenue { flex: none; color: var(--text); font-weight: 600; }
+
   .manage-inventory-sort-row {
     display: flex;
     justify-content: flex-end;
@@ -1395,6 +1454,7 @@
     <div class="topbar-row topbar-row-nav" id="topbarCategoryRow">
       <button class="nav-tab-btn" id="categoryOrdersBtn">Orders</button>
       <button class="nav-tab-btn" id="categoryInventoryBtn">Inventory</button>
+      <button class="nav-tab-btn" id="categoryStatsBtn">Stats</button>
     </div>
     <div class="topbar-row topbar-row-nav topbar-row-subnav" id="topbarSubNavRow">
       <button class="nav-tab-btn" id="subNavBtn"></button>
@@ -1419,6 +1479,7 @@
     <section id="view-inventory" class="hidden"></section>
     <section id="view-label-prep" class="hidden"></section>
     <section id="view-manage-inventory" class="hidden"></section>
+    <section id="view-stats" class="hidden"></section>
   </main>
 </div>
 
@@ -2001,6 +2062,7 @@
   var inventoryView = document.getElementById("view-inventory");
   var labelPrepView = document.getElementById("view-label-prep");
   var manageInventoryView = document.getElementById("view-manage-inventory");
+  var statsView = document.getElementById("view-stats");
   var backBtn = document.getElementById("backBtn");
   var brandSub = document.getElementById("brandSub");
   var refreshBtn = document.getElementById("refreshBtn");
@@ -2008,6 +2070,7 @@
   var topbarSubNavRow = document.getElementById("topbarSubNavRow");
   var categoryOrdersBtn = document.getElementById("categoryOrdersBtn");
   var categoryInventoryBtn = document.getElementById("categoryInventoryBtn");
+  var categoryStatsBtn = document.getElementById("categoryStatsBtn");
   var subNavBtn = document.getElementById("subNavBtn");
   var topbarProgressRow = document.getElementById("topbarProgressRow");
   var topbarProgressFill = document.getElementById("topbarProgressFill");
@@ -2025,16 +2088,25 @@
   // (Manage Inventory + Add Inventory) — each with one secondary page to
   // jump to via subNavBtn, whose label/handler this swaps per view rather
   // than keeping a separate button element for every page.
+  // subLabel/subHandler are optional — Stats has no sibling page to jump
+  // to the way Orders (↔ Label Prep) and Inventory (↔ Add Inventory) do,
+  // so subNavBtn's row just stays hidden for that category instead of
+  // wiring a click handler to nothing.
   function setTopbarNav(category, subLabel, subHandler) {
     topbarCategoryRow.style.display = "";
-    topbarSubNavRow.style.display = "";
     topbarProgressRow.classList.add("hidden");
     topbarInventorySubmitRow.classList.add("hidden");
     topbarManageSubmitRow.classList.add("hidden");
     categoryOrdersBtn.classList.toggle("active", category === "orders");
     categoryInventoryBtn.classList.toggle("active", category === "inventory");
-    subNavBtn.textContent = subLabel;
-    subNavBtn.onclick = subHandler;
+    categoryStatsBtn.classList.toggle("active", category === "stats");
+    if (subLabel) {
+      topbarSubNavRow.style.display = "";
+      subNavBtn.textContent = subLabel;
+      subNavBtn.onclick = subHandler;
+    } else {
+      topbarSubNavRow.style.display = "none";
+    }
   }
 
   var appEl = document.getElementById("app");
@@ -4662,12 +4734,163 @@
     renderManageInventoryResults();
   }
 
+  // ---- Sales Stats ----
+
+  // null = not yet fetched. An array (even empty) = loaded. Persists
+  // across navigating away and back within the session (same reasoning
+  // as manageInventoryRows) — only a real page reload re-fetches, since
+  // this is "quick reference" historical data, not something that needs
+  // to reflect a brand-new order the instant it comes in.
+  var statsRows = null;
+  var statsError = null;
+
+  function fetchStats() {
+    statsError = null;
+    fetchJSON("/api/order-stats")
+      .then(function (rows) {
+        statsRows = rows || [];
+        if (currentView === "stats") renderStatsView();
+      })
+      .catch(function (err) {
+        statsError = err.message;
+        if (currentView === "stats") renderStatsView();
+      });
+  }
+
+  // Orders in these statuses never became a real sale (buyer backed out,
+  // payment never cleared, held for a dispute, ...) — excluded from
+  // revenue/order counts entirely rather than counted as $0 sales, same
+  // "problem" status set the order-card badge already treats as distinct
+  // from real progress (see STATUS_META). Kept as its own small set here
+  // rather than importing STATUS_META's tone, since "excluded from sales
+  // stats" and "renders as a red badge" are related but separate ideas —
+  // OCR (a hold/review status, not in STATUS_META at all) is excluded
+  // here too, conservatively, for the same reason.
+  var STATS_EXCLUDED_STATUSES = { CANCELLED: true, PURGED: true, NPB: true, NPX: true, NRS: true, NSS: true, OCR: true };
+
+  var STATS_MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  // Pure aggregation over the raw per-order rows /api/order-stats
+  // returns — same "backend fetches, frontend rolls up" split already
+  // used for Manage Inventory's stats banner. Only sums revenue in
+  // whichever currency shows up first (matching the same defensive
+  // single-currency assumption the orders list's own "in process" total
+  // already makes) — a mismatched-currency order still counts toward
+  // orders/items, just not toward the $ total, and is called out via
+  // otherCurrencyCount so it's not just silently dropped.
+  function computeOrderStats(rows) {
+    var currencyCode = null;
+    var otherCurrencyCount = 0;
+    var excludedCount = 0;
+    var byYear = {}; // year -> { year, orders, items, revenue, months: { 0..11 -> {orders, items, revenue} } }
+
+    rows.forEach(function (row) {
+      if (STATS_EXCLUDED_STATUSES[row.status]) { excludedCount++; return; }
+      var d = row.date ? new Date(row.date) : null;
+      if (!d || isNaN(d.getTime())) return;
+      var year = d.getFullYear();
+      var month = d.getMonth();
+
+      if (!byYear[year]) {
+        byYear[year] = { year: year, orders: 0, items: 0, revenue: 0, months: {} };
+      }
+      if (!byYear[year].months[month]) {
+        byYear[year].months[month] = { month: month, orders: 0, items: 0, revenue: 0 };
+      }
+
+      var total = Number(row.grandTotal);
+      var countsTowardRevenue = !isNaN(total);
+      if (countsTowardRevenue) {
+        if (!currencyCode) currencyCode = row.currencyCode;
+        if (row.currencyCode !== currencyCode) {
+          countsTowardRevenue = false;
+          otherCurrencyCount++;
+        }
+      }
+
+      byYear[year].orders++;
+      byYear[year].items += row.totalCount || 0;
+      byYear[year].months[month].orders++;
+      byYear[year].months[month].items += row.totalCount || 0;
+      if (countsTowardRevenue) {
+        byYear[year].revenue += total;
+        byYear[year].months[month].revenue += total;
+      }
+    });
+
+    var years = Object.keys(byYear).map(function (y) { return byYear[y]; }).sort(function (a, b) { return b.year - a.year; });
+    years.forEach(function (y) {
+      y.months = Object.keys(y.months).map(function (m) { return y.months[m]; }).sort(function (a, b) { return b.month - a.month; });
+    });
+
+    var allTimeOrders = years.reduce(function (sum, y) { return sum + y.orders; }, 0);
+    var allTimeRevenue = years.reduce(function (sum, y) { return sum + y.revenue; }, 0);
+
+    return {
+      currencyCode: currencyCode,
+      otherCurrencyCount: otherCurrencyCount,
+      excludedCount: excludedCount,
+      allTimeOrders: allTimeOrders,
+      allTimeRevenue: allTimeRevenue,
+      allTimeAvgOrderValue: allTimeOrders ? allTimeRevenue / allTimeOrders : 0,
+      years: years,
+    };
+  }
+
+  function renderStatsView() {
+    if (statsError) {
+      statsView.innerHTML = '<div class="state-block error">' + escapeHtml(statsError) + '<br><button class="reset-btn" id="statsRetryBtn">Retry</button></div>';
+      var retryBtn = document.getElementById("statsRetryBtn");
+      if (retryBtn) retryBtn.addEventListener("click", fetchStats);
+      return;
+    }
+    if (!statsRows) {
+      statsView.innerHTML = '<div class="state-block">Loading order history…</div>';
+      fetchStats();
+      return;
+    }
+
+    var stats = computeOrderStats(statsRows);
+
+    var yearBlocks = stats.years.map(function (y) {
+      var monthRows = y.months.map(function (m) {
+        return ""
+          + '<div class="stats-month-row">'
+          + '<span class="stats-month-label">' + STATS_MONTH_NAMES[m.month] + '</span>'
+          + '<span class="stats-month-orders">' + m.orders + ' order' + (m.orders === 1 ? "" : "s") + '</span>'
+          + '<span class="stats-month-revenue mono">' + escapeHtml(formatCurrency(m.revenue, stats.currencyCode)) + '</span>'
+          + '</div>';
+      }).join("");
+      return ""
+        + '<div class="stats-year-block">'
+        + '<div class="stats-year-heading">'
+        + '<span>' + y.year + '</span>'
+        + '<span>' + y.orders + ' order' + (y.orders === 1 ? "" : "s") + ' · <span class="mono">' + escapeHtml(formatCurrency(y.revenue, stats.currencyCode)) + '</span></span>'
+        + '</div>'
+        + monthRows
+        + '</div>';
+    }).join("");
+
+    statsView.innerHTML = ""
+      + '<div class="stats-summary">'
+      + '<div class="stats-summary-tile"><strong>' + stats.allTimeOrders + '</strong><span>orders</span></div>'
+      + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatCurrency(stats.allTimeRevenue, stats.currencyCode)) + '</strong><span>total sales</span></div>'
+      + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatCurrency(stats.allTimeAvgOrderValue, stats.currencyCode)) + '</strong><span>avg order</span></div>'
+      + '</div>'
+      + (stats.excludedCount || stats.otherCurrencyCount ? '<div class="stats-footnote">'
+        + (stats.excludedCount ? stats.excludedCount + ' cancelled/problem order' + (stats.excludedCount === 1 ? "" : "s") + ' excluded from these totals. ' : '')
+        + (stats.otherCurrencyCount ? stats.otherCurrencyCount + ' order' + (stats.otherCurrencyCount === 1 ? "" : "s") + ' in a different currency excluded from the $ totals (still counted in orders/items).' : '')
+        + '</div>' : '')
+      + (yearBlocks || '<div class="state-block">No order history found.</div>');
+  }
+
   function goToOrders() {
     currentView = "orders";
     orderView.classList.add("hidden");
     inventoryView.classList.add("hidden");
     labelPrepView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
+    statsView.classList.add("hidden");
     ordersView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders", "Label Prep", goToLabelPrep);
@@ -4682,6 +4905,7 @@
     orderView.classList.add("hidden");
     labelPrepView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
+    statsView.classList.add("hidden");
     inventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory", "Manage Inventory", goToManageInventory);
@@ -4699,6 +4923,7 @@
     orderView.classList.add("hidden");
     inventoryView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
+    statsView.classList.add("hidden");
     labelPrepView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders", "Order List", goToOrders);
@@ -4713,6 +4938,7 @@
     orderView.classList.add("hidden");
     inventoryView.classList.add("hidden");
     labelPrepView.classList.add("hidden");
+    statsView.classList.add("hidden");
     manageInventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory", "+ Add Inventory", goToInventory);
@@ -4720,6 +4946,21 @@
     brandSub.textContent = "Manage Inventory";
     renderManageInventoryView();
     if (!manageInventoryRows) fetchManageInventory();
+  }
+
+  function goToStats() {
+    currentView = "stats";
+    ordersView.classList.add("hidden");
+    orderView.classList.add("hidden");
+    inventoryView.classList.add("hidden");
+    labelPrepView.classList.add("hidden");
+    manageInventoryView.classList.add("hidden");
+    statsView.classList.remove("hidden");
+    backBtn.style.display = "none";
+    setTopbarNav("stats");
+    refreshBtn.style.display = "none";
+    brandSub.textContent = "Sales Stats";
+    renderStatsView();
   }
 
   backBtn.addEventListener("click", goToOrders);
@@ -4733,6 +4974,7 @@
   topbarManageCancelBtn.addEventListener("click", handleManageInventoryCancel);
   categoryOrdersBtn.addEventListener("click", goToOrders);
   categoryInventoryBtn.addEventListener("click", goToManageInventory);
+  categoryStatsBtn.addEventListener("click", goToStats);
   refreshBtn.addEventListener("click", function () {
     itemsCache = {};
     loadOrders();
@@ -4778,6 +5020,7 @@
     if (currentView === "inventory") goToInventory();
     else if (currentView === "label-prep") goToLabelPrep();
     else if (currentView === "manage-inventory") goToManageInventory();
+    else if (currentView === "stats") goToStats();
     else goToOrders();
   }
 

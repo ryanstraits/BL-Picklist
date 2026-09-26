@@ -25,6 +25,7 @@ netlify/functions/price-guide.js      → GET /api/price-guide?type=&no=&conditi
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 netlify/functions/lib/order-contact.js → shared BrickLink order → buyer-contact mapping
 netlify/functions/lib/feedback-rating.js → shared Praise/Neutral/Complaint <-> 0/1/2 mapping
+netlify/functions/order-stats.js       → GET /api/order-stats (full order history, for the Stats page)
 ```
 
 A branch/commit checkpoint, `fork-point-pre-api-expansion`, marks the app
@@ -586,17 +587,48 @@ Token Secret as sensitive as an API key that can move money.
   earlier), having Ryan hit it against a real item with 20+ known
   listings, and reading the actual field names instead of trusting the
   struct a second time.
-- **Top nav** — two persistent category buttons, Orders and Inventory,
-  always visible (except while drilled into a single order's detail
-  view, which keeps the old "< All orders" back button instead — a
-  drill-down, not a top-level page switch). Everything else collapses
-  under one of the two: Orders category = order list (default) + Label
+- **Top nav** — three persistent category buttons, Orders, Inventory,
+  and Stats, always visible (except while drilled into a single order's
+  detail view, which keeps the old "< All orders" back button instead —
+  a drill-down, not a top-level page switch). Everything else collapses
+  under one of the three: Orders category = order list (default) + Label
   Prep; Inventory category = Manage Inventory (default) + Add
-  Inventory. A single secondary "jump to the sibling page" link/button
-  sits under the active category rather than a separate button per page
-  — its label and click handler are swapped in JS per view
-  (`setTopbarNav()`) instead of keeping four always-present buttons
-  around, since only one sibling is ever relevant at a time.
+  Inventory; Stats has no sibling page. A single secondary "jump to the
+  sibling page" link/button sits under the active category rather than a
+  separate button per page — its label and click handler are swapped in
+  JS per view (`setTopbarNav()`) instead of keeping several
+  always-present buttons around, since only one sibling is ever relevant
+  at a time. `setTopbarNav()`'s `subLabel`/`subHandler` are optional —
+  Stats passes neither, and the sub-nav row just hides for that category
+  rather than wiring a click handler to a sibling that doesn't exist.
+- **Sales Stats** — a page under its own top-level "Stats" category:
+  order count, total sales $, and average order value, broken down by
+  year and month, "just for a quick reference" per Ryan's own framing —
+  not a full sales dashboard. Deliberately kept to order-level fields
+  only (date, status, grand total, item count) rather than pulling each
+  historical order's line items too — Ryan explicitly didn't want this
+  brushing up against BrickLink's 5,000 requests/day limit, and per-item
+  data (which is what a theme/category breakdown would need) means one
+  extra API call per historical order, versus the single call this page
+  actually costs. `GET /api/order-stats` wraps `GET /orders?direction=in`
+  with no status filter — confirmed via a real client library's own
+  docstring that omitting `status` returns orders in *every* status
+  (unlike this app's own `/api/orders`, which is built for the pick list
+  and defaults to excluding `COMPLETED`) — so pulling full multi-year
+  order history costs exactly the same one unpaginated call `/api/orders`
+  already makes, not one call per order or per year. Aggregation by
+  year/month happens client-side (`computeOrderStats()`), same
+  "backend fetches, frontend rolls up" split Manage Inventory's stats
+  banner already uses. `CANCELLED`/`PURGED`/`NPB`/`NPX`/`NRS`/`NSS`/`OCR`
+  orders are excluded from the totals entirely (a cancelled or disputed
+  order was never a real sale) rather than counted as $0, with a
+  footnote naming how many were excluded so the totals aren't silently
+  short; a footnote also calls out any order in a different currency
+  than the rest — still counted toward orders/items, just excluded from
+  the $ total, the same defensive single-currency assumption the orders
+  list's own "in process" total already makes.
+  Fetched once per session (`statsRows`, cached like `manageInventoryRows`)
+  rather than on every visit to the page.
 - **Label Prep** — a page under the Orders category (shipping labels are
   part of order fulfillment, not inventory), unrelated to BrickLink
   itself: shrinks a 4x6 Pirate Ship shipping-label

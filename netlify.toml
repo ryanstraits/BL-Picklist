@@ -126,3 +126,8 @@
   to = "/.netlify/functions/feedback-list"
   status = 200
 
+[[redirects]]
+  from = "/api/order-stats"
+  to = "/.netlify/functions/order-stats"
+  status = 200
+
