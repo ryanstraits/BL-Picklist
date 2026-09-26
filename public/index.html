@@ -1050,6 +1050,27 @@
     font-weight: 400;
   }
 
+  .feedback-icons {
+    display: inline-flex;
+    gap: 3px;
+    flex: none;
+  }
+  .feedback-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    line-height: 1;
+    flex: none;
+  }
+  .feedback-icon.given { color: var(--accent); background: var(--accent-soft); }
+  .feedback-icon.received-praise { color: var(--success); background: var(--success-bg); }
+  .feedback-icon.received-neutral { color: var(--text-secondary); background: var(--surface-alt); }
+  .feedback-icon.received-complaint { color: var(--danger); background: var(--surface-alt); }
+
   /* ---- Drive Thru ---- */
   .drive-thru-row { margin-top: 12px; }
   .drive-thru-btn {
@@ -1199,6 +1220,28 @@
   }
   .feedback-submit-btn:disabled { opacity: 0.5; cursor: default; }
   .feedback-sent-msg { font-size: 13px; color: var(--success); font-weight: 600; }
+
+  .buyer-feedback-section {
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .buyer-feedback-section.praise { background: var(--success-bg); border-color: var(--success); }
+  .buyer-feedback-section.neutral { background: var(--info-bg); border-color: var(--info); }
+  .buyer-feedback-section.complaint { background: var(--surface-alt); border-color: var(--danger); }
+  .buyer-feedback-heading {
+    font-size: 12.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 6px;
+  }
+  .buyer-feedback-section.praise .buyer-feedback-heading { color: var(--success); }
+  .buyer-feedback-section.neutral .buyer-feedback-heading { color: var(--info); }
+  .buyer-feedback-section.complaint .buyer-feedback-heading { color: var(--danger); }
+  .buyer-feedback-comment { font-size: 13.5px; color: var(--text); }
+  .buyer-feedback-date { font-size: 11.5px; color: var(--text-secondary); margin-top: 6px; }
 
   .lightbox {
     position: fixed;
@@ -1395,9 +1438,21 @@
   var itemsCache = {};
   var messagesCache = {};
   var contactCache = {};
+  // orderId -> {rating, comment, dateRated} | null. Populated once per
+  // non-cached order-detail load (same lifecycle as messagesCache/
+  // contactCache — reused on a cached revisit, cleared on forceReload),
+  // from the same status-check call that already reconciles Drive
+  // Thru/feedback-sent state on open.
+  var buyerFeedbackCache = {};
   var ratingsCache = {};
   var driveThruSent = {};
   var feedbackSent = {};
+  // orderId -> {rating, comment, dateRated} | undefined. A live mirror of
+  // BrickLink's own feedback data (via /api/feedback-list), refreshed on
+  // every orders-list load — never locally authored, so unlike
+  // feedbackSent/driveThruSent it doesn't go through the durable
+  // pick-state actions sync.
+  var feedbackReceived = {};
   var pickupScheduled = {};
   // orderId -> "large" | "medium" | "small" | "mailer". Manual for now —
   // Ryan records which box/mailer he actually used per order so this
@@ -2197,6 +2252,26 @@
       + '</span>';
   }
 
+  // Two small icons, same idea as the feedback icons on BrickLink's own
+  // Orders Received page: a check for "you left feedback" (feedbackSent,
+  // reconciled from the bulk /api/feedback-list call in loadOrders() the
+  // same way it already was per-order via status-check), and a star for
+  // "buyer left feedback" (feedbackReceived, populated the same way),
+  // tinted by the buyer's actual rating so a Complaint reads distinctly
+  // from a Praise rather than just "feedback exists".
+  function feedbackIconsHtml(orderId) {
+    var icons = "";
+    if (feedbackSent[orderId]) {
+      icons += '<span class="feedback-icon given" title="You left feedback">✓</span>';
+    }
+    var received = feedbackReceived[orderId];
+    if (received) {
+      var tone = received.rating === "Complaint" ? "complaint" : received.rating === "Neutral" ? "neutral" : "praise";
+      icons += '<span class="feedback-icon received-' + tone + '" title="Buyer left feedback: ' + escapeHtml(received.rating || "feedback") + '">★</span>';
+    }
+    return icons ? '<span class="feedback-icons">' + icons + '</span>' : "";
+  }
+
   function fetchMissingBuyerRealNames(orderList) {
     orderList.forEach(function (order) {
       // undefined = never attempted. null or a resolved object both mean
@@ -2292,6 +2367,7 @@
         + '<span class="order-id-group">'
         + '<span class="order-id mono">#' + escapeHtml(order.orderId) + '</span>'
         + statusBadgeHtml(order.status)
+        + feedbackIconsHtml(order.orderId)
         + '</span>'
         + '<span class="order-date">' + escapeHtml(formatDate(order.date)) + '</span>'
         + '</div>'
@@ -2414,6 +2490,25 @@
       orders = await fetchJSON("/api/orders");
       // Newest first, matching BrickLink's own Orders Received page.
       orders.sort(function (a, b) { return new Date(b.date) - new Date(a.date); });
+
+      // A single bulk call (not one per order) for BrickLink's own
+      // feedback truth — same icons BrickLink's own Orders Received page
+      // shows for "you left feedback" / "buyer left feedback". Best-effort:
+      // a failure here just means the icons don't show this refresh,
+      // same fail-safe posture as the rest of this app's enrichment calls.
+      try {
+        var feedbackList = await fetchJSON("/api/feedback-list");
+        feedbackReceived = (feedbackList && feedbackList.received) || {};
+        var actionsChanged = false;
+        Object.keys((feedbackList && feedbackList.given) || {}).forEach(function (orderId) {
+          if (!feedbackSent[orderId]) {
+            feedbackSent[orderId] = true;
+            actionsChanged = true;
+          }
+        });
+        if (actionsChanged) pushOrderActions();
+      } catch (e) { /* icons just won't show this refresh */ }
+
       if (currentView === "orders") renderOrdersList();
     } catch (err) {
       if (currentView === "orders") setOrdersError(err.message);
@@ -2550,6 +2645,7 @@
       + renderContactSection(contact)
       + renderFinancialSection(contact, order)
       + renderMessagesSection(messages)
+      + renderBuyerFeedbackSection(order)
       + (canLeaveFeedback ? renderFeedbackSection(order) : '')
       + (items.length ? '<div class="order-actions">'
         + '<button class="select-all-btn">Select all as picked</button>'
@@ -2908,6 +3004,24 @@
       + '</div>';
   }
 
+  // Read-only display of the buyer's own feedback, once they've left it —
+  // populated from buyerFeedbackCache (see openOrder()'s status-check
+  // call), independent of whether Ryan has left his own feedback yet
+  // (renderFeedbackSection below is the separate "leave feedback" form/
+  // confirmation). Self-gating: returns "" until there's actually
+  // something to show, so it's safe to call unconditionally.
+  function renderBuyerFeedbackSection(order) {
+    var fb = buyerFeedbackCache[order.orderId];
+    if (!fb) return "";
+    var tone = fb.rating === "Complaint" ? "complaint" : fb.rating === "Neutral" ? "neutral" : "praise";
+    return ""
+      + '<div class="buyer-feedback-section ' + tone + '">'
+      + '<div class="buyer-feedback-heading">Buyer left feedback' + (fb.rating ? ': ' + escapeHtml(fb.rating) : '') + '</div>'
+      + (fb.comment ? '<div class="buyer-feedback-comment">' + escapeHtml(fb.comment) + '</div>' : '')
+      + (fb.dateRated ? '<div class="buyer-feedback-date">' + escapeHtml(formatDate(fb.dateRated)) + '</div>' : '')
+      + '</div>';
+  }
+
   function renderFeedbackSection(order) {
     if (feedbackSent[order.orderId]) {
       return '<div class="feedback-section"><div class="feedback-sent-msg">Feedback sent — thanks!</div></div>';
@@ -3076,7 +3190,7 @@
     }
     if (currentView !== "order" || order.orderId !== orderId) return;
 
-    if (forceReload) { delete itemsCache[orderId]; delete messagesCache[orderId]; delete contactCache[orderId]; }
+    if (forceReload) { delete itemsCache[orderId]; delete messagesCache[orderId]; delete contactCache[orderId]; delete buyerFeedbackCache[orderId]; }
 
     var cached = itemsCache[orderId];
     if (cached) {
@@ -3133,6 +3247,7 @@
           actionsChanged = true;
         }
         if (actionsChanged) pushOrderActions();
+        buyerFeedbackCache[orderId] = (statusCheck && statusCheck.buyerFeedback) || null;
       } catch (e) { /* ignore — just show whatever's already tracked locally */ }
 
       if (currentView === "order" && order.orderId === orderId) {

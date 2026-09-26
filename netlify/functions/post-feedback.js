@@ -1,14 +1,7 @@
 const { blPost } = require('./lib/bricklink');
 const { json, errorResponse } = require('./lib/http');
 const { requireAuth } = require('./lib/site-auth');
-
-// BrickLink's feedback "rating" field is a plain integer code, not the
-// word itself — confirmed against a real client library's source
-// (funwithbots/go-bricklink-api, util/rating.go): its Rating type is an
-// int with Praise=0/Neutral=1/Complaint=2, and has no MarshalJSON, so the
-// wire value is the bare number. The frontend still speaks in the human
-// words; this is the only place that needs to know the numeric mapping.
-const RATING_CODES = { Praise: 0, Neutral: 1, Complaint: 2 };
+const { RATING_CODES } = require('./lib/feedback-rating');
 
 exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {

@@ -16,13 +16,15 @@ netlify/functions/order-messages.js   → GET /api/orders/:id/messages
 netlify/functions/send-drive-thru.js  → POST /api/send-drive-thru (writes to BrickLink)
 netlify/functions/member-rating.js    → GET /api/member-rating?username=
 netlify/functions/post-feedback.js    → POST /api/feedback (writes to BrickLink)
-netlify/functions/order-status-check.js → GET /api/orders/:id/status-check?buyer= (Drive Thru/feedback already done on BL?)
+netlify/functions/feedback-list.js    → GET /api/feedback-list (bulk feedback given/received, for the orders list icons)
+netlify/functions/order-status-check.js → GET /api/orders/:id/status-check (Drive Thru/feedback already done on BL? + buyer's feedback content)
 netlify/functions/order-contact.js    → GET /api/orders/:id/contact (buyer email/address/payment method/tracking number)
 netlify/functions/update-tracking.js  → POST /api/update-tracking (writes tracking number to BrickLink)
 netlify/functions/inventory-create.js → POST /api/inventory-create (BrickScan CSV import, writes new listings to BrickLink)
 netlify/functions/price-guide.js      → GET /api/price-guide?type=&no=&condition=&color= (active US listings, for pricing)
 netlify/functions/lib/bricklink.js    → shared OAuth1.0a request helper
 netlify/functions/lib/order-contact.js → shared BrickLink order → buyer-contact mapping
+netlify/functions/lib/feedback-rating.js → shared Praise/Neutral/Complaint <-> 0/1/2 mapping
 ```
 
 A branch/commit checkpoint, `fork-point-pre-api-expansion`, marks the app
@@ -302,18 +304,47 @@ Token Secret as sensitive as an API key that can move money.
     editable), confirm (this posts public feedback visible to the buyer
     and everyone on BrickLink), `POST /feedback` with
     `{order_id, rating, comment}` — `rating` is sent as BrickLink's
-    numeric code (Praise=0/Neutral=1/Complaint=2), confirmed against a
-    real client library's source, since sending the word itself gets
-    `PARAMETER_MISSING_OR_INVALID`. Like Drive Thru, "already posted"
-    state is tracked durably via `/api/pick-state?key=actions`, so the
-    form correctly shows "Feedback sent" everywhere once it's been
-    posted from any device — and the same `status-check` call also
-    tries to catch feedback posted directly on BrickLink, via
-    `GET /orders/{id}/feedback`: any entry whose `from` isn't the buyer
-    is assumed to be ours. That shape isn't independently confirmed
-    (unlike `drive_thru_sent`), so it's a best guess — worth watching
-    the first few real orders to see whether it's actually catching
-    this correctly.
+    numeric code (Praise=0/Neutral=1/Complaint=2, `lib/feedback-rating.js`,
+    shared with the reverse mapping used to display a buyer's own rating
+    back in words), confirmed against a real client library's source,
+    since sending the word itself gets `PARAMETER_MISSING_OR_INVALID`.
+    Like Drive Thru, "already posted" state is tracked durably via
+    `/api/pick-state?key=actions`, so the form correctly shows "Feedback
+    sent" everywhere once it's been posted from any device.
+  - **Buyer feedback display + feedback icons** — once BrickLink's
+    feedback endpoints were confirmed live (via a temporary debug
+    endpoint hit against Ryan's real account — `funwithbots/go-bricklink-api`'s
+    documented shape held up exactly), two things: the order detail page
+    shows the buyer's own feedback (rating + comment + date) read-only,
+    right above the "Leave feedback for buyer" form, in a box tinted by
+    rating (green Praise, blue-gray Neutral, red-bordered Complaint so it
+    can't be missed); and the orders list shows two small icons per card
+    next to the status badge — a check for "you left feedback", a star
+    (tinted the same way) for "buyer left feedback" — the same thing
+    BrickLink's own Orders Received page surfaces.
+    The key thing the debug endpoint revealed: every `/orders/{id}/feedback`
+    entry has a `rating_of_bs` field ("B" or "S") marking whether that
+    entry rates the Buyer or the Seller — a much more reliable signal
+    than the app's original guess (comparing `from` to the buyer's
+    username), which this replaced. The bulk `GET /feedback?direction=in|out`
+    endpoint (same in/out convention as `GET /orders`) is what actually
+    powers the list icons in one call instead of one per order — but each
+    direction mixes two different roles, since Ryan is both a seller
+    (the orders this app manages) and, separately, a buyer on his own
+    personal purchases elsewhere on BrickLink: `direction=in` returned
+    entries with `rating_of_bs` of both "S" (a buyer rating Ryan as
+    seller — what this feature wants) and "B" (some other store rating
+    Ryan as *their* buyer, on an order this app has never heard of);
+    `direction=out` mixed "B" (confirmed by every sampled entry's comment
+    matching this app's own default feedback text — Ryan rating his own
+    buyers) and "S" (Ryan rating a store he personally bought from).
+    `feedback-list.js` filters each direction to the one role that's
+    actually relevant before ever handing an order ID to the frontend,
+    so a personal purchase can't get cross-matched against this app's
+    orders. The per-order call `order-status-check.js` already made
+    (originally just for the "already posted" check) now also returns
+    the buyer's feedback content the same way, reusing that one call
+    rather than adding another round trip when an order is opened.
 - **Session resilience** — a 401 from any API call (an expired/missing
   session cookie mid-use, not just on first load) now shows an explicit
   message on the login gate ("your session needs to be refreshed... your
