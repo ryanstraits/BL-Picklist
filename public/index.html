@@ -218,15 +218,6 @@
   .state-block .retry-btn:active { background: var(--surface-alt); }
 
   /* ---- Orders list ---- */
-  .order-stats {
-    margin-top: 14px;
-    font-size: 13.5px;
-    color: var(--text-secondary);
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .order-stats strong { color: var(--accent); }
   .order-card {
     display: block;
     width: 100%;
@@ -822,27 +813,15 @@
   }
   .browse-tile-recent { border-color: var(--accent); }
   .browse-tile-recent .browse-tile-name { color: var(--accent); }
-  .manage-inventory-stats {
-    display: flex;
-    gap: 16px;
-    margin-top: 12px;
-    padding: 10px 12px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
-  .manage-inventory-stat {
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-  .manage-inventory-stat strong {
-    display: block;
-    font-size: 16px;
-    color: var(--text);
-    font-weight: 700;
-  }
+  /* Layout-only override: the stats tiles sit right after a hint/breadcrumb
+     line here instead of being the first thing in the view (unlike the
+     orders list and Sales Stats, where .stats-summary's own 4px default is
+     already right), so this needs the same 12px gap the old
+     Manage-Inventory-only version of this banner used. */
+  .stats-summary.manage-inventory-stats { margin-top: 12px; }
 
-  /* ---- Sales Stats ---- */
+  /* ---- Stat tiles (Orders list header, Manage Inventory banner, Sales
+     Stats summary all share this block styling) ---- */
   .stats-summary {
     display: flex;
     gap: 12px;
@@ -2408,10 +2387,10 @@
     }
 
     var html = ""
-      + '<div class="order-stats">'
-      + '<div>Total orders to be picked: <strong>' + toPickCount + '</strong></div>'
-      + '<div>Total orders to be shipped: <strong>' + toShipCount + '</strong></div>'
-      + (inProcessTotal !== null ? '<div>Total value of orders in process: <strong>' + escapeHtml(formatCurrency(inProcessTotal, inProcessCurrency)) + '</strong></div>' : '')
+      + '<div class="stats-summary">'
+      + '<div class="stats-summary-tile"><strong>' + toPickCount + '</strong><span>to pick</span></div>'
+      + '<div class="stats-summary-tile"><strong>' + toShipCount + '</strong><span>to ship</span></div>'
+      + (inProcessTotal !== null ? '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatCurrency(inProcessTotal, inProcessCurrency)) + '</strong><span>in process</span></div>' : '')
       + '</div>'
       + (ordersAwaitingPickup.length ? '<div class="pickup-reminder-row">'
         + '<span>' + ordersAwaitingPickup.length + ' order' + (ordersAwaitingPickup.length === 1 ? '' : 's') + ' packed, ready for USPS pickup</span>'
@@ -4349,10 +4328,10 @@
     return { lots: rows.length, items: items, value: value };
   }
   function manageInventoryStatsHtml(stats) {
-    return '<div class="manage-inventory-stats">'
-      + '<span class="manage-inventory-stat"><strong>' + stats.lots + '</strong> lot' + (stats.lots === 1 ? '' : 's') + '</span>'
-      + '<span class="manage-inventory-stat"><strong>' + stats.items + '</strong> item' + (stats.items === 1 ? '' : 's') + '</span>'
-      + '<span class="manage-inventory-stat"><strong>' + escapeHtml(formatCurrency(stats.value, "USD")) + '</strong>total value</span>'
+    return '<div class="stats-summary manage-inventory-stats">'
+      + '<div class="stats-summary-tile"><strong>' + stats.lots + '</strong><span>lots</span></div>'
+      + '<div class="stats-summary-tile"><strong>' + stats.items + '</strong><span>items</span></div>'
+      + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatCurrency(stats.value, "USD")) + '</strong><span>total value</span></div>'
       + '</div>';
   }
 
