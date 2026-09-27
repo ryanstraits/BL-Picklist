@@ -26,6 +26,7 @@
     --danger-soft: #F5DCD7;
     --info: #2E5FA3;
     --info-bg: #E3EAF5;
+    --purple: #7A5691;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -44,6 +45,7 @@
       --danger-soft: #3A1F1B;
       --info: #7BB0FA;
       --info-bg: #1C2A40;
+      --purple: #C79FE0;
     }
   }
   :root[data-theme="dark"] {
@@ -62,6 +64,7 @@
     --danger-soft: #3A1F1B;
     --info: #7BB0FA;
     --info-bg: #1C2A40;
+    --purple: #C79FE0;
   }
 
   * { box-sizing: border-box; }
@@ -268,7 +271,7 @@
   .status-action-btn:disabled { opacity: 0.6; cursor: default; }
   .status-action-btn.to-packed { color: var(--info); border-color: var(--info); }
   .status-action-btn.to-shipped { color: var(--success); border-color: var(--success); }
-  .status-action-btn.to-completed { color: var(--text-secondary); border-color: var(--text-secondary); }
+  .status-action-btn.to-completed { color: var(--purple); border-color: var(--purple); }
   .status-action-btn.list-drive-thru-btn { color: var(--accent); border-color: var(--accent); }
   .status-action-btn.pickup-btn { color: var(--accent); border-color: var(--accent); }
   .status-action-btn.list-file-btn,
