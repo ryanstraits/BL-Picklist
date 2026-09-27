@@ -131,3 +131,8 @@
   to = "/.netlify/functions/order-stats"
   status = 200
 
+[[redirects]]
+  from = "/api/file-order"
+  to = "/.netlify/functions/file-order"
+  status = 200
+

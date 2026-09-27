@@ -68,30 +68,34 @@ Token Secret as sensitive as an API key that can move money.
 ## Notes
 
 - `/api/orders` calls BrickLink with `direction=in` (orders where you're
-  the seller) and returns every order status except `COMPLETED` by
-  default, with one exception: a `COMPLETED` order still shows for 7 days
-  after `date_status_changed` (`COMPLETED_RETENTION_MS` in `orders.js`) —
-  Ryan wants a completed order to stay visible for a while (whether the
-  buyer marked it Completed on their end, or Ryan used the order's own new
-  "Mark as completed" action) so anything actually wrong with it has a
-  chance to surface before it drops off the list for good, rather than
-  vanishing the instant it completes. `date_status_changed` isn't
-  independently confirmed against a real captured response the way
-  `total_weight` eventually was (see below) — it's documented by the same
-  real Go client library (`funwithbots/go-bricklink-api`'s `Header`
-  struct) that already got `is_retain`/`is_stock_room` right, and that
-  struct is what backs the orders-LIST call this endpoint already makes,
-  so (unlike `total_weight`) no extra per-order fetch is needed to read
-  it. If it's ever missing or unparseable on a real order, the order falls
-  back to being excluded immediately — today's behavior — rather than
-  guessing. Override with `/api/orders?status=paid,packed` etc. if you
-  want a narrower set (the retention window only applies to the default,
-  no-status-param request). Order cards and the detail view show a
-  color-coded status badge (fresh/paid, packed, shipped/received,
-  complete, cancelled/problem) — `complete` is a deliberately separate
-  tone from `waiting`, even though they render with the same neutral gray,
-  since conflating the two was exactly the kind of thing that caused the
-  "Not Applicable" color bug earlier in this app's history.
+  the seller) and, deliberately, no `filed` param — BrickLink then
+  defaults to `filed=false` (unfiled orders only), which is what makes
+  filing the mechanism that removes an order from this list. A `COMPLETED`
+  order stays visible here — Ryan wants that, so anything actually wrong
+  with it (a late buyer complaint, mis-shipped item, etc.) has a chance to
+  surface before it's put away — right up until it's filed, whether that
+  happens via BrickLink's own Orders Received page or via this app's own
+  "File order" button (`/api/file-order`, `PUT /orders/{id}` with
+  `{"is_filed": true}`). Either path sets the same `is_filed` flag on
+  BrickLink's side, so either way the next `/api/orders` fetch simply
+  won't include it anymore — no separate tracking needed on this app's
+  side to notice the difference. (An earlier version of this instead used
+  a 7-day timer off `date_status_changed`; Ryan asked to replace that with
+  an explicit, no-expiry filing action instead, since a fixed window meant
+  an order could still disappear before he'd gotten around to checking on
+  it, or linger uselessly long after he already had.) The `is_filed` PUT
+  field is confirmed by two independent client libraries: the Go wrapper's
+  `Header` struct returns `IsFiled *bool` tagged `is_filed,omitempty` (the
+  same field the `filed` query param already filters on for Get Orders),
+  and the Python wrapper's `update_order()` sends exactly
+  `{"is_filed": Boolean, ...}` in its `PUT /orders/{id}` body. Override
+  with `/api/orders?status=paid,packed` etc. if you want a narrower set.
+  Order cards and the detail view show a color-coded status badge
+  (fresh/paid, packed, shipped/received, complete, cancelled/problem) —
+  `complete` is a deliberately separate tone from `waiting`, even though
+  they render with the same neutral gray, since conflating the two was
+  exactly the kind of thing that caused the "Not Applicable" color bug
+  earlier in this app's history.
   `/api/update-order-status` now also accepts `COMPLETED` as a target
   (alongside the existing `PACKED`/`SHIPPED`), so a "Mark as completed"
   button appears on the orders list and the order detail page once an
@@ -101,18 +105,24 @@ Token Secret as sensitive as an API key that can move money.
   already uses for a `SHIPPED` order, so it only shows once Drive Thru's
   already been sent (or immediately for `RECEIVED`); on the order detail
   page it's an independent row, so it appears alongside Send Drive Thru
-  rather than replacing it. The "Total value of orders in process" stat on
-  the orders list explicitly excludes `COMPLETED` orders now that they can
-  actually appear in the list — otherwise a completed order's total would
-  have kept counting as "in process" for the rest of its 7-day visibility
-  window. A `COMPLETED` order's card also gets a dashed border in place of
-  the usual solid one (`.order-card.is-complete`), and its picks progress
-  bar is grayed out regardless of the bar's own fill color — overriding
-  `.done`'s green, since pick state doesn't matter anymore once an order's
-  actually complete. Ryan asked for this so a lingering completed order
-  reads as visually "put away" among the still-active ones during its
-  week of extra visibility, rather than looking like just another normal
-  card.
+  rather than replacing it. Once an order reaches `COMPLETED`, that same
+  button slot (list card and detail page alike) switches to "File order",
+  which POSTs to `/api/file-order` and then — since the order no longer
+  matches the default `filed=false` fetch — removes it from the local
+  `orders` array immediately rather than waiting on a refetch to notice
+  it's gone (the detail page also navigates back to the orders list on
+  success, since there's nothing left on that page to show once it's
+  filed). The "Total value of orders in process" stat on the orders list
+  explicitly excludes `COMPLETED` orders now that they can actually appear
+  in the list, so a completed order's total doesn't keep counting as "in
+  process" for as long as it happens to stay unfiled. A `COMPLETED` order's
+  card also gets a dashed border in place of the usual solid one
+  (`.order-card.is-complete`), and its picks progress bar is grayed out
+  regardless of the bar's own fill color — overriding `.done`'s green,
+  since pick state doesn't matter anymore once an order's actually
+  complete. Ryan asked for this so a lingering completed order reads as
+  visually "put away" among the still-active ones for as long as it stays
+  on the list, rather than looking like just another normal card.
 - `/api/item-image?type=&no=&color=&nu=` fetches up to three independent
   BrickLink photo sources concurrently — the official Catalog API's
   `image_url`, the color-specific catalog photo
