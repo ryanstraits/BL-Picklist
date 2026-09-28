@@ -4948,53 +4948,64 @@
   //
   // boxChoice itself (orderId -> "large"|"medium"|"small"|"mailer") never
   // expires — it's a durable per-order tag, kept even once an order's
-  // filed away — so the *count* here is a true all-time total. But pieces
-  // (order.totalCount) only exist for orders still in the currently
-  // fetched `orders` array (unfiled ones), and weight (contactCache's
-  // weightG) only for whichever of those have had their contact fetched
-  // — so a filed-away tagged order still counts toward the total, it just
-  // can't contribute to the piece/weight ranges below. crossReferenced
-  // tracks how many of the total actually could, so the gap is visible
-  // rather than silently making the ranges look more complete than they
-  // are.
+  // filed away, and filing an order only ever affects what /api/orders
+  // (unfiled-only) returns, never the Blobs store this reads from. So a
+  // filed order's tag was never actually lost — the earlier version of
+  // this just failed to look anywhere else for its pieces/weight once it
+  // dropped out of the unfiled `orders` array. Fixed by sourcing pieces
+  // from `statsRows` instead (already fetched via /api/order-stats, which
+  // explicitly pulls both filed=true and filed=false and covers an
+  // order's full history), and by having fetchMissingBoxWeights() below
+  // fetch weight for every tagged order directly by ID rather than only
+  // ones still in the unfiled list — a per-ID GET /orders/{id} call works
+  // the same regardless of filed status. missingPieces tracks the one
+  // remaining, rare gap: an orderId BrickLink's own order history no
+  // longer has any record of at all.
   function boxChoiceStats() {
     var bySize = {};
     BOX_OPTIONS.forEach(function (opt) { bySize[opt.value] = { count: 0, pieces: [], weightsG: [] }; });
 
+    var totalCountById = {};
+    (statsRows || []).forEach(function (r) { totalCountById[r.orderId] = r.totalCount; });
+
     var taggedIds = Object.keys(boxChoice).filter(function (id) { return boxChoice[id]; });
-    var crossReferenced = 0;
+    var missingPieces = 0;
     taggedIds.forEach(function (orderId) {
       var bucket = bySize[boxChoice[orderId]];
       if (!bucket) return; // defensive — an old/unrecognized box value
       bucket.count++;
-      var order = orders.find(function (o) { return o.orderId === orderId; });
-      if (!order) return; // filed away — no longer in the fetched list
-      crossReferenced++;
-      if (order.totalCount) bucket.pieces.push(order.totalCount);
+      var totalCount = totalCountById[orderId];
+      if (totalCount) {
+        bucket.pieces.push(totalCount);
+      } else {
+        missingPieces++;
+      }
       var contact = contactCache[orderId];
       if (contact && contact.weightG) bucket.weightsG.push(contact.weightG);
     });
 
-    return { total: taggedIds.length, crossReferenced: crossReferenced, bySize: bySize };
+    return { total: taggedIds.length, missingPieces: missingPieces, bySize: bySize };
   }
 
   // Same race-safe "claim null before the fetch starts" pattern as
-  // fetchMissingBuyerRealNames — scoped down to just the (usually small)
-  // set of orders actually tagged with a box choice, since that's all the
-  // tally needs weight for. In practice contactCache is often already
-  // warm for these by the time Stats is opened (the orders list's own
-  // fetchMissingBuyerRealNames call fills it for every visible order,
-  // and tagging a box only ever happens from an order's detail page,
-  // which fetches its contact too) — this just covers whatever that
-  // missed, e.g. Stats opened before Orders ever rendered this session.
+  // fetchMissingBuyerRealNames, but over every tagged orderId rather than
+  // just the currently-open (unfiled) orders list — a filed order's
+  // contact is still fetchable by ID, this just wasn't asking for it
+  // before. In practice contactCache is often already warm for a
+  // still-unfiled tagged order by the time Stats is opened (the orders
+  // list's own fetchMissingBuyerRealNames call fills it for every visible
+  // order, and tagging a box only ever happens from an order's detail
+  // page, which fetches its own contact too) — this mainly ends up
+  // covering filed orders, plus whatever else that missed, e.g. Stats
+  // opened before Orders ever rendered this session.
   function fetchMissingBoxWeights() {
-    orders.forEach(function (order) {
-      if (!boxChoice[order.orderId]) return;
-      if (contactCache[order.orderId] !== undefined) return;
-      contactCache[order.orderId] = null;
-      fetchJSON("/api/orders/" + encodeURIComponent(order.orderId) + "/contact")
+    Object.keys(boxChoice).forEach(function (orderId) {
+      if (!boxChoice[orderId]) return;
+      if (contactCache[orderId] !== undefined) return;
+      contactCache[orderId] = null;
+      fetchJSON("/api/orders/" + encodeURIComponent(orderId) + "/contact")
         .then(function (contact) {
-          contactCache[order.orderId] = contact;
+          contactCache[orderId] = contact;
           if (currentView === "stats") renderStatsView();
         })
         .catch(function () { /* already claimed null above */ });
@@ -5025,8 +5036,6 @@
         + '</div>';
     }).join("");
 
-    var unreferenced = stats.total - stats.crossReferenced;
-
     return ""
       + '<div class="stats-year-block box-stats-block">'
       + '<div class="stats-year-heading">'
@@ -5034,7 +5043,7 @@
       + '<span class="stats-year-orders">' + stats.total + ' order' + (stats.total === 1 ? "" : "s") + '</span>'
       + '</div>'
       + (rows || '<div class="state-block">No box choices tagged yet — pick a box on an order’s detail page to start building this out.</div>')
-      + (unreferenced ? '<div class="box-stats-footnote">' + unreferenced + ' tagged order' + (unreferenced === 1 ? " isn't" : "s aren't") + ' in the open list anymore (filed away), so ' + (unreferenced === 1 ? "it isn't" : "they aren't") + ' reflected in the ranges above.</div>' : '')
+      + (stats.missingPieces ? '<div class="box-stats-footnote">' + stats.missingPieces + ' tagged order' + (stats.missingPieces === 1 ? " has" : "s have") + " no matching record in this account's order history anymore, so " + (stats.missingPieces === 1 ? "it isn't" : "they aren't") + ' reflected in the ranges above.</div>' : '')
       + '</div>';
   }
 

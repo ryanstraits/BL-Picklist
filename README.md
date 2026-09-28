@@ -889,20 +889,27 @@ Token Secret as sensitive as an API key that can move money.
   tracking was still happening and how much more he'd need before it's
   usable. Total tagged count comes straight from `boxChoice`'s keys (it
   never expires, so this is a true all-time total even once an order's
-  been filed away); the per-size breakdown adds a piece-count range
-  (`order.totalCount`, from the currently-fetched — i.e. unfiled — orders
-  list) and a weight range (`contactCache`'s `weightG`, lb/oz via the
-  same `formatWeightLbOz()`) for whichever of those are still
-  cross-referenceable. A single-sample bucket shows just the one value
-  rather than a redundant "12.0 oz–12.0 oz" (`rangeText()`). A tagged
-  order that's since been filed still counts toward the total but can't
-  contribute a piece/weight sample (filing removes it from the fetched
-  orders list) — a footnote calls out how many of the total that applies
-  to, rather than letting the ranges look more complete than they are.
-  `fetchMissingBoxWeights()` background-fills `contactCache` for any
-  tagged order missing it (same race-safe claim-before-fetch pattern as
-  `fetchMissingBuyerRealNames`), scoped to just tagged orders rather than
-  the whole list — in practice this rarely has anything left to do, since
-  the orders list's own name-fill already warms `contactCache` for every
-  visible order, and tagging a box only ever happens from an order's
-  detail page, which fetches its contact anyway.
+  been filed away — filing only ever changes what `/api/orders`, the
+  unfiled-only pick-list fetch, returns; it never touches the Blobs store
+  `boxChoice` lives in). Ryan then asked the natural follow-up: since
+  filed orders' tags are never actually lost, why did they drop out of
+  the piece/weight ranges? First version of this cross-referenced against
+  the `orders` array (unfiled-only) for both — fixed by sourcing piece
+  counts from `statsRows` instead, which is already fetched via
+  `/api/order-stats` and (per its own `filed=true`/`filed=false` merge —
+  see below) covers an order's full history regardless of filed status,
+  and by having `fetchMissingBoxWeights()` fetch weight for every tagged
+  orderId directly rather than only ones still in the unfiled list — a
+  per-ID `GET /orders/{id}` call works the same whether or not that order
+  is filed. `missingPieces` (a footnote, only shown when nonzero) is the
+  one gap actually left: an orderId BrickLink's own order history has no
+  record of at all, not "was filed." Weight, similarly, via
+  `contactCache`'s `weightG` (lb/oz via the same `formatWeightLbOz()`,
+  same race-safe claim-before-fetch pattern as `fetchMissingBuyerRealNames`
+  — in practice this is often already warm for a still-unfiled tagged
+  order by the time Stats is opened, since the orders list's own name-fill
+  warms `contactCache` for every visible order and tagging a box only
+  happens from an order's detail page, which fetches its own contact too
+  — mainly ends up doing real work for filed orders). A single-sample
+  bucket shows just the one value rather than a redundant "12.0 oz–12.0
+  oz" (`rangeText()`).
