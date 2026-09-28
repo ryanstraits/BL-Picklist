@@ -2361,13 +2361,39 @@
     });
   }
 
+  // Same "picked vs. known total" math each order card already renders its
+  // own progress bar from — pulled out so the "to pick" stat and the cards
+  // agree on what "done" means instead of each computing it separately.
+  // Falls back to pickedCountFromState()/order.uniqueCount when the order's
+  // items haven't been fetched yet in this session (same fallback the card
+  // itself already uses before it's been opened).
+  function orderPickProgress(order) {
+    var items = itemsCache[order.orderId];
+    var picked = items ? pickedCount(order.orderId, items) : pickedCountFromState(order.orderId);
+    var knownTotal = items ? items.length : (order.uniqueCount || 0);
+    return { items: items, picked: picked, knownTotal: knownTotal, done: knownTotal > 0 && picked === knownTotal };
+  }
+
   function renderOrdersList() {
     if (!orders.length) {
       ordersView.innerHTML = '<div class="state-block">No open orders right now.</div>';
       return;
     }
 
-    var toPickCount = orders.filter(function (o) { return o.status === "PAID"; }).length;
+    // "To pick" used to just mean "sitting in PAID status" — Ryan pointed
+    // out that's not actually what he wants to know: an order he's already
+    // picked every item on (just hasn't tapped "Mark as packed" yet) isn't
+    // really left to pick anymore, and this missed that distinction
+    // entirely. COMPLETED/problem-status orders are excluded regardless of
+    // their own local pick state (same reasoning as inProcessOrders below)
+    // — those are done or dead, never "still needs picking", even if this
+    // app never happened to record picks for one (e.g. it was fulfilled
+    // before this app existed, or outside it).
+    var toPickCount = orders.filter(function (o) {
+      var meta = STATUS_META[o.status];
+      if (o.status === "COMPLETED" || (meta && meta.tone === "problem")) return false;
+      return !orderPickProgress(o).done;
+    }).length;
     var toShipCount = orders.filter(function (o) { return o.status === "PACKED"; }).length;
 
     // Manual "mental note" reminder, not tied to any single order or to
@@ -2408,10 +2434,11 @@
     orders.forEach(function (order) {
       var total = order.totalCount || 0;
       var lineCount = order.uniqueCount || 0;
-      var items = itemsCache[order.orderId];
-      var picked = items ? pickedCount(order.orderId, items) : pickedCountFromState(order.orderId);
-      var knownTotal = items ? items.length : lineCount;
-      var done = knownTotal > 0 && picked === knownTotal;
+      var progress = orderPickProgress(order);
+      var items = progress.items;
+      var picked = progress.picked;
+      var knownTotal = progress.knownTotal;
+      var done = progress.done;
       var pct = knownTotal > 0 ? Math.round((picked / knownTotal) * 100) : 0;
       var meta = STATUS_META[order.status];
       var needsPick = meta && meta.tone === "fresh";

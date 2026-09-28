@@ -123,6 +123,25 @@ Token Secret as sensitive as an API key that can move money.
   complete. Ryan asked for this so a lingering completed order reads as
   visually "put away" among the still-active ones for as long as it stays
   on the list, rather than looking like just another normal card.
+- The orders list's "to pick" stat tile is driven by actual pick
+  completion (`orderPickProgress()`), not by order status — it used to
+  just count orders sitting in `PAID` status, which meant an order Ryan
+  had already picked every item on (just hadn't tapped "Mark as packed"
+  yet) still counted as needing picked, while an order whose BrickLink
+  status had moved on without every item actually being checked off here
+  didn't show up at all. Now it's simply "not yet at 100% picked,
+  according to this app's own pick state" for every order still worth
+  counting — `COMPLETED` and cancelled/problem-status orders are excluded
+  regardless of their own local pick state (same reasoning as the
+  in-process total above: those are done or dead, never "still needs
+  picking", even if this app never recorded picks for one — e.g. it was
+  fulfilled before this app existed, or outside it). `orderPickProgress()`
+  is the same picked-vs-known-total math each card's own progress bar
+  already used, just pulled into one shared helper so the stat and the
+  cards can't quietly disagree about what "done" means — falling back to
+  `pickedCountFromState()`/`order.uniqueCount` for an order whose items
+  haven't been fetched yet this session, the same fallback the card
+  itself already leaned on before being opened.
 - `/api/item-image?type=&no=&color=&nu=` fetches up to three independent
   BrickLink photo sources concurrently — the official Catalog API's
   `image_url`, the color-specific catalog photo
