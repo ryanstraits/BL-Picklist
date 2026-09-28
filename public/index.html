@@ -888,6 +888,30 @@
   .stats-month-avg { flex: none; width: 84px; text-align: right; font-size: 11.5px; }
   .stats-month-revenue { flex: none; width: 84px; text-align: right; color: var(--text); font-weight: 600; }
 
+  /* Box choices tally — its own block below the year/month breakdown,
+     same bordered-card language as .stats-year-block but its own row
+     shape (a size label, a count, and a free-form pieces/weight range
+     that doesn't fit the currency-tuned month-row columns above). */
+  .box-stats-block { margin-top: 16px; }
+  .box-stats-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .box-stats-row + .box-stats-row { border-top: 1px solid var(--border); }
+  .box-stats-label { flex: none; width: 64px; font-weight: 600; color: var(--text); }
+  .box-stats-count { flex: none; width: 28px; }
+  .box-stats-range { flex: 1; text-align: right; font-size: 11.5px; }
+  .box-stats-footnote {
+    padding: 8px 12px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border);
+  }
+
   .manage-inventory-sort-row {
     display: flex;
     justify-content: flex-end;
@@ -1683,6 +1707,10 @@
           boxChoice = mergedBoxChoice;
           if (remoteNeedsUpdate) pushOrderActions();
           if (currentView === "orders") renderOrdersList();
+          // Stats' box-choices tally reads boxChoice directly too — needs
+          // the same re-render nudge once a remote sync actually changes
+          // it, same as the orders list above.
+          if (currentView === "stats") renderStatsView();
         }
       })
       .catch(function () { /* offline or first run — keep whatever's local */ });
@@ -4916,6 +4944,100 @@
     };
   }
 
+  // ---- Box choices tally ----
+  //
+  // boxChoice itself (orderId -> "large"|"medium"|"small"|"mailer") never
+  // expires — it's a durable per-order tag, kept even once an order's
+  // filed away — so the *count* here is a true all-time total. But pieces
+  // (order.totalCount) only exist for orders still in the currently
+  // fetched `orders` array (unfiled ones), and weight (contactCache's
+  // weightG) only for whichever of those have had their contact fetched
+  // — so a filed-away tagged order still counts toward the total, it just
+  // can't contribute to the piece/weight ranges below. crossReferenced
+  // tracks how many of the total actually could, so the gap is visible
+  // rather than silently making the ranges look more complete than they
+  // are.
+  function boxChoiceStats() {
+    var bySize = {};
+    BOX_OPTIONS.forEach(function (opt) { bySize[opt.value] = { count: 0, pieces: [], weightsG: [] }; });
+
+    var taggedIds = Object.keys(boxChoice).filter(function (id) { return boxChoice[id]; });
+    var crossReferenced = 0;
+    taggedIds.forEach(function (orderId) {
+      var bucket = bySize[boxChoice[orderId]];
+      if (!bucket) return; // defensive — an old/unrecognized box value
+      bucket.count++;
+      var order = orders.find(function (o) { return o.orderId === orderId; });
+      if (!order) return; // filed away — no longer in the fetched list
+      crossReferenced++;
+      if (order.totalCount) bucket.pieces.push(order.totalCount);
+      var contact = contactCache[orderId];
+      if (contact && contact.weightG) bucket.weightsG.push(contact.weightG);
+    });
+
+    return { total: taggedIds.length, crossReferenced: crossReferenced, bySize: bySize };
+  }
+
+  // Same race-safe "claim null before the fetch starts" pattern as
+  // fetchMissingBuyerRealNames — scoped down to just the (usually small)
+  // set of orders actually tagged with a box choice, since that's all the
+  // tally needs weight for. In practice contactCache is often already
+  // warm for these by the time Stats is opened (the orders list's own
+  // fetchMissingBuyerRealNames call fills it for every visible order,
+  // and tagging a box only ever happens from an order's detail page,
+  // which fetches its contact too) — this just covers whatever that
+  // missed, e.g. Stats opened before Orders ever rendered this session.
+  function fetchMissingBoxWeights() {
+    orders.forEach(function (order) {
+      if (!boxChoice[order.orderId]) return;
+      if (contactCache[order.orderId] !== undefined) return;
+      contactCache[order.orderId] = null;
+      fetchJSON("/api/orders/" + encodeURIComponent(order.orderId) + "/contact")
+        .then(function (contact) {
+          contactCache[order.orderId] = contact;
+          if (currentView === "stats") renderStatsView();
+        })
+        .catch(function () { /* already claimed null above */ });
+    });
+  }
+
+  // A single-sample bucket would otherwise show a "range" like "12.0 oz–12.0
+  // oz" — collapses to just the one value instead.
+  function rangeText(values, formatFn) {
+    if (!values.length) return "";
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    return min === max ? formatFn(min) : formatFn(min) + '–' + formatFn(max);
+  }
+
+  function boxStatsSectionHtml() {
+    var stats = boxChoiceStats();
+    var rows = BOX_OPTIONS.map(function (opt) {
+      var b = stats.bySize[opt.value];
+      if (!b.count) return "";
+      var pieces = b.pieces.length ? rangeText(b.pieces, function (n) { return String(n); }) + ' pieces' : "";
+      var weights = b.weightsG.length ? rangeText(b.weightsG, formatWeightLbOz) : "";
+      var detail = [pieces, weights].filter(function (s) { return s; }).join(' · ');
+      return '<div class="box-stats-row">'
+        + '<span class="box-stats-label">' + escapeHtml(opt.label) + '</span>'
+        + '<span class="box-stats-count">' + b.count + '</span>'
+        + '<span class="box-stats-range">' + escapeHtml(detail) + '</span>'
+        + '</div>';
+    }).join("");
+
+    var unreferenced = stats.total - stats.crossReferenced;
+
+    return ""
+      + '<div class="stats-year-block box-stats-block">'
+      + '<div class="stats-year-heading">'
+      + '<span class="stats-year-label">Box choices logged</span>'
+      + '<span class="stats-year-orders">' + stats.total + ' order' + (stats.total === 1 ? "" : "s") + '</span>'
+      + '</div>'
+      + (rows || '<div class="state-block">No box choices tagged yet — pick a box on an order’s detail page to start building this out.</div>')
+      + (unreferenced ? '<div class="box-stats-footnote">' + unreferenced + ' tagged order' + (unreferenced === 1 ? " isn't" : "s aren't") + ' in the open list anymore (filed away), so ' + (unreferenced === 1 ? "it isn't" : "they aren't") + ' reflected in the ranges above.</div>' : '')
+      + '</div>';
+  }
+
   function renderStatsView() {
     if (statsError) {
       statsView.innerHTML = '<div class="state-block error">' + escapeHtml(statsError) + '<br><button class="reset-btn" id="statsRetryBtn">Retry</button></div>';
@@ -4953,6 +5075,8 @@
         + '</div>';
     }).join("");
 
+    fetchMissingBoxWeights();
+
     statsView.innerHTML = ""
       + '<div class="stats-summary">'
       + '<div class="stats-summary-tile"><strong>' + stats.allTimeOrders + '</strong><span>orders</span></div>'
@@ -4960,7 +5084,8 @@
       + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatCurrency(stats.allTimeRevenue, stats.currencyCode)) + '</strong><span>total sales</span></div>'
       + '</div>'
       + (stats.otherCurrencyCount ? '<div class="stats-footnote">' + stats.otherCurrencyCount + ' order' + (stats.otherCurrencyCount === 1 ? "" : "s") + ' in a different currency excluded from the $ totals (still counted in orders/items).</div>' : '')
-      + (yearBlocks || '<div class="state-block">No order history found.</div>');
+      + (yearBlocks || '<div class="state-block">No order history found.</div>')
+      + boxStatsSectionHtml();
   }
 
   function goToOrders() {

@@ -883,3 +883,26 @@ Token Secret as sensitive as an API key that can move money.
   `feedbackSent`/`pickupScheduled` — `/api/pick-state?key=actions`, merged
   with `mergeChoiceMap()` (value-preferring, since a string choice has no
   meaningful boolean OR the way the other three's completion flags do).
+  A "Box choices logged" block sits at the bottom of the Sales Stats page
+  (`boxStatsSectionHtml()`) so Ryan can actually watch this dataset grow
+  instead of wondering — Ryan asked for this after checking in on whether
+  tracking was still happening and how much more he'd need before it's
+  usable. Total tagged count comes straight from `boxChoice`'s keys (it
+  never expires, so this is a true all-time total even once an order's
+  been filed away); the per-size breakdown adds a piece-count range
+  (`order.totalCount`, from the currently-fetched — i.e. unfiled — orders
+  list) and a weight range (`contactCache`'s `weightG`, lb/oz via the
+  same `formatWeightLbOz()`) for whichever of those are still
+  cross-referenceable. A single-sample bucket shows just the one value
+  rather than a redundant "12.0 oz–12.0 oz" (`rangeText()`). A tagged
+  order that's since been filed still counts toward the total but can't
+  contribute a piece/weight sample (filing removes it from the fetched
+  orders list) — a footnote calls out how many of the total that applies
+  to, rather than letting the ranges look more complete than they are.
+  `fetchMissingBoxWeights()` background-fills `contactCache` for any
+  tagged order missing it (same race-safe claim-before-fetch pattern as
+  `fetchMissingBuyerRealNames`), scoped to just tagged orders rather than
+  the whole list — in practice this rarely has anything left to do, since
+  the orders list's own name-fill already warms `contactCache` for every
+  visible order, and tagging a box only ever happens from an order's
+  detail page, which fetches its contact anyway.
