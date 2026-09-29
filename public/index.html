@@ -276,6 +276,9 @@
   .status-action-btn.pickup-btn { color: var(--accent); border-color: var(--accent); }
   .status-action-btn.list-file-btn,
   .status-action-btn.file-order-btn { color: var(--text-secondary); border-color: var(--text-secondary); }
+  /* Same blue as .needs-log's card tint and the square "logged" badge —
+     one consistent color for the whole spreadsheet-logged feature. */
+  .status-action-btn.to-logged { color: var(--info); border-color: var(--info); }
 
   .pickup-reminder-row {
     margin-top: 10px;
@@ -1216,7 +1219,7 @@
   .message-body { font-size: 13px; color: var(--text); white-space: pre-wrap; }
 
   /* ---- Feedback ---- */
-  .box-choice-section, .spreadsheet-logged-section {
+  .box-choice-section {
     margin-top: 16px;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1252,16 +1255,6 @@
     border-color: var(--accent);
     background: var(--accent-soft);
   }
-  .spreadsheet-logged-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .spreadsheet-logged-row input { flex: none; width: 18px; height: 18px; }
   .feedback-section {
     margin-top: 16px;
     background: var(--surface);
@@ -1325,6 +1318,12 @@
   }
   .feedback-submit-btn:disabled { opacity: 0.5; cursor: default; }
   .feedback-sent-msg { font-size: 13px; color: var(--success); font-weight: 600; }
+  /* Sits in the same drive-thru-row the "Log in spreadsheet" button it
+     replaces does — matching padding (no border/background, unlike the
+     button) keeps the row from visibly jumping height when it toggles
+     between the two. Tappable to undo, so cursor: pointer despite not
+     being a <button>. */
+  .spreadsheet-logged-msg { font-size: 12.5px; font-weight: 600; color: var(--info); padding: 8px 14px; cursor: pointer; }
 
   .buyer-feedback-section {
     margin-top: 16px;
@@ -2947,10 +2946,10 @@
       + (canSendDriveThru ? '<div class="drive-thru-row">'
         + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>'
         + '</div>' : '')
+      + '<div class="drive-thru-row">' + renderSpreadsheetLoggedAction(order) + '</div>'
       + '</div>'
       + (items.length ? '<button class="jump-to-items-btn" id="jumpToItemsBtn">Jump to items ↓</button>' : '')
       + renderBoxChoiceSection(order)
-      + renderSpreadsheetLoggedSection(order)
       + renderContactSection(contact)
       + renderFinancialSection(contact, order)
       + renderMessagesSection(messages)
@@ -3101,19 +3100,7 @@
       });
     });
 
-    var spreadsheetLoggedCheck = document.getElementById("spreadsheetLoggedCheck");
-    if (spreadsheetLoggedCheck) {
-      spreadsheetLoggedCheck.addEventListener("click", function (e) { e.stopPropagation(); });
-      spreadsheetLoggedCheck.addEventListener("change", function () {
-        // Records an explicit true/false either way, not just "checked" —
-        // this is what lets unchecking one of the threshold-defaulted
-        // older orders (isOrderLogged()'s fallback) actually stick, rather
-        // than being indistinguishable from "never touched" and reverting
-        // to the default on the next render.
-        spreadsheetLogged[order.orderId] = spreadsheetLoggedCheck.checked;
-        pushOrderActions();
-      });
-    }
+    wireSpreadsheetLoggedAction(order);
 
     var copyAddressBtn = document.getElementById("copyAddressBtn");
     if (copyAddressBtn) {
@@ -3367,15 +3354,48 @@
   // not picking, so it belongs on every order's detail page (old orders
   // reached through Order Lookup, and new ones as they come in through the
   // main list) rather than only where Order Lookup happens to be open.
-  function renderSpreadsheetLoggedSection(order) {
-    var checked = isOrderLogged(order.orderId);
-    return ""
-      + '<div class="spreadsheet-logged-section">'
-      + '<label class="spreadsheet-logged-row">'
-      + '<input type="checkbox" id="spreadsheetLoggedCheck"' + (checked ? ' checked' : '') + '>'
-      + '<span>Logged in spreadsheet</span>'
-      + '</label>'
-      + '</div>';
+  // Started as a checkbox; switched to match the status-action-btn/
+  // drive-thru-row style everything else in this row already uses (Mark
+  // as packed/shipped/completed, File order, Send Drive Thru), with the
+  // button disappearing into a sent-style confirmation line once logged,
+  // same as feedback's "Feedback sent — thanks!" — per Ryan's own ask
+  // after using the checkbox live. The confirmation line stays tappable
+  // to undo, unlike feedback's (which can't be un-sent) — the only way
+  // left to fix a wrongly threshold-defaulted older order, now that
+  // there's no persistent checkbox to uncheck.
+  function renderSpreadsheetLoggedAction(order) {
+    if (isOrderLogged(order.orderId)) {
+      return '<div class="spreadsheet-logged-msg" id="spreadsheetLoggedMsg" title="Tap to undo">Logged in spreadsheet ✓</div>';
+    }
+    return '<button class="status-action-btn to-logged" id="spreadsheetLoggedBtn">Log in spreadsheet</button>';
+  }
+
+  function wireSpreadsheetLoggedAction(order) {
+    var btn = document.getElementById("spreadsheetLoggedBtn");
+    if (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        spreadsheetLogged[order.orderId] = true;
+        pushOrderActions();
+        refreshSpreadsheetLoggedAction(order);
+      });
+    }
+    var msg = document.getElementById("spreadsheetLoggedMsg");
+    if (msg) {
+      msg.addEventListener("click", function (e) {
+        e.stopPropagation();
+        spreadsheetLogged[order.orderId] = false;
+        pushOrderActions();
+        refreshSpreadsheetLoggedAction(order);
+      });
+    }
+  }
+
+  function refreshSpreadsheetLoggedAction(order) {
+    var row = document.getElementById("spreadsheetLoggedBtn") || document.getElementById("spreadsheetLoggedMsg");
+    if (!row) return;
+    row.outerHTML = renderSpreadsheetLoggedAction(order);
+    wireSpreadsheetLoggedAction(order);
   }
 
   // Read-only display of the buyer's own feedback, once they've left it —

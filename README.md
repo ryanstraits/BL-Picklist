@@ -1032,7 +1032,7 @@ Token Secret as sensitive as an API key that can move money.
     its lightest packages. Shared by the order detail weight line and
     Sales Stats' box-choice ranges, so both got more precise, not just
     Order Lookup.
-  - A "Logged in spreadsheet" checkbox on every order's detail page
+  - A "Log in spreadsheet" action on every order's detail page
     (`spreadsheetLogged`, synced the same durable way as box choice, via a
     new `mergeLoggedMap()` — tri-state, unlike the plain OR-merge the
     other action flags use, since this one needs to carry an explicit
@@ -1040,10 +1040,26 @@ Token Secret as sensitive as an API key that can move money.
     to override the threshold default described next). Every order at or
     before id 3256335 reads as already logged by default
     (`isOrderLogged()`/`SPREADSHEET_LOGGED_THRESHOLD`) since Ryan already
-    has those in his own spreadsheet — backfilling is "uncheck the
-    exceptions," not "check thousands of old orders" — and checking or
-    unchecking any order writes an explicit value that always wins over
-    that default. Unlogged orders get the same soft accent-colored card
+    has those in his own spreadsheet — backfilling is "clear the
+    exceptions," not "log thousands of old orders." Started as a checkbox
+    in the box-choice-style boxed section below "Jump to items"; changed
+    right after shipping, once Ryan asked for it to match the
+    `status-action-btn`/`drive-thru-row` style everything else in the
+    order-summary card already uses (Mark as packed/shipped/completed,
+    File order, Send Drive Thru) instead. `renderSpreadsheetLoggedAction()`
+    now renders a "Log in spreadsheet" button (`.to-logged`, same blue as
+    the card tint/badge below) when unlogged; tapping it sets
+    `spreadsheetLogged[orderId] = true`, pushes, and swaps the button's
+    `outerHTML` for a `.spreadsheet-logged-msg` confirmation line ("Logged
+    in spreadsheet ✓"), the same collapse-into-a-sent-message pattern
+    `renderFeedbackSection()` already uses for "Feedback sent — thanks!".
+    Unlike feedback (which can't be un-sent), the confirmation line stays
+    tappable to set it back to `false` — otherwise there'd be no way left
+    to fix a wrongly threshold-defaulted older order, now that there's no
+    persistent checkbox to uncheck; `wireSpreadsheetLoggedAction()`/
+    `refreshSpreadsheetLoggedAction()` re-wire the swapped-in element each
+    time rather than needing a full `renderOrderDetail()` re-render.
+    Unlogged orders get the same soft accent-colored card
     tint as a fresh order needing picked, at first (`.needs-log`, same
     `--accent-soft` gold as `.needs-pick`) — changed after shipping, once
     Ryan pointed out that made an unlogged order look exactly like a new
