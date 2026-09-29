@@ -787,7 +787,8 @@
   .inventory-row.result-success { opacity: 0.6; }
   .item-row.row-dirty { background: var(--accent-soft); border-color: transparent; }
 
-  .manage-inventory-search {
+  .manage-inventory-search,
+  .order-lookup-search {
     width: 100%;
     box-sizing: border-box;
     padding: 10px 12px;
@@ -1475,6 +1476,7 @@
     </div>
     <div class="topbar-row topbar-row-nav topbar-row-subnav" id="topbarSubNavRow">
       <button class="nav-tab-btn" id="subNavBtn"></button>
+      <button class="nav-tab-btn" id="orderLookupBtn">Order Lookup</button>
     </div>
     <div class="order-progress-row hidden" id="topbarProgressRow">
       <div class="progress-track"><div class="progress-fill" id="topbarProgressFill" style="width:0%"></div></div>
@@ -1497,6 +1499,7 @@
     <section id="view-label-prep" class="hidden"></section>
     <section id="view-manage-inventory" class="hidden"></section>
     <section id="view-stats" class="hidden"></section>
+    <section id="view-order-lookup" class="hidden"></section>
   </main>
 </div>
 
@@ -2084,6 +2087,7 @@
   var labelPrepView = document.getElementById("view-label-prep");
   var manageInventoryView = document.getElementById("view-manage-inventory");
   var statsView = document.getElementById("view-stats");
+  var orderLookupView = document.getElementById("view-order-lookup");
   var backBtn = document.getElementById("backBtn");
   var brandSub = document.getElementById("brandSub");
   var refreshBtn = document.getElementById("refreshBtn");
@@ -2093,6 +2097,7 @@
   var categoryInventoryBtn = document.getElementById("categoryInventoryBtn");
   var categoryStatsBtn = document.getElementById("categoryStatsBtn");
   var subNavBtn = document.getElementById("subNavBtn");
+  var orderLookupBtn = document.getElementById("orderLookupBtn");
   var topbarProgressRow = document.getElementById("topbarProgressRow");
   var topbarProgressFill = document.getElementById("topbarProgressFill");
   var topbarProgressLabel = document.getElementById("topbarProgressLabel");
@@ -2103,12 +2108,23 @@
   var topbarManageSubmitBtn = document.getElementById("topbarManageSubmitBtn");
   var topbarManageCancelBtn = document.getElementById("topbarManageCancelBtn");
   var currentView = "orders";
+  // Set at the top of openOrder() whenever it's given a fallback order
+  // object (i.e. opened via openLookupOrder() rather than by tapping a
+  // card in the main orders list) — read by renderOrderDetail() to omit
+  // the picking UI, and by the back-button handlers below to return to
+  // Order Lookup instead of the main orders list.
+  var orderDetailReadOnly = false;
 
   // Two top-level categories — Orders (order list + Label Prep, since
   // prepping a shipping label is part of order fulfillment) and Inventory
   // (Manage Inventory + Add Inventory) — each with one secondary page to
   // jump to via subNavBtn, whose label/handler this swaps per view rather
-  // than keeping a separate button element for every page.
+  // than keeping a separate button element for every page. orderLookupBtn
+  // is a second, static sub-nav button rather than going through that same
+  // swap mechanism — Order Lookup is reachable from both Orders-category
+  // pages (the main list and Label Prep), not just one of them the way
+  // subNavBtn's single target always is — shown throughout the Orders
+  // category and hidden only while already on Order Lookup itself.
   // subLabel/subHandler are optional — Stats has no sibling page to jump
   // to the way Orders (↔ Label Prep) and Inventory (↔ Add Inventory) do,
   // so subNavBtn's row just stays hidden for that category instead of
@@ -2121,6 +2137,7 @@
     categoryOrdersBtn.classList.toggle("active", category === "orders");
     categoryInventoryBtn.classList.toggle("active", category === "inventory");
     categoryStatsBtn.classList.toggle("active", category === "stats");
+    orderLookupBtn.style.display = (category === "orders" && currentView !== "order-lookup") ? "" : "none";
     if (subLabel) {
       topbarSubNavRow.style.display = "";
       subNavBtn.textContent = subLabel;
@@ -2735,6 +2752,7 @@
 
   function renderOrderDetail(order, items, messages, contact) {
     messages = messages || [];
+    var readOnly = orderDetailReadOnly;
     var picked = pickedCount(order.orderId, items);
     var allDone = items.length > 0 && picked === items.length;
     var itemKeys = computeItemKeys(items);
@@ -2752,10 +2770,10 @@
     }
 
     var rows = items.map(function (item, idx) {
-      var isDone = isPicked(order.orderId, itemKeys[idx]);
+      var isDone = !readOnly && isPicked(order.orderId, itemKeys[idx]);
       var isMulti = item.qty > 1;
-      var progress = isMulti ? pickProgress(order.orderId, itemKeys[idx], item.qty) : null;
-      var isPartial = isMulti && !isDone && progress.n > 0;
+      var progress = (!readOnly && isMulti) ? pickProgress(order.orderId, itemKeys[idx], item.qty) : null;
+      var isPartial = !readOnly && isMulti && !isDone && progress.n > 0;
       var rowClass = isDone ? ' picked' : (isPartial ? ' partial' : '');
       return ""
         + '<div class="item-row' + rowClass + '" data-key="' + escapeHtml(itemKeys[idx]) + '" data-qty="' + item.qty + '">'
@@ -2768,14 +2786,14 @@
         + (item.unitPrice ? '<span class="item-price mono">' + escapeHtml(formatCurrency(item.unitPrice, order.currencyCode)) + '</span>' : '')
         + '</span>'
         + '</div>'
-        + (isMulti ? itemProgressRowHtml(progress) : '')
+        + (!readOnly && isMulti ? itemProgressRowHtml(progress) : '')
         + '<div class="item-name">' + escapeHtml(item.name) + '</div>'
         + (isRealColorName(item.colorName) ? '<div class="item-color">' + escapeHtml(item.colorName) + '</div>' : '')
         + (item.description ? '<div class="item-color">' + escapeHtml(item.description) + '</div>' : '')
         + (item.remarks ? '<div class="item-remarks">' + escapeHtml(item.remarks) + '</div>' : '')
         + '<a class="item-bl-link" href="' + escapeHtml(bricklinkCatalogUrl(item, item.newOrUsed === "U" ? "U" : "N")) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>'
         + '</div>'
-        + '<div class="checkmark">' + checkSvg() + '</div>'
+        + (readOnly ? '' : '<div class="checkmark">' + checkSvg() + '</div>')
         + '</div>';
     }).join("");
 
@@ -2790,7 +2808,7 @@
       + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
       + '</div>'
       + (contact && contact.weightG ? '<div class="order-weight mono">' + escapeHtml(formatWeightLbOz(contact.weightG)) + '</div>' : '')
-      + '<div class="picked-count" id="pickedCountText"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>'
+      + (readOnly ? '' : '<div class="picked-count" id="pickedCountText"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>')
       + (detailStatusAction ? '<div class="drive-thru-row">' + detailStatusAction + '</div>' : '')
       + (canSendDriveThru ? '<div class="drive-thru-row">'
         + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>'
@@ -2803,15 +2821,15 @@
       + renderMessagesSection(messages)
       + renderBuyerFeedbackSection(order)
       + (canLeaveFeedback ? renderFeedbackSection(order) : '')
-      + (items.length ? '<div class="order-actions">'
+      + (items.length && !readOnly ? '<div class="order-actions">'
         + '<button class="select-all-btn">Select all as picked</button>'
         + '<button class="reset-btn">Clear picks for this order</button>'
         + '</div>' : '')
       + '<div id="orderItemsAnchor"></div>'
       + (items.length ? rows : '<div class="state-block">This order has no line items.</div>')
       + '<div class="reset-row">'
-      + '<button class="bottom-back-btn" id="bottomBackBtn">&#8592; All orders</button>'
-      + (items.length ? '<button class="select-all-btn">Select all as picked</button>'
+      + '<button class="bottom-back-btn" id="bottomBackBtn">&#8592; ' + (readOnly ? "Order Lookup" : "All orders") + '</button>'
+      + (items.length && !readOnly ? '<button class="select-all-btn">Select all as picked</button>'
         + '<button class="reset-btn">Clear picks for this order</button>' : '')
       + '</div>';
 
@@ -2828,41 +2846,46 @@
     // replacement. Toggling the "picked" class directly on just the
     // tapped row (all its visual states are pure CSS, no layout-affecting
     // properties — see .item-row.picked) avoids the rebuild entirely.
-    orderView.querySelectorAll(".item-row").forEach(function (row) {
-      row.addEventListener("click", function () {
-        var key = row.getAttribute("data-key");
-        var qty = parseInt(row.getAttribute("data-qty"), 10) || 1;
-        togglePicked(order.orderId, key, qty);
+    // None of this wiring exists in read-only mode (Order Lookup) — there's
+    // no picked-count line, no select-all/reset buttons, and item rows
+    // render with no picked/partial class or checkmark to toggle anyway.
+    if (!readOnly) {
+      orderView.querySelectorAll(".item-row").forEach(function (row) {
+        row.addEventListener("click", function () {
+          var key = row.getAttribute("data-key");
+          var qty = parseInt(row.getAttribute("data-qty"), 10) || 1;
+          togglePicked(order.orderId, key, qty);
 
-        var isDone = isPicked(order.orderId, key);
-        var isMulti = qty > 1;
-        var progress = isMulti ? pickProgress(order.orderId, key, qty) : null;
-        row.classList.toggle("picked", isDone);
-        row.classList.toggle("partial", isMulti && !isDone && progress.n > 0);
+          var isDone = isPicked(order.orderId, key);
+          var isMulti = qty > 1;
+          var progress = isMulti ? pickProgress(order.orderId, key, qty) : null;
+          row.classList.toggle("picked", isDone);
+          row.classList.toggle("partial", isMulti && !isDone && progress.n > 0);
 
-        var progressEl = row.querySelector(".item-progress-row");
-        if (progressEl) progressEl.outerHTML = itemProgressRowHtml(progress);
+          var progressEl = row.querySelector(".item-progress-row");
+          if (progressEl) progressEl.outerHTML = itemProgressRowHtml(progress);
 
-        updatePickedProgress(order, items);
+          updatePickedProgress(order, items);
+        });
       });
-    });
-    updatePickedProgress(order, items);
+      updatePickedProgress(order, items);
 
-    orderView.querySelectorAll(".reset-btn").forEach(function (btn) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        resetOrder(order.orderId);
-        renderOrderDetail(order, items, messages, contact);
+      orderView.querySelectorAll(".reset-btn").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          resetOrder(order.orderId);
+          renderOrderDetail(order, items, messages, contact);
+        });
       });
-    });
 
-    orderView.querySelectorAll(".select-all-btn").forEach(function (btn) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        selectAllOrder(order.orderId, items);
-        renderOrderDetail(order, items, messages, contact);
+      orderView.querySelectorAll(".select-all-btn").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          selectAllOrder(order.orderId, items);
+          renderOrderDetail(order, items, messages, contact);
+        });
       });
-    });
+    }
 
     var detailStatusBtn = document.getElementById("detailStatusBtn");
     if (detailStatusBtn) {
@@ -2910,7 +2933,10 @@
         postJSON("/api/file-order", { orderId: order.orderId })
           .then(function () {
             orders = orders.filter(function (o) { return o.orderId !== order.orderId; });
-            goToOrders();
+            // Filing doesn't remove an order from statsRows (order-stats
+            // covers filed and unfiled alike) — it stays findable in Order
+            // Lookup, same as before, just no longer in the main list.
+            if (readOnly) goToOrderLookup(); else goToOrders();
           })
           .catch(function (err) {
             window.alert("Couldn't file order #" + order.orderId + ": " + err.message);
@@ -3010,7 +3036,7 @@
 
     document.getElementById("bottomBackBtn").addEventListener("click", function (e) {
       e.stopPropagation();
-      goToOrders();
+      if (readOnly) goToOrderLookup(); else goToOrders();
     });
   }
 
@@ -3340,25 +3366,39 @@
       + '</div>'
       + '<div class="state-block error">' + escapeHtml(message)
       + '<br><button class="retry-btn" id="orderRetryBtn">Try again</button></div>'
-      + '<div class="reset-row"><button class="bottom-back-btn" id="bottomBackBtnErr">&#8592; All orders</button></div>';
+      + '<div class="reset-row"><button class="bottom-back-btn" id="bottomBackBtnErr">&#8592; ' + (orderDetailReadOnly ? "Order Lookup" : "All orders") + '</button></div>';
     var retryBtn = document.getElementById("orderRetryBtn");
-    if (retryBtn) retryBtn.addEventListener("click", function () { openOrder(order.orderId, true); });
+    // Passing `order` as the fallback unconditionally is harmless when it
+    // came from the main list too — openOrder() only falls back to it if
+    // the order isn't found in `orders`.
+    if (retryBtn) retryBtn.addEventListener("click", function () { openOrder(order.orderId, true, order); });
     var backBtnErr = document.getElementById("bottomBackBtnErr");
-    if (backBtnErr) backBtnErr.addEventListener("click", goToOrders);
+    if (backBtnErr) backBtnErr.addEventListener("click", function () { if (orderDetailReadOnly) goToOrderLookup(); else goToOrders(); });
   }
 
-  async function openOrder(orderId, forceReload) {
-    var order = orders.filter(function (o) { return o.orderId === orderId; })[0];
+  // fallbackOrder: passed only by openLookupOrder() below, for an order
+  // Order Lookup found that isn't in the main (unfiled-only) `orders`
+  // array — its presence is also what flips orderDetailReadOnly on, since
+  // an order reached this way never goes through the normal PAID→PACKED→
+  // SHIPPED pick workflow this app's checkboxes track.
+  async function openOrder(orderId, forceReload, fallbackOrder) {
+    var order = orders.filter(function (o) { return o.orderId === orderId; })[0] || fallbackOrder;
     if (!order) return;
+    orderDetailReadOnly = !!fallbackOrder;
 
     currentView = "order";
     ordersView.classList.add("hidden");
     orderView.classList.remove("hidden");
     inventoryView.classList.add("hidden");
+    orderLookupView.classList.add("hidden");
     backBtn.style.display = "inline-flex";
     topbarCategoryRow.style.display = "none";
     topbarSubNavRow.style.display = "none";
-    topbarProgressRow.classList.remove("hidden");
+    if (orderDetailReadOnly) {
+      topbarProgressRow.classList.add("hidden");
+    } else {
+      topbarProgressRow.classList.remove("hidden");
+    }
     brandSub.textContent = "Order #" + order.orderId;
 
     // Make sure picks (and Drive Thru/feedback completion) reflect the
@@ -4856,16 +4896,22 @@
   var statsRows = null;
   var statsError = null;
 
+  // Order Lookup (see below) reuses this same fetch and statsRows/
+  // statsError rather than issuing its own — it's the same full order
+  // history (filed and unfiled alike) either way, just used to search
+  // instead of aggregate.
   function fetchStats() {
     statsError = null;
     fetchJSON("/api/order-stats")
       .then(function (rows) {
         statsRows = rows || [];
         if (currentView === "stats") renderStatsView();
+        if (currentView === "order-lookup") renderOrderLookupResults();
       })
       .catch(function (err) {
         statsError = err.message;
         if (currentView === "stats") renderStatsView();
+        if (currentView === "order-lookup") renderOrderLookupResults();
       });
   }
 
@@ -5097,6 +5143,126 @@
       + boxStatsSectionHtml();
   }
 
+  // ---- Order Lookup ----
+  //
+  // Finds any order regardless of status or filed state — unlike the main
+  // orders list (deliberately unfiled-only, see orders.js), this searches
+  // statsRows, the same full-history fetch Sales Stats already uses. An
+  // order found here opens the normal order-detail page, just in
+  // read-only mode (see orderDetailReadOnly/openOrder) — no pick
+  // checkboxes or progress bar, since a looked-up order (often old,
+  // filed, or already shipped) isn't what Ryan's actually out picking
+  // right now; everything else (contact info, financials, messages,
+  // feedback, box choice, status actions) stays fully usable.
+  var orderLookupQuery = "";
+  var orderLookupSearchDebounceTimer = null;
+  var ORDER_LOOKUP_RESULT_CAP = 40;
+
+  function orderLookupMatches(query) {
+    var q = query.trim().toLowerCase();
+    if (!q || !statsRows) return [];
+    return statsRows.filter(function (o) {
+      return (o.orderId && o.orderId.toLowerCase().indexOf(q) !== -1)
+        || (o.buyer && o.buyer.toLowerCase().indexOf(q) !== -1)
+        || (o.date && o.date.toLowerCase().indexOf(q) !== -1)
+        || (o.date && formatDate(o.date).toLowerCase().indexOf(q) !== -1);
+    }).sort(function (a, b) {
+      var da = a.date ? new Date(a.date).getTime() : -Infinity;
+      var db = b.date ? new Date(b.date).getTime() : -Infinity;
+      return db - da;
+    });
+  }
+
+  function orderLookupCardHtml(o) {
+    return '<div class="order-card" role="button" tabindex="0" data-order="' + escapeHtml(o.orderId) + '">'
+      + '<div class="order-top-row">'
+      + '<span class="order-id-group">'
+      + '<span class="order-id mono">#' + escapeHtml(o.orderId) + '</span>'
+      + statusBadgeHtml(o.status)
+      + '</span>'
+      + '<span class="order-date">' + escapeHtml(formatDate(o.date)) + '</span>'
+      + '</div>'
+      + '<div class="order-buyer">'
+      + '<span>' + escapeHtml(o.buyer || "") + '</span>'
+      + (o.grandTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(o.grandTotal, o.currencyCode)) + '</span>' : '')
+      + '</div>'
+      + '<div class="order-lots-items">' + (o.uniqueCount || 0) + ' lots · ' + (o.totalCount || 0) + ' items</div>'
+      + '</div>';
+  }
+
+  // Maps a statsRows row (orderId/status/buyer/date/totalCount/
+  // uniqueCount/grandTotal/currencyCode) to the shape openOrder()/
+  // renderOrderDetail() expect (orderTotal instead of grandTotal — kept
+  // separate names in order-stats.js itself since Sales Stats' own
+  // aggregation already reads `grandTotal` there and renaming it would
+  // ripple through that unrelated code for no reason).
+  function openLookupOrder(row) {
+    openOrder(row.orderId, false, {
+      orderId: row.orderId,
+      status: row.status,
+      buyer: row.buyer,
+      date: row.date,
+      totalCount: row.totalCount,
+      uniqueCount: row.uniqueCount,
+      orderTotal: row.grandTotal,
+      currencyCode: row.currencyCode,
+    });
+  }
+
+  // Rebuilds only the results area below the search box, same "leave the
+  // <input> itself alone" reasoning as renderManageInventoryResults.
+  function renderOrderLookupResults() {
+    var container = document.getElementById("orderLookupResults");
+    if (!container) return;
+    var query = orderLookupQuery.trim();
+
+    var body = "";
+    if (statsError) {
+      body = '<div class="state-block error">' + escapeHtml(statsError) + '<br><button class="reset-btn" id="orderLookupRetryBtn">Retry</button></div>';
+    } else if (!statsRows) {
+      body = '<div class="state-block">Loading order history…</div>';
+    } else if (!query) {
+      body = '<div class="manage-inventory-hint">Search by BrickLink order number, buyer name, or date.</div>';
+    } else {
+      var matches = orderLookupMatches(query);
+      var capped = matches.slice(0, ORDER_LOOKUP_RESULT_CAP);
+      body = '<div class="inventory-summary-row"><span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span></div>'
+        + (capped.length ? capped.map(orderLookupCardHtml).join("") : '<div class="state-block">No orders found.</div>')
+        + (matches.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + matches.length + ' matches — refine your search to see the rest.</div>' : '');
+    }
+
+    container.innerHTML = body;
+
+    var retryBtn = document.getElementById("orderLookupRetryBtn");
+    if (retryBtn) retryBtn.addEventListener("click", fetchStats);
+
+    container.querySelectorAll(".order-card").forEach(function (card) {
+      var row = statsRows.filter(function (o) { return o.orderId === card.getAttribute("data-order"); })[0];
+      if (!row) return;
+      card.addEventListener("click", function () { openLookupOrder(row); });
+      card.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openLookupOrder(row);
+        }
+      });
+    });
+  }
+
+  function renderOrderLookupView() {
+    orderLookupView.innerHTML = ""
+      + '<input type="search" class="order-lookup-search" id="orderLookupSearchInput" placeholder="Search by order #, name, or date…" value="' + escapeHtml(orderLookupQuery) + '" autocomplete="off">'
+      + '<div id="orderLookupResults"></div>';
+
+    document.getElementById("orderLookupSearchInput").addEventListener("input", function (e) {
+      orderLookupQuery = e.target.value;
+      clearTimeout(orderLookupSearchDebounceTimer);
+      orderLookupSearchDebounceTimer = setTimeout(renderOrderLookupResults, 150);
+    });
+
+    renderOrderLookupResults();
+  }
+
   function goToOrders() {
     currentView = "orders";
     orderView.classList.add("hidden");
@@ -5104,6 +5270,7 @@
     labelPrepView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
     statsView.classList.add("hidden");
+    orderLookupView.classList.add("hidden");
     ordersView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders", "Label Prep", goToLabelPrep);
@@ -5119,6 +5286,7 @@
     labelPrepView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
     statsView.classList.add("hidden");
+    orderLookupView.classList.add("hidden");
     inventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory", "Manage Inventory", goToManageInventory);
@@ -5137,6 +5305,7 @@
     inventoryView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
     statsView.classList.add("hidden");
+    orderLookupView.classList.add("hidden");
     labelPrepView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders", "Order List", goToOrders);
@@ -5152,6 +5321,7 @@
     inventoryView.classList.add("hidden");
     labelPrepView.classList.add("hidden");
     statsView.classList.add("hidden");
+    orderLookupView.classList.add("hidden");
     manageInventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory", "+ Add Inventory", goToInventory);
@@ -5168,6 +5338,7 @@
     inventoryView.classList.add("hidden");
     labelPrepView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
+    orderLookupView.classList.add("hidden");
     statsView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("stats");
@@ -5176,7 +5347,30 @@
     renderStatsView();
   }
 
-  backBtn.addEventListener("click", goToOrders);
+  function goToOrderLookup() {
+    currentView = "order-lookup";
+    ordersView.classList.add("hidden");
+    orderView.classList.add("hidden");
+    inventoryView.classList.add("hidden");
+    labelPrepView.classList.add("hidden");
+    manageInventoryView.classList.add("hidden");
+    statsView.classList.add("hidden");
+    orderLookupView.classList.remove("hidden");
+    backBtn.style.display = "none";
+    setTopbarNav("orders", "Order List", goToOrders);
+    refreshBtn.style.display = "none";
+    brandSub.textContent = "Order Lookup";
+    renderOrderLookupView();
+    // Same full-history data Sales Stats fetches (see fetchStats()) — no
+    // point re-fetching if it's already loaded or already failed this
+    // session; the retry button covers the failure case explicitly.
+    if (!statsRows && !statsError) fetchStats();
+  }
+
+  backBtn.addEventListener("click", function () {
+    if (currentView === "order" && orderDetailReadOnly) goToOrderLookup(); else goToOrders();
+  });
+  orderLookupBtn.addEventListener("click", goToOrderLookup);
   // Wired once here rather than per-render like the in-page submit
   // buttons — these topbar mirrors are static DOM nodes that live inside
   // <header>, never rebuilt by innerHTML, so a listener attached once
@@ -5234,6 +5428,7 @@
     else if (currentView === "label-prep") goToLabelPrep();
     else if (currentView === "manage-inventory") goToManageInventory();
     else if (currentView === "stats") goToStats();
+    else if (currentView === "order-lookup") goToOrderLookup();
     else goToOrders();
   }
 

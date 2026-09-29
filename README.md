@@ -913,3 +913,36 @@ Token Secret as sensitive as an API key that can move money.
   — mainly ends up doing real work for filed orders). A single-sample
   bucket shows just the one value rather than a redundant "12.0 oz–12.0
   oz" (`rangeText()`).
+- **Order Lookup** — a small button next to Label Prep (shown throughout
+  the Orders category, hidden only while already on the page) opens a
+  search box for finding any order by BrickLink order number, buyer name,
+  or date — including filed and long-completed ones the main orders list
+  (deliberately unfiled-only) never shows. Reuses `statsRows`, the same
+  full-history fetch (`/api/order-stats`, filed and unfiled merged) Sales
+  Stats already loads, rather than issuing a second one — the search
+  itself (`orderLookupMatches()`) is a plain case-insensitive substring
+  match against order ID, buyer, and both the raw ISO date and its
+  `formatDate()`-formatted form (so "Sep 15" or "2026" both work, not just
+  a full date), same pattern as Manage Inventory's own search box (down to
+  reusing its debounce timing and result cap, just against this
+  different dataset).
+  Tapping a result opens the normal order-detail page, just in **read-only
+  mode** — no picked-count line, no item checkboxes/checkmarks/multi-qty
+  progress bars, no select-all/reset buttons, and the sticky topbar
+  progress bar stays hidden. Everything else (contact info, financials,
+  messages, buyer feedback, box choice, and status actions like Mark as
+  Shipped/File order) stays fully live, since those aren't picking-related
+  and an old or already-shipped order can still legitimately need them.
+  Driven by `orderDetailReadOnly`, a module-level flag `openOrder()` sets
+  whenever it's given a third argument (`fallbackOrder`) — `openOrder()`
+  normally only knows about orders in the main (unfiled) `orders` array,
+  so `openLookupOrder()` passes the matched `statsRows` row as that
+  fallback both to satisfy the lookup and to flip the flag, after mapping
+  its field names to what `renderOrderDetail()` expects (`grandTotal` →
+  `orderTotal` — order-stats.js keeps its own field name for Sales Stats'
+  sake, so the rename happens here instead). Every "back" affordance on a
+  read-only order (`bottomBackBtn`'s now-conditional label, the topbar
+  back arrow, the error-state retry view, and File order's post-success
+  navigation) returns to Order Lookup instead of the main orders list,
+  and its search box keeps whatever was last typed, so coming back from a
+  looked-up order doesn't lose your place.

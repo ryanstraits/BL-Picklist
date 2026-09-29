@@ -40,8 +40,14 @@ exports.handler = requireAuth(async () => {
     const rows = orders.map((o) => ({
       orderId: String(o.order_id),
       status: o.status,
+      // buyer/uniqueCount added for Order Lookup, which reuses this same
+      // full-history fetch to search across filed and unfiled orders
+      // alike (unlike /api/orders, which is deliberately unfiled-only —
+      // see above) — Sales Stats itself never needed either field.
+      buyer: o.buyer_name,
       date: o.date_ordered,
       totalCount: o.total_count,
+      uniqueCount: o.unique_count,
       grandTotal: (o.cost && o.cost.grand_total) || null,
       currencyCode: (o.cost && o.cost.currency_code) || null,
     }));
