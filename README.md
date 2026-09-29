@@ -978,3 +978,13 @@ Token Secret as sensitive as an API key that can move money.
   the `orders` array, so the correction persists back to the list card
   too; for Order Lookup it's local to that view's synthesized order
   object, which is enough since it heads off the same failure there.
+  First version of this only ran the status-check on a cold `openOrder()`
+  — it sat behind `itemsCache`'s early return, which serves an already-open
+  order's items straight from memory without refetching anything. That
+  meant reopening the same order later in the same session (exactly what
+  happened when this was first shipped: same error, same order, no page
+  reload in between) skipped the correction entirely, since only the
+  item list was ever considered stale-able. Fixed by pulling the
+  status-check into its own `refreshOrderStatusCheck()` and running it on
+  every open — cached items or not — since status can (and, per the
+  report, does) drift independently of the item list within a session.

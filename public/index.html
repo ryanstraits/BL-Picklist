@@ -3384,6 +3384,43 @@
   // array — its presence is also what flips orderDetailReadOnly on, since
   // an order reached this way never goes through the normal PAID→PACKED→
   // SHIPPED pick workflow this app's checkboxes track.
+  // Runs every time an order's detail view opens, cached items or not —
+  // status can change on BrickLink's side independent of the item list,
+  // so this can't be skipped just because itemsCache already has a hit.
+  // Only ever adds true (driveThruSent/feedbackAlreadyPosted) or corrects
+  // order.status to what BrickLink's own /orders/{id} call reports right
+  // now; any failure here just leaves things as they were.
+  async function refreshOrderStatusCheck(order) {
+    try {
+      var statusCheck = await fetchJSON("/api/orders/" + encodeURIComponent(order.orderId) + "/status-check?buyer=" + encodeURIComponent(order.buyer || ""));
+      var actionsChanged = false;
+      if (statusCheck && statusCheck.driveThruSent && !driveThruSent[order.orderId]) {
+        driveThruSent[order.orderId] = true;
+        actionsChanged = true;
+      }
+      if (statusCheck && statusCheck.feedbackAlreadyPosted && !feedbackSent[order.orderId]) {
+        feedbackSent[order.orderId] = true;
+        actionsChanged = true;
+      }
+      if (actionsChanged) pushOrderActions();
+      buyerFeedbackCache[order.orderId] = (statusCheck && statusCheck.buyerFeedback) || null;
+      // Corrects a stale status before it's ever rendered — the main
+      // orders list only refreshes on demand (Refresh button), and Order
+      // Lookup's statsRows is a once-per-session snapshot (see below), so
+      // either can still show e.g. RECEIVED for an order BrickLink (or
+      // the buyer) has already moved to COMPLETED since. Rendering the
+      // right action button for the real current status heads off a
+      // confusing RESOURCE_UPDATE_NOT_ALLOWED / NOT_IN_UPDATABLE_STATUS
+      // rejection from attempting a transition that's no longer valid —
+      // this is the same `order` object referenced from the orders array
+      // for a main-list order, so the correction shows there too once
+      // back navigates to it, not just on this detail view.
+      if (statusCheck && statusCheck.status && statusCheck.status !== order.status) {
+        order.status = statusCheck.status;
+      }
+    } catch (e) { /* ignore — just show whatever's already tracked locally */ }
+  }
+
   async function openOrder(orderId, forceReload, fallbackOrder) {
     var order = orders.filter(function (o) { return o.orderId === orderId; })[0] || fallbackOrder;
     if (!order) return;
@@ -3421,7 +3458,10 @@
 
     var cached = itemsCache[orderId];
     if (cached) {
-      renderOrderDetail(order, cached, messagesCache[orderId] || [], contactCache[orderId] || null);
+      await refreshOrderStatusCheck(order);
+      if (currentView === "order" && order.orderId === orderId) {
+        renderOrderDetail(order, cached, messagesCache[orderId] || [], contactCache[orderId] || null);
+      }
       return;
     }
 
@@ -3459,37 +3499,7 @@
       } catch (e) { /* ignore — just show the order without the contact block */ }
       contactCache[orderId] = contact;
 
-      // Catches "already done directly on BrickLink" — only ever adds
-      // true, never overrides a locally-tracked true back to false, and
-      // any failure here just leaves things as they were.
-      try {
-        var statusCheck = await fetchJSON("/api/orders/" + encodeURIComponent(orderId) + "/status-check?buyer=" + encodeURIComponent(order.buyer || ""));
-        var actionsChanged = false;
-        if (statusCheck && statusCheck.driveThruSent && !driveThruSent[orderId]) {
-          driveThruSent[orderId] = true;
-          actionsChanged = true;
-        }
-        if (statusCheck && statusCheck.feedbackAlreadyPosted && !feedbackSent[orderId]) {
-          feedbackSent[orderId] = true;
-          actionsChanged = true;
-        }
-        if (actionsChanged) pushOrderActions();
-        buyerFeedbackCache[orderId] = (statusCheck && statusCheck.buyerFeedback) || null;
-        // Corrects a stale status before it's ever rendered — the main
-        // orders list only refreshes on demand (Refresh button), and Order
-        // Lookup's statsRows is a once-per-session snapshot (see below), so
-        // either can still show e.g. RECEIVED for an order BrickLink (or
-        // the buyer) has already moved to COMPLETED since. Rendering the
-        // right action button for the real current status heads off a
-        // confusing RESOURCE_UPDATE_NOT_ALLOWED / NOT_IN_UPDATABLE_STATUS
-        // rejection from attempting a transition that's no longer valid —
-        // this is the same `order` object referenced from the orders array
-        // for a main-list order, so the correction shows there too once
-        // back navigates to it, not just on this detail view.
-        if (statusCheck && statusCheck.status && statusCheck.status !== order.status) {
-          order.status = statusCheck.status;
-        }
-      } catch (e) { /* ignore — just show whatever's already tracked locally */ }
+      await refreshOrderStatusCheck(order);
 
       if (currentView === "order" && order.orderId === orderId) {
         renderOrderDetail(order, items, messages, contact);
