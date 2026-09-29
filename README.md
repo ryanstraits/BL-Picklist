@@ -946,3 +946,16 @@ Token Secret as sensitive as an API key that can move money.
   navigation) returns to Order Lookup instead of the main orders list,
   and its search box keeps whatever was last typed, so coming back from a
   looked-up order doesn't lose your place.
+  With the search box empty, the page doubles as a browsable recent-orders
+  list (`orderLookupBrowseRows()`) rather than just showing a hint — Ryan
+  asked for this after using Order Lookup for a while, "combining the two"
+  instead of a separate button/page for it. Mirrors Manage Inventory's own
+  "Recently Added" browse view: a date-range select (15/30/365 days, or
+  all time — `orderLookupRangeDays`, using `Infinity` for "all time" so
+  the cutoff math needs no special case) and a newest/oldest sort
+  (`orderLookupSortKey`, defaulting to newest), both shown only while
+  browsing. Search itself deliberately ignores the range and stays fixed
+  newest-first, same as Manage Inventory's own search results aren't
+  independently sortable either — an active search narrowing to "only
+  recent" would be surprising the one time it matters most: finding an
+  older order the range would otherwise hide.

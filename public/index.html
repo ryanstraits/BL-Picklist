@@ -802,7 +802,8 @@
   }
   .manage-inventory-hint { color: var(--text-secondary); font-size: 13px; margin-top: 14px; }
   .manage-inventory-cap-note { color: var(--text-secondary); font-size: 12px; text-align: center; margin-top: 10px; }
-  .manage-inventory-sort-select {
+  .manage-inventory-sort-select,
+  .order-lookup-sort-select {
     font-family: inherit;
     font-size: 12px;
     font-weight: 600;
@@ -913,9 +914,11 @@
     border-top: 1px solid var(--border);
   }
 
-  .manage-inventory-sort-row {
+  .manage-inventory-sort-row,
+  .order-lookup-sort-row {
     display: flex;
     justify-content: flex-end;
+    gap: 8px;
     margin-top: 10px;
   }
 
@@ -5154,8 +5157,23 @@
   // filed, or already shipped) isn't what Ryan's actually out picking
   // right now; everything else (contact info, financials, messages,
   // feedback, box choice, status actions) stays fully usable.
+  //
+  // With an empty search box this doubles as a browsable recent-orders
+  // list — Ryan asked for this after using Order Lookup for a while and
+  // wanting to just glance at recent orders too, not only search for a
+  // specific one, "combining the two" rather than adding a separate
+  // button/page. Mirrors Manage Inventory's own "Recently Added" browse
+  // view exactly: a date-range select (15/30/365 days, or all time) plus
+  // a newest/oldest sort, both shown only while browsing — search itself
+  // always covers full history regardless of the range selected (an
+  // active search narrowing to "only recent" would be surprising the one
+  // time it matters most: finding an older order the range would
+  // otherwise hide) and stays fixed newest-first, same as Manage
+  // Inventory's own search results are never independently sortable.
   var orderLookupQuery = "";
   var orderLookupSearchDebounceTimer = null;
+  var orderLookupRangeDays = 30; // 15 | 30 | 365 | Infinity ("all time")
+  var orderLookupSortKey = "newest"; // "newest" | "oldest"
   var ORDER_LOOKUP_RESULT_CAP = 40;
 
   function orderLookupMatches(query) {
@@ -5171,6 +5189,23 @@
       var db = b.date ? new Date(b.date).getTime() : -Infinity;
       return db - da;
     });
+  }
+
+  // orderLookupRangeDays as Infinity for "all time" makes the cutoff math
+  // fall out naturally: Date.now() - Infinity = -Infinity, and every valid
+  // date is >= that, so no special case is needed for "no limit" here.
+  function orderLookupBrowseRows() {
+    var cutoff = Date.now() - orderLookupRangeDays * 24 * 60 * 60 * 1000;
+    var rows = statsRows.filter(function (o) {
+      var t = o.date ? new Date(o.date).getTime() : NaN;
+      return !isNaN(t) && t >= cutoff;
+    });
+    rows.sort(function (a, b) {
+      var da = new Date(a.date).getTime();
+      var db = new Date(b.date).getTime();
+      return orderLookupSortKey === "oldest" ? da - db : db - da;
+    });
+    return rows;
   }
 
   function orderLookupCardHtml(o) {
@@ -5215,26 +5250,58 @@
     var container = document.getElementById("orderLookupResults");
     if (!container) return;
     var query = orderLookupQuery.trim();
+    var browsing = !query;
 
     var body = "";
     if (statsError) {
       body = '<div class="state-block error">' + escapeHtml(statsError) + '<br><button class="reset-btn" id="orderLookupRetryBtn">Retry</button></div>';
     } else if (!statsRows) {
       body = '<div class="state-block">Loading order history…</div>';
-    } else if (!query) {
-      body = '<div class="manage-inventory-hint">Search by BrickLink order number, buyer name, or date.</div>';
-    } else {
+    } else if (!browsing) {
       var matches = orderLookupMatches(query);
       var capped = matches.slice(0, ORDER_LOOKUP_RESULT_CAP);
       body = '<div class="inventory-summary-row"><span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span></div>'
         + (capped.length ? capped.map(orderLookupCardHtml).join("") : '<div class="state-block">No orders found.</div>')
         + (matches.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + matches.length + ' matches — refine your search to see the rest.</div>' : '');
+    } else {
+      var rows = orderLookupBrowseRows();
+      var cappedRows = rows.slice(0, ORDER_LOOKUP_RESULT_CAP);
+      body = '<div class="order-lookup-sort-row">'
+        + '<select class="order-lookup-sort-select" id="orderLookupRangeSelect">'
+        + '<option value="15"' + (orderLookupRangeDays === 15 ? ' selected' : '') + '>Last 15 days</option>'
+        + '<option value="30"' + (orderLookupRangeDays === 30 ? ' selected' : '') + '>Last 30 days</option>'
+        + '<option value="365"' + (orderLookupRangeDays === 365 ? ' selected' : '') + '>Last year</option>'
+        + '<option value="all"' + (orderLookupRangeDays === Infinity ? ' selected' : '') + '>All time</option>'
+        + '</select>'
+        + '<select class="order-lookup-sort-select" id="orderLookupSortSelect">'
+        + '<option value="newest"' + (orderLookupSortKey === "newest" ? ' selected' : '') + '>Newest first</option>'
+        + '<option value="oldest"' + (orderLookupSortKey === "oldest" ? ' selected' : '') + '>Oldest first</option>'
+        + '</select>'
+        + '</div>'
+        + '<div class="inventory-summary-row"><span>' + rows.length + ' order' + (rows.length === 1 ? '' : 's') + '</span></div>'
+        + (cappedRows.length ? cappedRows.map(orderLookupCardHtml).join("") : '<div class="state-block">No orders in this range.</div>')
+        + (rows.length > cappedRows.length ? '<div class="manage-inventory-cap-note">Showing the first ' + cappedRows.length + ' of ' + rows.length + ' orders — narrow the range or search above to find a specific one.</div>' : '');
     }
 
     container.innerHTML = body;
 
     var retryBtn = document.getElementById("orderLookupRetryBtn");
     if (retryBtn) retryBtn.addEventListener("click", fetchStats);
+
+    var rangeSelect = document.getElementById("orderLookupRangeSelect");
+    if (rangeSelect) {
+      rangeSelect.addEventListener("change", function (e) {
+        orderLookupRangeDays = e.target.value === "all" ? Infinity : parseInt(e.target.value, 10);
+        renderOrderLookupResults();
+      });
+    }
+    var sortSelect = document.getElementById("orderLookupSortSelect");
+    if (sortSelect) {
+      sortSelect.addEventListener("change", function (e) {
+        orderLookupSortKey = e.target.value;
+        renderOrderLookupResults();
+      });
+    }
 
     container.querySelectorAll(".order-card").forEach(function (card) {
       var row = statsRows.filter(function (o) { return o.orderId === card.getAttribute("data-order"); })[0];
