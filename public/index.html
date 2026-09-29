@@ -245,6 +245,7 @@
 
   .order-status-row {
     display: flex;
+    gap: 8px;
     margin-top: 10px;
   }
   .status-action-btn {
@@ -2500,6 +2501,21 @@
         statusAction = '<button class="status-action-btn list-drive-thru-btn" data-order="' + escapeHtml(order.orderId) + '">Send Drive Thru</button>';
       } else if (order.status === "SHIPPED" || order.status === "RECEIVED") {
         statusAction = '<button class="status-action-btn to-completed" data-order="' + escapeHtml(order.orderId) + '" data-target-status="COMPLETED">Mark as completed</button>';
+        // Once the buyer marks an order Received (this app never sets that
+        // status itself — see ALLOWED_STATUSES in update-order-status.js —
+        // so a RECEIVED order always got there via the buyer or BrickLink,
+        // never through here), BrickLink often won't let the seller push it
+        // to Completed at all — grayed out on BrickLink's own Orders page
+        // too, confirmed against a real rejected attempt (order #32601986,
+        // RESOURCE_UPDATE_NOT_ALLOWED / NOT_IN_UPDATABLE_STATUS). There's no
+        // API field that says in advance whether a given order is locked
+        // this way, and Ryan's said it isn't *always* locked, so rather than
+        // guess, filing is offered right alongside — is_filed is a plain
+        // boolean on Update Order with no status prerequisite, so it works
+        // whether or not the completed transition does.
+        if (order.status === "RECEIVED") {
+          statusAction += '<button class="status-action-btn list-file-btn" data-order="' + escapeHtml(order.orderId) + '">File order</button>';
+        }
       } else if (order.status === "COMPLETED") {
         statusAction = '<button class="status-action-btn list-file-btn" data-order="' + escapeHtml(order.orderId) + '">File order</button>';
       }
@@ -2571,6 +2587,22 @@
     }
   }
 
+  // BrickLink rejects "mark as Completed" for some RECEIVED orders with
+  // RESOURCE_UPDATE_NOT_ALLOWED / NOT_IN_UPDATABLE_STATUS — confirmed live
+  // (order #32601986) as BrickLink's own "only the buyer (or BrickLink's
+  // timer) can complete this from here" rule once the buyer's marked it
+  // received, same as it shows grayed out on BrickLink's own Orders page.
+  // There's no field on the order that predicts this in advance, so rather
+  // than a raw API error, name what actually happened and point at filing
+  // — the alternative offered right alongside this button — as the way
+  // forward.
+  function statusUpdateErrorMessage(orderId, targetStatus, err) {
+    if (targetStatus === "COMPLETED" && /NOT_IN_UPDATABLE_STATUS/.test(err.message)) {
+      return "BrickLink won't let order #" + orderId + " be marked Completed from here — once the buyer marks an order Received, only they (or BrickLink's own automatic timer) can complete it from there. You can still file the order away with the File order button.";
+    }
+    return "Couldn't update order #" + orderId + ": " + err.message;
+  }
+
   function handleStatusChange(btn) {
     var orderId = btn.getAttribute("data-order");
     var targetStatus = btn.getAttribute("data-target-status");
@@ -2589,7 +2621,7 @@
         renderOrdersList();
       })
       .catch(function (err) {
-        window.alert("Couldn't update order #" + orderId + ": " + err.message);
+        window.alert(statusUpdateErrorMessage(orderId, targetStatus, err));
         btn.disabled = false;
         btn.textContent = originalText;
       });
@@ -2768,6 +2800,13 @@
       detailStatusAction = '<button class="status-action-btn to-shipped" id="detailStatusBtn" data-target-status="SHIPPED">Mark as shipped</button>';
     } else if (order.status === "SHIPPED" || order.status === "RECEIVED") {
       detailStatusAction = '<button class="status-action-btn to-completed" id="detailStatusBtn" data-target-status="COMPLETED">Mark as completed</button>';
+      // See the matching comment in renderOrdersList() — RECEIVED can't be
+      // told apart in advance whether the seller is actually allowed to
+      // push it to Completed, so File order (no status prerequisite) is
+      // offered right alongside rather than only once Completed is reached.
+      if (order.status === "RECEIVED") {
+        detailStatusAction += '<button class="status-action-btn file-order-btn" id="detailFileBtn">File order</button>';
+      }
     } else if (order.status === "COMPLETED") {
       detailStatusAction = '<button class="status-action-btn file-order-btn" id="detailFileBtn">File order</button>';
     }
@@ -2911,7 +2950,7 @@
             renderOrderDetail(order, items, messages, contact);
           })
           .catch(function (err) {
-            window.alert("Couldn't update order #" + order.orderId + ": " + err.message);
+            window.alert(statusUpdateErrorMessage(order.orderId, targetStatus, err));
             detailStatusBtn.disabled = false;
             detailStatusBtn.textContent = originalText;
           });

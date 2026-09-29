@@ -965,9 +965,7 @@ Token Secret as sensitive as an API key that can move money.
   auto-completing it once feedback's been posted. Opening a still-RECEIVED
   order and tapping the now-invalid "Mark as completed" fails with
   `RESOURCE_UPDATE_NOT_ALLOWED: Invalid Data Status: NOT_IN_UPDATABLE_STATUS`
-  — reported live from Ryan's phone (order #32601986), whose Messages
-  section already showed seller feedback posted, meaning BrickLink had
-  already completed it by the time he acted. Fixed for free: the
+  — reported live from Ryan's phone (order #32601986). Fixed for free: the
   `status-check` endpoint (`order-status-check.js`) already calls
   `GET /orders/{id}` for `drive_thru_sent`, so it now also returns that
   same response's `status` field. `openOrder()` compares it against the
@@ -988,3 +986,29 @@ Token Secret as sensitive as an API key that can move money.
   status-check into its own `refreshOrderStatusCheck()` and running it on
   every open — cached items or not — since status can (and, per the
   report, does) drift independently of the item list within a session.
+  Neither fix above actually resolved order #32601986, though — Ryan
+  retried and hit the identical error, badge still RECEIVED. Both fixes
+  were solving a real but different problem (a stale local cache); this
+  order's RECEIVED was never stale — it was BrickLink's genuine, current
+  status the whole time, confirmed by the live status-check itself also
+  reporting RECEIVED, not COMPLETED. The real cause, per Ryan checking
+  BrickLink's own Orders page directly: once the *buyer* marks an order
+  Received, BrickLink won't let the seller push it on to Completed at
+  all — grayed out on BrickLink's own site too, only the buyer (or
+  BrickLink's own automatic timer) can complete it from there. There's no
+  field on the Order resource that says this in advance (confirmed against
+  a real client library's field docs — nothing like a "status changed by"
+  exists), and it isn't universal either ("usually I can edit it to
+  Completed in this state," so a still-seller-set RECEIVED — reachable by
+  editing directly on BrickLink, though never through this app, which only
+  ever sets PACKED/SHIPPED/COMPLETED itself per `ALLOWED_STATUSES` in
+  `update-order-status.js` — stays completable). So rather than guess
+  which is which, "Mark as completed" stays offered on a RECEIVED order
+  (it can still work), but "File order" (`is_filed`, a plain boolean on
+  Update Order with no status prerequisite) is now offered right alongside
+  it everywhere a RECEIVED order's status action shows — the main list
+  card and the order detail page alike — so a locked order is never a dead
+  end. And should the completed attempt fail with this specific error, the
+  raw BrickLink text is replaced with a plain-language explanation that
+  names what happened and points at the File order button sitting right
+  there, instead of the confusing raw API error from before.
