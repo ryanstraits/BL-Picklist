@@ -28,6 +28,18 @@ exports.handler = requireAuth(async (event) => {
     const driveThruSent = orderResult.status === 'fulfilled'
       && !!(orderResult.value && orderResult.value.drive_thru_sent);
 
+    // BrickLink's own live status for this order, straight off the same
+    // per-order detail call already being made here for drive_thru_sent —
+    // no extra request. Exists so the frontend can catch a status this app
+    // has cached (either the main orders list's last fetch, or Order
+    // Lookup's once-per-session snapshot) going stale — e.g. a buyer's own
+    // action, or BrickLink auto-completing an order after feedback, moving
+    // it out from under a status this app still thinks is current, which
+    // otherwise surfaces as a confusing RESOURCE_UPDATE_NOT_ALLOWED /
+    // NOT_IN_UPDATABLE_STATUS rejection the next time a status change is
+    // attempted from stale data.
+    const status = orderResult.status === 'fulfilled' ? (orderResult.value && orderResult.value.status) || null : null;
+
     // Confirmed field for drive_thru_sent against a real client library's
     // typed struct. The feedback shape is now confirmed against a real
     // response too (via a temporary debug endpoint hit against Ryan's own
@@ -52,7 +64,7 @@ exports.handler = requireAuth(async (event) => {
       }
     }
 
-    return json(200, { driveThruSent, feedbackAlreadyPosted, buyerFeedback });
+    return json(200, { driveThruSent, feedbackAlreadyPosted, buyerFeedback, status });
   } catch (err) {
     return errorResponse(err);
   }

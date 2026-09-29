@@ -959,3 +959,22 @@ Token Secret as sensitive as an API key that can move money.
   independently sortable either — an active search narrowing to "only
   recent" would be surprising the one time it matters most: finding an
   older order the range would otherwise hide.
+- **Live status correction on open** — both `statsRows` (Order Lookup's
+  once-per-session snapshot) and the main orders list's last fetch can go
+  stale mid-session: BrickLink can move an order along on its own, e.g.
+  auto-completing it once feedback's been posted. Opening a still-RECEIVED
+  order and tapping the now-invalid "Mark as completed" fails with
+  `RESOURCE_UPDATE_NOT_ALLOWED: Invalid Data Status: NOT_IN_UPDATABLE_STATUS`
+  — reported live from Ryan's phone (order #32601986), whose Messages
+  section already showed seller feedback posted, meaning BrickLink had
+  already completed it by the time he acted. Fixed for free: the
+  `status-check` endpoint (`order-status-check.js`) already calls
+  `GET /orders/{id}` for `drive_thru_sent`, so it now also returns that
+  same response's `status` field. `openOrder()` compares it against the
+  locally-tracked `order.status` and corrects the latter before
+  `renderOrderDetail()` runs, so the right action button (e.g. "File
+  order" instead of "Mark as completed") shows immediately — for orders
+  opened from the main list, this is the same object reference held in
+  the `orders` array, so the correction persists back to the list card
+  too; for Order Lookup it's local to that view's synthesized order
+  object, which is enough since it heads off the same failure there.

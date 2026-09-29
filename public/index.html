@@ -3475,6 +3475,20 @@
         }
         if (actionsChanged) pushOrderActions();
         buyerFeedbackCache[orderId] = (statusCheck && statusCheck.buyerFeedback) || null;
+        // Corrects a stale status before it's ever rendered — the main
+        // orders list only refreshes on demand (Refresh button), and Order
+        // Lookup's statsRows is a once-per-session snapshot (see below), so
+        // either can still show e.g. RECEIVED for an order BrickLink (or
+        // the buyer) has already moved to COMPLETED since. Rendering the
+        // right action button for the real current status heads off a
+        // confusing RESOURCE_UPDATE_NOT_ALLOWED / NOT_IN_UPDATABLE_STATUS
+        // rejection from attempting a transition that's no longer valid —
+        // this is the same `order` object referenced from the orders array
+        // for a main-list order, so the correction shows there too once
+        // back navigates to it, not just on this detail view.
+        if (statusCheck && statusCheck.status && statusCheck.status !== order.status) {
+          order.status = statusCheck.status;
+        }
       } catch (e) { /* ignore — just show whatever's already tracked locally */ }
 
       if (currentView === "order" && order.orderId === orderId) {
