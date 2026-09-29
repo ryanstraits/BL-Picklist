@@ -232,8 +232,8 @@
     color: inherit;
   }
   .order-card:active { background: var(--surface-alt); }
-  .order-card.needs-pick { background: var(--accent-soft); }
-  .order-card.needs-pick:active { background: var(--accent-soft); filter: brightness(0.94); }
+  .order-card.needs-pick, .order-card.needs-log { background: var(--accent-soft); }
+  .order-card.needs-pick:active, .order-card.needs-log:active { background: var(--accent-soft); filter: brightness(0.94); }
   /* A Completed order lingers in the list for a week (see orders.js) so
      Ryan can catch anything the buyer flags, but it's done — nothing left
      to act on — so it reads as visually "put away" rather than an active
@@ -1151,6 +1151,10 @@
   .feedback-icon.received-praise { color: var(--success); background: var(--success-bg); }
   .feedback-icon.received-neutral { color: var(--text-secondary); background: var(--surface-alt); }
   .feedback-icon.received-complaint { color: var(--danger); background: var(--surface-alt); }
+  /* Square, not round — same accent gold as .given's round feedback
+     checkmark, but a different shape so "logged in spreadsheet" never
+     reads as a second feedback-given mark at a glance. */
+  .feedback-icon.logged { border-radius: 3px; color: var(--accent); background: var(--accent-soft); }
 
   /* ---- Drive Thru ---- */
   .drive-thru-row { margin-top: 12px; }
@@ -1202,7 +1206,7 @@
   .message-body { font-size: 13px; color: var(--text); white-space: pre-wrap; }
 
   /* ---- Feedback ---- */
-  .box-choice-section {
+  .box-choice-section, .spreadsheet-logged-section {
     margin-top: 16px;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1238,6 +1242,16 @@
     border-color: var(--accent);
     background: var(--accent-soft);
   }
+  .spreadsheet-logged-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .spreadsheet-logged-row input { flex: none; width: 18px; height: 18px; }
   .feedback-section {
     margin-top: 16px;
     background: var(--surface);
@@ -1545,6 +1559,25 @@
   // pieces/weight/value) to eventually replace with an automatic
   // suggestion.
   var boxChoice = {};
+  // orderId -> true | false | undefined. Whether Ryan's logged an order in
+  // his own bookkeeping spreadsheet, tracked here so Order Lookup can flag
+  // whichever old orders he hasn't gotten to yet. undefined (never
+  // explicitly touched) falls back to isOrderLogged()'s threshold default
+  // below rather than meaning "not logged" outright — that's what lets an
+  // explicit false override that default for one particular older order
+  // without every other untouched order older than it silently flipping
+  // too.
+  var spreadsheetLogged = {};
+  // Every order at or before this id was already logged in Ryan's
+  // spreadsheet before this feature existed — pre-checked so backfilling
+  // is "uncheck the exceptions" rather than "check thousands of orders."
+  var SPREADSHEET_LOGGED_THRESHOLD = 3256335;
+  function isOrderLogged(orderId) {
+    var explicit = spreadsheetLogged[orderId];
+    if (explicit !== undefined) return !!explicit;
+    var n = parseInt(orderId, 10);
+    return !isNaN(n) && n <= SPREADSHEET_LOGGED_THRESHOLD;
+  }
   var colorsMap = null;
   var categoriesById = null; // categoryId -> { name, parentId }
 
@@ -1687,10 +1720,32 @@
     return merged;
   }
 
+  // Tri-state version of mergeActionMap: spreadsheetLogged needs to carry
+  // an explicit false (overriding isOrderLogged()'s threshold default for
+  // one particular order), which a plain "OR the truthy keys" merge would
+  // silently drop — a bare false and an absent key are otherwise
+  // indistinguishable once merged. An explicit true from either side wins
+  // outright (never lose a real positive to a race), then an explicit
+  // false from either side, then the key is simply left out (same as
+  // never having been touched, still governed by the threshold default).
+  function mergeLoggedMap(a, b) {
+    var merged = {};
+    var keys = {};
+    Object.keys(a || {}).forEach(function (k) { keys[k] = true; });
+    Object.keys(b || {}).forEach(function (k) { keys[k] = true; });
+    Object.keys(keys).forEach(function (k) {
+      var av = a ? a[k] : undefined;
+      var bv = b ? b[k] : undefined;
+      if (av === true || bv === true) { merged[k] = true; return; }
+      if (av === false || bv === false) { merged[k] = false; return; }
+    });
+    return merged;
+  }
+
   function pushOrderActions() {
     postJSON("/api/pick-state?key=actions", {
       driveThruSent: driveThruSent, feedbackSent: feedbackSent, pickupScheduled: pickupScheduled,
-      boxChoice: boxChoice,
+      boxChoice: boxChoice, spreadsheetLogged: spreadsheetLogged,
     })
       .catch(function () { /* offline — ignore, same as picks */ });
   }
@@ -1704,20 +1759,27 @@
           var mergedFeedback = mergeActionMap(feedbackSent, remote.feedbackSent);
           var mergedPickup = mergeActionMap(pickupScheduled, remote.pickupScheduled);
           var mergedBoxChoice = mergeChoiceMap(boxChoice, remote.boxChoice);
+          var mergedLogged = mergeLoggedMap(spreadsheetLogged, remote.spreadsheetLogged);
           var remoteNeedsUpdate = JSON.stringify(mergedDriveThru) !== JSON.stringify(remote.driveThruSent || {})
             || JSON.stringify(mergedFeedback) !== JSON.stringify(remote.feedbackSent || {})
             || JSON.stringify(mergedPickup) !== JSON.stringify(remote.pickupScheduled || {})
-            || JSON.stringify(mergedBoxChoice) !== JSON.stringify(remote.boxChoice || {});
+            || JSON.stringify(mergedBoxChoice) !== JSON.stringify(remote.boxChoice || {})
+            || JSON.stringify(mergedLogged) !== JSON.stringify(remote.spreadsheetLogged || {});
           driveThruSent = mergedDriveThru;
           feedbackSent = mergedFeedback;
           pickupScheduled = mergedPickup;
           boxChoice = mergedBoxChoice;
+          spreadsheetLogged = mergedLogged;
           if (remoteNeedsUpdate) pushOrderActions();
           if (currentView === "orders") renderOrdersList();
           // Stats' box-choices tally reads boxChoice directly too — needs
           // the same re-render nudge once a remote sync actually changes
           // it, same as the orders list above.
           if (currentView === "stats") renderStatsView();
+          // Order Lookup cards show the same logged-badge/yellow-tint
+          // treatment, so a remote sync landing while it's open needs the
+          // same nudge.
+          if (currentView === "order-lookup") renderOrderLookupResults();
         }
       })
       .catch(function () { /* offline or first run — keep whatever's local */ });
@@ -1958,8 +2020,12 @@
     var totalOz = grams / 28.3495;
     var lb = Math.floor(totalOz / 16);
     var oz = totalOz - lb * 16;
-    if (oz.toFixed(1) === "16.0") { lb += 1; oz = 0; }
-    return (lb > 0 ? lb + " lb " : "") + oz.toFixed(1) + " oz";
+    // Three decimal places, not one — a light single item can otherwise
+    // round straight down to "0.0 oz" and look weightless, which loses
+    // exactly the resolution the box-choice weight data collection needs
+    // most for its lightest packages.
+    if (oz.toFixed(3) === "16.000") { lb += 1; oz = 0; }
+    return (lb > 0 ? lb + " lb " : "") + oz.toFixed(3) + " oz";
   }
 
   // tone: fresh = needs picking, packed = picked & boxed, done = shipped/received,
@@ -2383,10 +2449,25 @@
       var tone = received.rating === "Complaint" ? "complaint" : received.rating === "Neutral" ? "neutral" : "praise";
       icons += '<span class="feedback-icon received-' + tone + '" title="Buyer left feedback: ' + escapeHtml(received.rating || "feedback") + '">★</span>';
     }
+    icons += loggedIconHtml(orderId);
     return icons ? '<span class="feedback-icons">' + icons + '</span>' : "";
   }
 
-  function fetchMissingBuyerRealNames(orderList) {
+  // Square, not round — same ✓ glyph and gold tint as "you left feedback"
+  // above, but .logged's border-radius keeps it from reading as a second
+  // feedback mark at a glance (Ryan's own ask). Kept separate from
+  // feedbackIconsHtml (which also calls this) so Order Lookup's cards can
+  // show just this — feedbackSent/feedbackReceived only ever get filled in
+  // for orders the main pick list has actually fetched (loadOrders' bulk
+  // /api/feedback-list call, or a per-order status-check), so an old filed
+  // order reached only through Order Lookup would show those as
+  // incomplete/wrong more often than not.
+  function loggedIconHtml(orderId) {
+    return isOrderLogged(orderId) ? '<span class="feedback-icon logged" title="Logged in spreadsheet">✓</span>' : "";
+  }
+
+  function fetchMissingBuyerRealNames(orderList, container) {
+    container = container || ordersView;
     orderList.forEach(function (order) {
       // undefined = never attempted. null or a resolved object both mean
       // "already attempted" (even a nameless result), so a single order
@@ -2403,7 +2484,7 @@
           contact.name = titleCaseName(decodeHtmlEntities(contact.name));
           contactCache[order.orderId] = contact;
           if (!contact.name) return;
-          var el = ordersView.querySelector('.order-card[data-order="' + order.orderId + '"] .buyer-real-name');
+          var el = container.querySelector('.order-card[data-order="' + order.orderId + '"] .buyer-real-name');
           if (el) el.textContent = " (" + contact.name + ")";
         })
         .catch(function () { /* already claimed null above */ });
@@ -2491,6 +2572,7 @@
       var pct = knownTotal > 0 ? Math.round((picked / knownTotal) * 100) : 0;
       var meta = STATUS_META[order.status];
       var needsPick = meta && meta.tone === "fresh";
+      var needsLog = !isOrderLogged(order.orderId);
       var isComplete = order.status === "COMPLETED";
       var statusAction = "";
       if (order.status === "PAID") {
@@ -2520,7 +2602,7 @@
         statusAction = '<button class="status-action-btn list-file-btn" data-order="' + escapeHtml(order.orderId) + '">File order</button>';
       }
       html += ""
-        + '<div class="order-card' + (needsPick ? ' needs-pick' : '') + (isComplete ? ' is-complete' : '') + '" role="button" tabindex="0" data-order="' + escapeHtml(order.orderId) + '">'
+        + '<div class="order-card' + (needsPick ? ' needs-pick' : '') + (needsLog ? ' needs-log' : '') + (isComplete ? ' is-complete' : '') + '" role="button" tabindex="0" data-order="' + escapeHtml(order.orderId) + '">'
         + '<div class="order-top-row">'
         + '<span class="order-id-group">'
         + '<span class="order-id mono">#' + escapeHtml(order.orderId) + '</span>'
@@ -2858,6 +2940,7 @@
       + '</div>'
       + (items.length ? '<button class="jump-to-items-btn" id="jumpToItemsBtn">Jump to items ↓</button>' : '')
       + renderBoxChoiceSection(order)
+      + renderSpreadsheetLoggedSection(order)
       + renderContactSection(contact)
       + renderFinancialSection(contact, order)
       + renderMessagesSection(messages)
@@ -3007,6 +3090,20 @@
         });
       });
     });
+
+    var spreadsheetLoggedCheck = document.getElementById("spreadsheetLoggedCheck");
+    if (spreadsheetLoggedCheck) {
+      spreadsheetLoggedCheck.addEventListener("click", function (e) { e.stopPropagation(); });
+      spreadsheetLoggedCheck.addEventListener("change", function () {
+        // Records an explicit true/false either way, not just "checked" —
+        // this is what lets unchecking one of the threshold-defaulted
+        // older orders (isOrderLogged()'s fallback) actually stick, rather
+        // than being indistinguishable from "never touched" and reverting
+        // to the default on the next render.
+        spreadsheetLogged[order.orderId] = spreadsheetLoggedCheck.checked;
+        pushOrderActions();
+      });
+    }
 
     var copyAddressBtn = document.getElementById("copyAddressBtn");
     if (copyAddressBtn) {
@@ -3253,6 +3350,21 @@
       + '<div class="box-choice-section">'
       + '<div class="box-choice-heading">Box used</div>'
       + '<div class="box-choice-row">' + btns + '</div>'
+      + '</div>';
+  }
+
+  // Not gated by readOnly, same as box choice above — this is bookkeeping,
+  // not picking, so it belongs on every order's detail page (old orders
+  // reached through Order Lookup, and new ones as they come in through the
+  // main list) rather than only where Order Lookup happens to be open.
+  function renderSpreadsheetLoggedSection(order) {
+    var checked = isOrderLogged(order.orderId);
+    return ""
+      + '<div class="spreadsheet-logged-section">'
+      + '<label class="spreadsheet-logged-row">'
+      + '<input type="checkbox" id="spreadsheetLoggedCheck"' + (checked ? ' checked' : '') + '>'
+      + '<span>Logged in spreadsheet</span>'
+      + '</label>'
       + '</div>';
   }
 
@@ -5272,16 +5384,18 @@
   }
 
   function orderLookupCardHtml(o) {
-    return '<div class="order-card" role="button" tabindex="0" data-order="' + escapeHtml(o.orderId) + '">'
+    var needsLog = !isOrderLogged(o.orderId);
+    return '<div class="order-card' + (needsLog ? ' needs-log' : '') + '" role="button" tabindex="0" data-order="' + escapeHtml(o.orderId) + '">'
       + '<div class="order-top-row">'
       + '<span class="order-id-group">'
       + '<span class="order-id mono">#' + escapeHtml(o.orderId) + '</span>'
       + statusBadgeHtml(o.status)
+      + (loggedIconHtml(o.orderId) ? '<span class="feedback-icons">' + loggedIconHtml(o.orderId) + '</span>' : '')
       + '</span>'
       + '<span class="order-date">' + escapeHtml(formatDate(o.date)) + '</span>'
       + '</div>'
       + '<div class="order-buyer">'
-      + '<span>' + escapeHtml(o.buyer || "") + '</span>'
+      + '<span>' + escapeHtml(o.buyer || "") + buyerRealNameHtml(o.orderId) + '</span>'
       + (o.grandTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(o.grandTotal, o.currencyCode)) + '</span>' : '')
       + '</div>'
       + '<div class="order-lots-items">' + (o.uniqueCount || 0) + ' lots · ' + (o.totalCount || 0) + ' items</div>'
@@ -5316,6 +5430,7 @@
     var browsing = !query;
 
     var body = "";
+    var visibleRows = [];
     if (statsError) {
       body = '<div class="state-block error">' + escapeHtml(statsError) + '<br><button class="reset-btn" id="orderLookupRetryBtn">Retry</button></div>';
     } else if (!statsRows) {
@@ -5323,12 +5438,14 @@
     } else if (!browsing) {
       var matches = orderLookupMatches(query);
       var capped = matches.slice(0, ORDER_LOOKUP_RESULT_CAP);
+      visibleRows = capped;
       body = '<div class="inventory-summary-row"><span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span></div>'
         + (capped.length ? capped.map(orderLookupCardHtml).join("") : '<div class="state-block">No orders found.</div>')
         + (matches.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + matches.length + ' matches — refine your search to see the rest.</div>' : '');
     } else {
       var rows = orderLookupBrowseRows();
       var cappedRows = rows.slice(0, ORDER_LOOKUP_RESULT_CAP);
+      visibleRows = cappedRows;
       body = '<div class="order-lookup-sort-row">'
         + '<select class="order-lookup-sort-select" id="orderLookupRangeSelect">'
         + '<option value="15"' + (orderLookupRangeDays === 15 ? ' selected' : '') + '>Last 15 days</option>'
@@ -5347,6 +5464,7 @@
     }
 
     container.innerHTML = body;
+    fetchMissingBuyerRealNames(visibleRows, container);
 
     var retryBtn = document.getElementById("orderLookupRetryBtn");
     if (retryBtn) retryBtn.addEventListener("click", fetchStats);

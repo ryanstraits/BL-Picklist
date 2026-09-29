@@ -1012,3 +1012,41 @@ Token Secret as sensitive as an API key that can move money.
   raw BrickLink text is replaced with a plain-language explanation that
   names what happened and points at the File order button sitting right
   there, instead of the confusing raw API error from before.
+- **Order Lookup extras** — three small additions, all shared with the main
+  orders list rather than scoped to Order Lookup specifically (per Ryan's
+  own confirmation: useful for logging new orders going forward, not just
+  backfilling old ones):
+  - Buyer real name in parens on Order Lookup cards, same
+    `buyerRealNameHtml()`/background-contact-fetch pattern the main list
+    already uses — `fetchMissingBuyerRealNames()` now takes an optional
+    container argument so it can target `#orderLookupResults` instead of
+    always querying the main orders view.
+  - `formatWeightLbOz()` now shows three decimal places on ounces instead
+    of one (`0.019 oz` rather than `0.0 oz`) — a light single item used to
+    round straight down to a value that looked weightless, losing exactly
+    the resolution the box-choice weight data collection needs most for
+    its lightest packages. Shared by the order detail weight line and
+    Sales Stats' box-choice ranges, so both got more precise, not just
+    Order Lookup.
+  - A "Logged in spreadsheet" checkbox on every order's detail page
+    (`spreadsheetLogged`, synced the same durable way as box choice, via a
+    new `mergeLoggedMap()` — tri-state, unlike the plain OR-merge the
+    other action flags use, since this one needs to carry an explicit
+    `false` that survives a merge without collapsing into "never touched"
+    to override the threshold default described next). Every order at or
+    before id 3256335 reads as already logged by default
+    (`isOrderLogged()`/`SPREADSHEET_LOGGED_THRESHOLD`) since Ryan already
+    has those in his own spreadsheet — backfilling is "uncheck the
+    exceptions," not "check thousands of old orders" — and checking or
+    unchecking any order writes an explicit value that always wins over
+    that default. Unlogged orders get the same soft accent-colored card
+    tint as a fresh order needing picked (`.needs-log`, same
+    `--accent-soft` as `.needs-pick`); once logged, the tint clears and a
+    small square gold checkmark badge appears next to the status badge —
+    square rather than round specifically so it doesn't read as a second
+    "you left feedback" mark at a glance (that one's round). The main
+    orders list only ever shows unfiled/recent orders, so with this
+    threshold in the low millions, nearly every card there starts out
+    tinted — expected, not a bug: it's the same "still needs your
+    attention" reminder for logging as it is for picking, just for orders
+    old enough that Ryan's spreadsheet already has most of them covered.
