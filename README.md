@@ -1040,13 +1040,31 @@ Token Secret as sensitive as an API key that can move money.
     exceptions," not "check thousands of old orders" — and checking or
     unchecking any order writes an explicit value that always wins over
     that default. Unlogged orders get the same soft accent-colored card
-    tint as a fresh order needing picked (`.needs-log`, same
-    `--accent-soft` as `.needs-pick`); once logged, the tint clears and a
-    small square gold checkmark badge appears next to the status badge —
-    square rather than round specifically so it doesn't read as a second
-    "you left feedback" mark at a glance (that one's round). The main
-    orders list only ever shows unfiled/recent orders, so with this
-    threshold in the low millions, nearly every card there starts out
-    tinted — expected, not a bug: it's the same "still needs your
-    attention" reminder for logging as it is for picking, just for orders
-    old enough that Ryan's spreadsheet already has most of them covered.
+    tint as a fresh order needing picked, at first (`.needs-log`, same
+    `--accent-soft` gold as `.needs-pick`) — changed after shipping, once
+    Ryan pointed out that made an unlogged order look exactly like a new
+    order needing picked. `.needs-log` now tints blue (`--info-bg`)
+    instead, a color otherwise unused for a card background, so the two
+    reminders read as different things at a glance; `.needs-pick` is
+    declared after it in the stylesheet so an order needing both still
+    shows the (more time-sensitive) picking tint where the cascade has to
+    pick one. Once logged, the tint clears and a small square checkmark
+    badge appears next to the status badge, in that same blue rather than
+    feedback's gold — square rather than round, and now a different color
+    too, so it never reads as a second "you left feedback" mark (that
+    one's round and gold) even in passing. The main orders list only ever
+    shows unfiled/recent orders, so with this threshold in the low
+    millions, nearly every card there starts out tinted — expected, not a
+    bug: it's the same "still needs your attention" reminder for logging
+    as it is for picking, just for orders old enough that Ryan's
+    spreadsheet already has most of them covered.
+
+    Filing and logging are deliberately independent flags — filing an
+    order (`is_filed`) never touches `spreadsheetLogged` and vice versa,
+    since Ryan sometimes logs an order before filing it and sometimes
+    gets behind and files first. A filed-but-unlogged order drops out of
+    the main list (filing is what makes that happen) but keeps showing
+    its blue tint and unchecked box in Order Lookup, which reaches filed
+    orders too — so getting behind on logging never loses the reminder,
+    it just moves from the main list to Order Lookup along with the order
+    itself.

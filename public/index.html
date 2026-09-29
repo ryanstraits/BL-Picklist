@@ -232,8 +232,16 @@
     color: inherit;
   }
   .order-card:active { background: var(--surface-alt); }
-  .order-card.needs-pick, .order-card.needs-log { background: var(--accent-soft); }
-  .order-card.needs-pick:active, .order-card.needs-log:active { background: var(--accent-soft); filter: brightness(0.94); }
+  /* Blue, not the gold .needs-pick already uses for "still needs picked"
+     — a card that's merely unlogged in the spreadsheet reads as a
+     different kind of reminder, not a second "new order" flag. Declared
+     before .needs-pick so an order needing both (still picking AND not
+     yet logged) shows the picking reminder, the more time-sensitive of
+     the two, when the cascade has to pick one. */
+  .order-card.needs-log { background: var(--info-bg); }
+  .order-card.needs-log:active { background: var(--info-bg); filter: brightness(0.94); }
+  .order-card.needs-pick { background: var(--accent-soft); }
+  .order-card.needs-pick:active { background: var(--accent-soft); filter: brightness(0.94); }
   /* A Completed order lingers in the list for a week (see orders.js) so
      Ryan can catch anything the buyer flags, but it's done — nothing left
      to act on — so it reads as visually "put away" rather than an active
@@ -1151,10 +1159,12 @@
   .feedback-icon.received-praise { color: var(--success); background: var(--success-bg); }
   .feedback-icon.received-neutral { color: var(--text-secondary); background: var(--surface-alt); }
   .feedback-icon.received-complaint { color: var(--danger); background: var(--surface-alt); }
-  /* Square, not round — same accent gold as .given's round feedback
-     checkmark, but a different shape so "logged in spreadsheet" never
-     reads as a second feedback-given mark at a glance. */
-  .feedback-icon.logged { border-radius: 3px; color: var(--accent); background: var(--accent-soft); }
+  /* Square, not round, and blue rather than .given's accent gold — shape
+     and color both differ so "logged in spreadsheet" never reads as a
+     second feedback-given mark at a glance. Same blue as .needs-log's
+     card tint, so the whole logged-in-spreadsheet feature reads as one
+     consistent color, distinct from feedback's gold. */
+  .feedback-icon.logged { border-radius: 3px; color: var(--info); background: var(--info-bg); }
 
   /* ---- Drive Thru ---- */
   .drive-thru-row { margin-top: 12px; }
