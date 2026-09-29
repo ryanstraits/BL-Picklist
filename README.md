@@ -913,7 +913,11 @@ Token Secret as sensitive as an API key that can move money.
   — mainly ends up doing real work for filed orders). A single-sample
   bucket shows just the one value rather than a redundant "12.0 oz–12.0
   oz" (`rangeText()`).
-- **Order Lookup** — a small button next to Label Prep (shown throughout
+- **Order Lookup** — a small button, leftmost in the Orders category's
+  sub-nav row with Label Prep next to it (Ryan's own ordering — swapped
+  from Label Prep-first shortly after both shipped; `orderLookupBtn` is
+  static markup ahead of the reused `subNavBtn` in `index.html`, so this
+  is the only category where the swap matters, shown throughout
   the Orders category, hidden only while already on the page) opens a
   search box for finding any order by BrickLink order number, buyer name,
   or date — including filed and long-completed ones the main orders list
