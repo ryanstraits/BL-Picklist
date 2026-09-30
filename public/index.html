@@ -399,7 +399,6 @@
 
   .jump-to-items-btn {
     width: 100%;
-    margin-top: 12px;
     border: 1px solid var(--accent);
     background: none;
     color: var(--accent);
@@ -3148,9 +3147,9 @@
       + detailStatusAction
       + (canSendDriveThru ? '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>' : '')
       + renderSpreadsheetLoggedAction(order)
-      + '</div>'
-      + '</div>'
       + (items.length ? '<button class="jump-to-items-btn" id="jumpToItemsBtn">Jump to items ↓</button>' : '')
+      + '</div>'
+      + '</div>'
       + renderBoxChoiceSection(order)
       + renderContactSection(contact)
       + renderFinancialSection(contact, order)
