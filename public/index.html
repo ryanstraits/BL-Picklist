@@ -2513,6 +2513,25 @@
     return { items: items, picked: picked, knownTotal: knownTotal, done: knownTotal > 0 && picked === knownTotal };
   }
 
+  // Shared by the list card and detail page's own File order button —
+  // order.filed (Order Lookup's snapshot, corrected live by
+  // refreshOrderStatusCheck() the same way order.status is) means
+  // BrickLink already has this filed, whether that happened by tapping
+  // File order here or directly on BrickLink's own site, so there's
+  // nothing left for a fresh tap to do. Disabled rather than omitted —
+  // same "still there, just done" treatment Drive Thru Sent gets, not a
+  // silent gap where the button used to be.
+  function fileOrderActionHtml(order) {
+    return order.filed
+      ? '<button class="status-action-btn file-order-btn" disabled>Filed</button>'
+      : '<button class="status-action-btn file-order-btn" id="detailFileBtn">File order</button>';
+  }
+  function listFileActionHtml(order) {
+    return order.filed
+      ? '<button class="status-action-btn list-file-btn" disabled>Filed</button>'
+      : '<button class="status-action-btn list-file-btn" data-order="' + escapeHtml(order.orderId) + '">File order</button>';
+  }
+
   function renderOrdersList() {
     if (!orders.length) {
       ordersView.innerHTML = '<div class="state-block">No open orders right now.</div>';
@@ -2605,10 +2624,10 @@
         // boolean on Update Order with no status prerequisite, so it works
         // whether or not the completed transition does.
         if (order.status === "RECEIVED") {
-          statusAction += '<button class="status-action-btn list-file-btn" data-order="' + escapeHtml(order.orderId) + '">File order</button>';
+          statusAction += listFileActionHtml(order);
         }
       } else if (order.status === "COMPLETED") {
-        statusAction = '<button class="status-action-btn list-file-btn" data-order="' + escapeHtml(order.orderId) + '">File order</button>';
+        statusAction = listFileActionHtml(order);
       }
       html += ""
         + '<div class="order-card' + (needsPick ? ' needs-pick' : '') + (needsLog ? ' needs-log' : '') + (isComplete ? ' is-complete' : '') + '" role="button" tabindex="0" data-order="' + escapeHtml(order.orderId) + '">'
@@ -2896,10 +2915,10 @@
       // push it to Completed, so File order (no status prerequisite) is
       // offered right alongside rather than only once Completed is reached.
       if (order.status === "RECEIVED") {
-        detailStatusAction += '<button class="status-action-btn file-order-btn" id="detailFileBtn">File order</button>';
+        detailStatusAction += fileOrderActionHtml(order);
       }
     } else if (order.status === "COMPLETED") {
-      detailStatusAction = '<button class="status-action-btn file-order-btn" id="detailFileBtn">File order</button>';
+      detailStatusAction = fileOrderActionHtml(order);
     }
 
     var rows = items.map(function (item, idx) {
@@ -3598,6 +3617,16 @@
       // back navigates to it, not just on this detail view.
       if (statusCheck && statusCheck.status && statusCheck.status !== order.status) {
         order.status = statusCheck.status;
+      }
+      // Same idea, for is_filed — catches an order filed directly on
+      // BrickLink (bypassing this app) since Order Lookup's snapshot was
+      // taken, or even since this same order was last opened this
+      // session, so "File order" doesn't stay offered once it no longer
+      // does anything. Only ever flips false -> true here, never true ->
+      // false — this app is never the one that would know an order got
+      // un-filed (there's no such action anywhere, on BrickLink or here).
+      if (statusCheck && statusCheck.filed && !order.filed) {
+        order.filed = true;
       }
     } catch (e) { /* ignore — just show whatever's already tracked locally */ }
   }
@@ -5448,6 +5477,7 @@
       uniqueCount: row.uniqueCount,
       orderTotal: row.grandTotal,
       currencyCode: row.currencyCode,
+      filed: row.filed,
     });
   }
 

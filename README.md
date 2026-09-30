@@ -1088,3 +1088,30 @@ Token Secret as sensitive as an API key that can move money.
     orders too — so getting behind on logging never loses the reminder,
     it just moves from the main list to Order Lookup along with the order
     itself.
+  - **File order stays consistent with BrickLink's own filed status.**
+    Order Lookup reaches filed orders (unlike the main list, which drops
+    them the moment they're filed, so this gap never showed up there) —
+    reopening one used to offer an active "File order" button again with
+    no way to tell it was already done, since neither `order-stats.js`
+    nor `order-status-check.js` passed through `is_filed` at all. Fixed
+    two ways, matching the same "snapshot plus live correction" pattern
+    the stale-status fix already established: `order-stats.js` now tags
+    each row with `filed` — derived from which of the `filed=true`/
+    `filed=false` calls actually returned it (a more reliable signal than
+    trusting a raw `is_filed` field would be, since that split is
+    BrickLink's own documented ground truth, not a separate value that
+    could drift out of sync with it) — and `order-status-check.js` adds a
+    live `filed` field off the same per-order call that already corrects
+    stale `status`. `refreshOrderStatusCheck()` copies it into
+    `order.filed` the same one-way way it does `status` (only ever
+    false→true, since there's no "unfile" action anywhere for this app to
+    need to notice going the other way). `fileOrderActionHtml()`/
+    `listFileActionHtml()` (shared between the detail page and the list
+    card, replacing what used to be an inline button in both places)
+    render a disabled "Filed" button instead of an active "File order"
+    one whenever `order.filed` is true — same "still there, just done"
+    treatment as Drive Thru Sent, not a silent gap. Together this means
+    the button reflects BrickLink's real filed status consistently
+    whether it was filed by tapping File order right here, or filed
+    directly on BrickLink's own site — the exact "keep it consistent
+    whether the file button is pressed there or here" Ryan asked for.

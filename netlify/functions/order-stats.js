@@ -24,32 +24,40 @@ exports.handler = requireAuth(async () => {
       blGet('/orders?direction=in&filed=true'),
     ]);
 
+    // Tagging each order with which of the two calls it actually came
+    // from is a more reliable "is this filed?" signal than trusting a raw
+    // is_filed field on the order object would be — filed=true and
+    // filed=false are BrickLink's own documented binary split of the same
+    // account's orders, so whichever call returned a given order_id *is*
+    // its filed status, no separate field to go missing or drift out of
+    // sync.
     const seen = new Set();
     const orders = [];
-    [unfiledResult, filedResult].forEach((r) => {
-      if (r.status === 'fulfilled' && Array.isArray(r.value)) {
-        r.value.forEach((o) => {
+    [{ result: unfiledResult, filed: false }, { result: filedResult, filed: true }].forEach(({ result, filed }) => {
+      if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+        result.value.forEach((o) => {
           if (o && !seen.has(o.order_id)) {
             seen.add(o.order_id);
-            orders.push(o);
+            orders.push({ order: o, filed });
           }
         });
       }
     });
 
-    const rows = orders.map((o) => ({
+    const rows = orders.map(({ order: o, filed }) => ({
       orderId: String(o.order_id),
       status: o.status,
-      // buyer/uniqueCount added for Order Lookup, which reuses this same
-      // full-history fetch to search across filed and unfiled orders
+      // buyer/uniqueCount/filed added for Order Lookup, which reuses this
+      // same full-history fetch to search across filed and unfiled orders
       // alike (unlike /api/orders, which is deliberately unfiled-only —
-      // see above) — Sales Stats itself never needed either field.
+      // see above) — Sales Stats itself never needed any of the three.
       buyer: o.buyer_name,
       date: o.date_ordered,
       totalCount: o.total_count,
       uniqueCount: o.unique_count,
       grandTotal: (o.cost && o.cost.grand_total) || null,
       currencyCode: (o.cost && o.cost.currency_code) || null,
+      filed,
     }));
     return json(200, rows);
   } catch (err) {

@@ -40,6 +40,13 @@ exports.handler = requireAuth(async (event) => {
     // attempted from stale data.
     const status = orderResult.status === 'fulfilled' ? (orderResult.value && orderResult.value.status) || null : null;
 
+    // Same reasoning as status above, same free field off the same call —
+    // catches an order filed directly on BrickLink (bypassing this app
+    // entirely) since Order Lookup's statsRows snapshot was last fetched,
+    // so its "File order" button doesn't offer to re-file something
+    // that's already filed.
+    const filed = orderResult.status === 'fulfilled' && !!(orderResult.value && orderResult.value.is_filed);
+
     // Confirmed field for drive_thru_sent against a real client library's
     // typed struct. The feedback shape is now confirmed against a real
     // response too (via a temporary debug endpoint hit against Ryan's own
@@ -64,7 +71,7 @@ exports.handler = requireAuth(async (event) => {
       }
     }
 
-    return json(200, { driveThruSent, feedbackAlreadyPosted, buyerFeedback, status });
+    return json(200, { driveThruSent, feedbackAlreadyPosted, buyerFeedback, status, filed });
   } catch (err) {
     return errorResponse(err);
   }
