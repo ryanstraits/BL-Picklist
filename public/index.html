@@ -335,7 +335,7 @@
     color: var(--text-secondary);
     margin-top: 2px;
   }
-  .order-weight {
+  .order-weight, .order-type-summary {
     font-size: 12.5px;
     color: var(--text-secondary);
     margin-top: 2px;
@@ -1179,7 +1179,38 @@
   .feedback-icon.logged { border-radius: 3px; color: var(--info); background: var(--info-bg); }
 
   /* ---- Drive Thru ---- */
-  .drive-thru-row { margin-top: 12px; }
+  /* Holds every action button/line the order-summary card offers at once
+     (status action(s), Drive Thru, Log in spreadsheet) as equal flex
+     items — two fit per row at roughly half width each, with any odd
+     one out wrapping to its own full-width row below. Replaces what
+     used to be a separate, non-flex .drive-thru-row per button — Ryan
+     asked for this once the stack grew to three rows over the course of
+     this session (status action, Drive Thru, Log in spreadsheet).
+     Deliberately NOT the same "width:100%, let flex-shrink do it" trick
+     .order-status-row uses for the list card's (always-exactly-2,
+     never-wrapping) RECEIVED-order pair — with flex-wrap in the mix here
+     too, a width:100% item's hypothetical (pre-shrink) size already
+     fills an entire line on its own, so every item would end up wrapping
+     to its own row regardless of how much it then shrinks — wrapping
+     happens before shrinking is considered, not after. An explicit ~50%
+     flex-basis instead means two items' hypothetical sizes actually fit
+     on one line together, so wrapping only kicks in for a genuine third
+     item — and flex-grow:1 is what lets that lone item then stretch to
+     fill its own row instead of sitting at half width with dead space
+     next to it. This flex-basis (not the child's own width:100%, which
+     every button/the logged message still carries) is what actually
+     governs each item's size here — a non-auto flex-basis always wins
+     over width for a flex item's main-axis size, regardless of which
+     selector is more specific. min-width: 0 keeps a long button label
+     from forcing its flex-basis back up past its shrunk share and
+     blowing out the row. */
+  .order-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .order-action-row > * { flex: 1 1 calc(50% - 4px); min-width: 0; }
   .drive-thru-btn {
     width: 100%;
     background: none;
@@ -1327,12 +1358,15 @@
   }
   .feedback-submit-btn:disabled { opacity: 0.5; cursor: default; }
   .feedback-sent-msg { font-size: 13px; color: var(--success); font-weight: 600; }
-  /* Sits in the same drive-thru-row the "Log in spreadsheet" button it
+  /* Sits in the same .order-action-row the "Log in spreadsheet" button it
      replaces does — matching padding (no border/background, unlike the
      button) keeps the row from visibly jumping height when it toggles
-     between the two. Tappable to undo, so cursor: pointer despite not
-     being a <button>. */
-  .spreadsheet-logged-msg { font-size: 12.5px; font-weight: 600; color: var(--info); padding: 8px 14px; cursor: pointer; }
+     between the two, and width:100% (not a <button>, so nothing sizes it
+     by default) is what lets it share that row's flex-shrink split with
+     whatever button sits next to it, same as every .status-action-btn
+     there. Tappable to undo, so cursor: pointer despite not being a
+     <button>. */
+  .spreadsheet-logged-msg { width: 100%; font-size: 12.5px; font-weight: 600; color: var(--info); padding: 8px 14px; cursor: pointer; }
 
   .buyer-feedback-section {
     margin-top: 16px;
@@ -2932,6 +2966,44 @@
     });
   }
 
+  var ITEM_TYPE_LABELS = {
+    MINIFIG: ["minifig", "minifigs"],
+    PART: ["part", "parts"],
+    SET: ["set", "sets"],
+    BOOK: ["book", "books"],
+    GEAR: ["gear", "gear"],
+    CATALOG: ["catalog", "catalogs"],
+    INSTRUCTION: ["instruction", "instructions"],
+    ORIGINAL_BOX: ["box", "boxes"],
+    UNSORTED_LOT: ["lot", "lots"],
+  };
+
+  // A quick "what's actually in here" glance at the top of the order
+  // detail page, e.g. "5 parts · 2 minifigs · 1 set" — Ryan wanted this
+  // specifically so he doesn't have to open every item row just to see
+  // the mix. Sums quantity per BrickLink item type (not lot/line count —
+  // "2 minifigs" should mean two physical minifigs, whether that's two
+  // separate 1-qty lots or one 2-qty lot), sorted by count descending so
+  // the most common type in the order leads. Deliberately only on the
+  // detail page, never on any list/card view — Ryan explicitly didn't
+  // want more crowding there, where several cards are already stacked
+  // and busy; the detail page only ever shows one order at a time, so
+  // there's room for it here that there isn't there.
+  function orderTypeSummaryHtml(items) {
+    var counts = {};
+    items.forEach(function (item) {
+      counts[item.type] = (counts[item.type] || 0) + (item.qty || 0);
+    });
+    var types = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
+    if (!types.length) return "";
+    var parts = types.map(function (type) {
+      var labels = ITEM_TYPE_LABELS[type] || [type.toLowerCase(), type.toLowerCase() + "s"];
+      var n = counts[type];
+      return n + " " + (n === 1 ? labels[0] : labels[1]);
+    });
+    return '<div class="order-type-summary">' + escapeHtml(parts.join(" · ")) + '</div>';
+  }
+
   function renderOrderDetail(order, items, messages, contact) {
     messages = messages || [];
     var readOnly = orderDetailReadOnly;
@@ -2998,12 +3070,13 @@
       + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
       + '</div>'
       + (contact && contact.weightG ? '<div class="order-weight mono">' + escapeHtml(formatWeightLbOz(contact.weightG)) + '</div>' : '')
+      + orderTypeSummaryHtml(items)
       + (readOnly ? '' : '<div class="picked-count" id="pickedCountText"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>')
-      + (detailStatusAction ? '<div class="drive-thru-row">' + detailStatusAction + '</div>' : '')
-      + (canSendDriveThru ? '<div class="drive-thru-row">'
-        + '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>'
-        + '</div>' : '')
-      + '<div class="drive-thru-row">' + renderSpreadsheetLoggedAction(order) + '</div>'
+      + '<div class="order-action-row">'
+      + detailStatusAction
+      + (canSendDriveThru ? '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>' : '')
+      + renderSpreadsheetLoggedAction(order)
+      + '</div>'
       + '</div>'
       + (items.length ? '<button class="jump-to-items-btn" id="jumpToItemsBtn">Jump to items ↓</button>' : '')
       + renderBoxChoiceSection(order)
@@ -3411,9 +3484,9 @@
   // not picking, so it belongs on every order's detail page (old orders
   // reached through Order Lookup, and new ones as they come in through the
   // main list) rather than only where Order Lookup happens to be open.
-  // Started as a checkbox; switched to match the status-action-btn/
-  // drive-thru-row style everything else in this row already uses (Mark
-  // as packed/shipped/completed, File order, Send Drive Thru), with the
+  // Started as a checkbox; switched to match the status-action-btn
+  // style everything else in this row already uses (Mark as packed/
+  // shipped/completed, File order, Send Drive Thru), with the
   // button disappearing into a sent-style confirmation line once logged,
   // same as feedback's "Feedback sent — thanks!" — per Ryan's own ask
   // after using the checkbox live. The confirmation line stays tappable

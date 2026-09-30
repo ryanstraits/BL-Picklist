@@ -1193,3 +1193,43 @@ Token Secret as sensitive as an API key that can move money.
   the normal path and needs no special handling — by then
   `manageInventoryRows` is already warm, so `itemStockCountHtml()` just
   renders the real number synchronously like any other render.
+- **Item-type summary + half-width action buttons on the order detail
+  page.** `orderTypeSummaryHtml(items)` sums each item's `qty` by
+  BrickLink type (not lot/line count — "2 minifigs" means two physical
+  minifigs, whether that's two 1-qty lots or one 2-qty lot) and renders
+  them sorted by count descending, e.g. "10 parts" or "18 parts · 1
+  minifig · 1 set · 1 instruction" — a quick "what's actually in here"
+  glance without opening every item row. Deliberately detail-page-only,
+  never on a list/card view: Ryan explicitly didn't want more crowding
+  there, where several cards are already stacked and busy, while the
+  detail page only ever shows one order at a time.
+
+  Asked for alongside this: the detail page's own action buttons (status
+  action(s), Send Drive Thru, Log in spreadsheet) used to each sit in
+  their own full-width `.drive-thru-row`, growing to three separate
+  stacked rows over the course of this session as Log in spreadsheet and
+  the RECEIVED-order File-order pairing were added. All three now flow
+  into one `.order-action-row` — two at a time sit side by side at
+  roughly half width, and a genuine odd one out (there's always at least
+  one, since Log in spreadsheet/its confirmation message is never
+  absent) wraps to its own full-width row rather than sitting at half
+  width with dead space next to it. Matches the same half-width pairing
+  the main list's own `.order-status-row` already does for a RECEIVED
+  order's stacked "Mark as completed"/"File order" pair on its card — but
+  needed a different CSS mechanism to get there: that row never wraps
+  (always exactly 2 children, `width: 100%` on each, `flex-shrink`
+  splits them), while `.order-action-row` needs actual wrapping (0 to 3+
+  children depending on status), and a `width: 100%` item's hypothetical
+  (pre-shrink) size already fills an entire flex line on its own, so
+  combined with `flex-wrap` it would just stack everything one-per-row
+  regardless of how much shrinking could otherwise fit two side by side
+  — wrapping is decided before shrinking is considered, not after. Giving
+  each child an explicit `flex: 1 1 calc(50% - 4px)` instead (a non-auto
+  flex-basis always wins over a child's own `width` for a flex item's
+  main-axis size, so every button's existing `width: 100%` — kept as-is,
+  still needed for standalone contexts like the main list — is simply
+  overridden here without touching it) fixes both halves at once:
+  `flex-basis` ~50% means two items' hypothetical sizes genuinely fit one
+  line together, and `flex-grow: 1` is what then lets a lone leftover
+  item stretch to fill its own row instead of sitting stranded at half
+  width.
