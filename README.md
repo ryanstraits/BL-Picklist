@@ -1128,3 +1128,47 @@ Token Secret as sensitive as an API key that can move money.
     whether it was filed by tapping File order right here, or filed
     directly on BrickLink's own site — the exact "keep it consistent
     whether the file button is pressed there or here" Ryan asked for.
+- **In-stock count on order items** — each item row on the order detail
+  page (main list and Order Lookup alike, per the by-now-established "not
+  picking-related, so not gated by readOnly" rule) shows how many more of
+  that exact item+color are currently sitting in inventory, e.g. "6 in
+  inventory" — Ryan wanted a quick way to gut-check remaining stock while
+  reviewing an order, without adding a new page or a button that just
+  detours to Manage Inventory's own search (both considered and passed
+  over once it turned out neither would actually cost anything extra —
+  see below). Deliberately combines both conditions and every lot of that
+  item+color into one number (`inventoryStockCount(itemNo, colorId)`,
+  summed across every matching, non-deleted row in `manageInventoryRows`)
+  rather than splitting by New/Used — "how many more of the same piece do
+  I have" is about the piece, matching how the price guide panel's own
+  "View on BrickLink" link already treats condition as incidental, not
+  the question being asked.
+
+  Costs nothing new: Manage Inventory already does exactly one bulk
+  `/api/inventory-list` fetch and caches the result in `manageInventoryRows`
+  for the rest of the session (`null` until first fetched) — there was
+  never a per-item cost to begin with, on either page. The only real
+  question was whether an order detail page, which has nothing else to do
+  with Manage Inventory's own view state, could reuse that same cached
+  data without dragging its loading/error UI along — solved by splitting
+  `fetchManageInventory()`'s old fetch-and-render-the-Manage-Inventory-
+  page body into `loadManageInventoryRows()` (the raw fetch-and-cache
+  alone, still always a real re-fetch — Manage Inventory's own Refresh and
+  Retry buttons call `fetchManageInventory()`, which still uses this
+  directly, so they keep forcing a fresh pull regardless of what's
+  cached) and a new `ensureManageInventoryLoaded()` (cache-respecting:
+  fetches only if `manageInventoryRows` is still `null`, otherwise
+  resolves immediately with what's already there — same "fetch once,
+  reuse all session" shape as `getColors()`). `openOrder()` kicks off
+  `ensureManageInventoryLoaded()` right after rendering the order detail
+  page, never awaited — so it can't delay the page itself, and doesn't
+  need to: `itemStockCountHtml()` fills the count in immediately at
+  render time whenever `manageInventoryRows` is already warm (which, once
+  any order this session has triggered the lazy load once, every
+  following one will be), and otherwise leaves a same-sized empty
+  placeholder (`.item-stock-count`, styled identically to the existing
+  `.item-color` meta line) that gets its text patched in once the
+  background fetch resolves — same "reserve the space now, fill in the
+  text shortly after" pattern `buyerRealNameHtml()` already uses for the
+  order list's buyer real name, chosen so the layout doesn't visibly jump
+  once the count actually lands.
