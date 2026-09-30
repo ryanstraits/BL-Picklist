@@ -2216,6 +2216,26 @@
     return (categoriesById && categoriesById[id] && categoriesById[id].name) || "Uncategorized";
   }
 
+  // BrickLink names every minifig-component category "Minifigure, <part>"
+  // (Head, Torso Assembly, Legs, Headgear, Hair, Utensil, Weapon,
+  // Accessory, ...) — checking for that substring anywhere up a part's
+  // category chain (not just its own leaf category) is what lets
+  // orderTypeSummaryHtml split "parts" into fig-related vs. general
+  // misc, the dollar-value distinction Ryan already tracks in his own
+  // spreadsheet, without hardcoding an exhaustive categoryId whitelist
+  // that'd go stale if BrickLink's catalog changes.
+  function isFigPartCategory(categoryId, categories) {
+    if (!categoryId || !categories) return false;
+    var id = categoryId;
+    var seen = {};
+    while (id && categories[id] && !seen[id]) {
+      seen[id] = true;
+      if (/minifig/i.test(categories[id].name || "")) return true;
+      id = categories[id].parentId;
+    }
+    return false;
+  }
+
   var ordersView = document.getElementById("view-orders");
   var orderView = document.getElementById("view-order");
   var inventoryView = document.getElementById("view-inventory");
@@ -2990,6 +3010,8 @@
   var ITEM_TYPE_LABELS = {
     MINIFIG: ["minifig", "minifigs"],
     PART: ["part", "parts"],
+    PART_FIG: ["fig part", "fig parts"],
+    PART_MISC: ["misc part", "misc parts"],
     SET: ["set", "sets"],
     BOOK: ["book", "books"],
     GEAR: ["gear", "gear"],
@@ -3000,20 +3022,31 @@
   };
 
   // A quick "what's actually in here" glance at the top of the order
-  // detail page, e.g. "5 parts · 2 minifigs · 1 set" — Ryan wanted this
-  // specifically so he doesn't have to open every item row just to see
-  // the mix. Sums quantity per BrickLink item type (not lot/line count —
-  // "2 minifigs" should mean two physical minifigs, whether that's two
-  // separate 1-qty lots or one 2-qty lot), sorted by count descending so
-  // the most common type in the order leads. Deliberately only on the
-  // detail page, never on any list/card view — Ryan explicitly didn't
-  // want more crowding there, where several cards are already stacked
-  // and busy; the detail page only ever shows one order at a time, so
-  // there's room for it here that there isn't there.
+  // detail page, e.g. "5 misc parts · 2 fig parts · 1 minifig" — Ryan
+  // wanted this specifically so he doesn't have to open every item row
+  // just to see the mix. Sums quantity per BrickLink item type (not
+  // lot/line count — "2 minifigs" should mean two physical minifigs,
+  // whether that's two separate 1-qty lots or one 2-qty lot), sorted by
+  // count descending so the most common type in the order leads.
+  // Deliberately only on the detail page, never on any list/card view —
+  // Ryan explicitly didn't want more crowding there, where several cards
+  // are already stacked and busy; the detail page only ever shows one
+  // order at a time, so there's room for it here that there isn't there.
+  //
+  // PART splits further into fig-related vs. general misc — Ryan tracks
+  // that distinction in his own spreadsheet since fig parts (torsos,
+  // heads, legs, accessories) run a noticeably different dollar value
+  // than general parts. Needs categoriesById loaded (see openOrder) to
+  // tell the two apart; falls back to the old unsplit "parts" bucket if
+  // categories haven't loaded for some reason, rather than guessing.
   function orderTypeSummaryHtml(items) {
     var counts = {};
     items.forEach(function (item) {
-      counts[item.type] = (counts[item.type] || 0) + (item.qty || 0);
+      var bucket = item.type;
+      if (bucket === "PART" && categoriesById) {
+        bucket = isFigPartCategory(item.categoryId, categoriesById) ? "PART_FIG" : "PART_MISC";
+      }
+      counts[bucket] = (counts[bucket] || 0) + (item.qty || 0);
     });
     var types = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
     if (!types.length) return "";
@@ -3807,6 +3840,12 @@
         patchItemStockCounts(orderView);
       }).catch(function () { /* ignore — lines just stay blank */ });
     }
+
+    // Best-effort — only used to split the type summary's "parts" bucket
+    // into fig/misc (see isFigPartCategory); a failure here just means
+    // that split falls back to the old unsplit "parts" label, not that
+    // the order fails to open.
+    try { await getCategories(); } catch (e) { /* summary falls back to unsplit "parts" */ }
 
     var cached = itemsCache[orderId];
     if (cached) {
