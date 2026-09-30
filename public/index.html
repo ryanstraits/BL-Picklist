@@ -2561,11 +2561,19 @@
   // agree on what "done" means instead of each computing it separately.
   // Falls back to pickedCountFromState()/order.uniqueCount when the order's
   // items haven't been fetched yet in this session (same fallback the card
-  // itself already uses before it's been opened).
+  // itself already uses before it's been opened). That fallback counts every
+  // locally-saved "picked" key regardless of whether it still matches a real
+  // item in the order, so it can run ahead of knownTotal if a lot was
+  // combined/cancelled/edited on BrickLink's side after it had already been
+  // picked (observed live as a card reading "33/32"). Capped here rather
+  // than solved at the source, since there's no way to tell which saved key
+  // went stale without the real item list — which is exactly what isn't
+  // fetched yet on this path.
   function orderPickProgress(order) {
     var items = itemsCache[order.orderId];
     var picked = items ? pickedCount(order.orderId, items) : pickedCountFromState(order.orderId);
     var knownTotal = items ? items.length : (order.uniqueCount || 0);
+    if (knownTotal > 0 && picked > knownTotal) picked = knownTotal;
     return { items: items, picked: picked, knownTotal: knownTotal, done: knownTotal > 0 && picked === knownTotal };
   }
 
