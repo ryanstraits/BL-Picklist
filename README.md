@@ -1233,3 +1233,20 @@ Token Secret as sensitive as an API key that can move money.
   line together, and `flex-grow: 1` is what then lets a lone leftover
   item stretch to fill its own row instead of sitting stranded at half
   width.
+- **Visible borders on "done" states, not just active buttons** — a live
+  screenshot caught "Filed" reading as a borderless gray box and "Logged
+  in spreadsheet ✓" as bare floating text, next to properly bordered
+  buttons like a selected Box used option. `.status-action-btn:disabled`
+  (governs "Filed" on both the list card and detail page) used to just
+  fade everything — border included — to 60% opacity, washing a already-muted
+  `--text-secondary` border down to near-invisible against a dark
+  background; switched to the same solid, no-opacity-fade treatment
+  `.drive-thru-btn:disabled` ("Drive Thru Sent") already used (explicit
+  `border-color: var(--border)`, `background: var(--surface-alt)`) so a
+  "done" state still reads as a real button, just a quieter one.
+  `.spreadsheet-logged-msg` never had a border or radius at all (a
+  deliberate choice at the time, so it wouldn't visibly jump the row's
+  height toggling against the button it replaces) — given a border and
+  radius matching its own blue now that the global `box-sizing:
+  border-box` reset means adding one doesn't change the box's size after
+  all.

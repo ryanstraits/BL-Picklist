@@ -268,7 +268,17 @@
     cursor: pointer;
   }
   .status-action-btn:active { background: var(--surface-alt); }
-  .status-action-btn:disabled { opacity: 0.6; cursor: default; }
+  /* Same solid muted look as .drive-thru-btn:disabled ("Drive Thru
+     Sent") — not a blanket opacity fade, which washed the border out to
+     near-invisible against a dark background (Ryan's own screenshot:
+     "Filed" read as a borderless gray box). A "done" state still needs
+     to look like a real button, just a quieter one. */
+  .status-action-btn:disabled {
+    color: var(--text-secondary);
+    border-color: var(--border);
+    background: var(--surface-alt);
+    cursor: default;
+  }
   .status-action-btn.to-packed { color: var(--info); border-color: var(--info); }
   .status-action-btn.to-shipped { color: var(--success); border-color: var(--success); }
   .status-action-btn.to-completed { color: var(--purple); border-color: var(--purple); }
@@ -1359,14 +1369,17 @@
   .feedback-submit-btn:disabled { opacity: 0.5; cursor: default; }
   .feedback-sent-msg { font-size: 13px; color: var(--success); font-weight: 600; }
   /* Sits in the same .order-action-row the "Log in spreadsheet" button it
-     replaces does — matching padding (no border/background, unlike the
-     button) keeps the row from visibly jumping height when it toggles
-     between the two, and width:100% (not a <button>, so nothing sizes it
-     by default) is what lets it share that row's flex-shrink split with
+     replaces does — matching padding, border, and border-radius (global
+     box-sizing: border-box means the added border doesn't change the
+     box's own height) keeps the row from visibly jumping when it toggles
+     between the two, and now reads as a real "done" pill instead of bare
+     floating text — Ryan flagged the borderless look from a live
+     screenshot. width:100% (not a <button>, so nothing sizes it by
+     default) is what lets it share that row's flex-shrink split with
      whatever button sits next to it, same as every .status-action-btn
      there. Tappable to undo, so cursor: pointer despite not being a
      <button>. */
-  .spreadsheet-logged-msg { width: 100%; font-size: 12.5px; font-weight: 600; color: var(--info); padding: 8px 14px; cursor: pointer; }
+  .spreadsheet-logged-msg { width: 100%; font-size: 12.5px; font-weight: 600; color: var(--info); border: 1px solid var(--info); border-radius: 6px; padding: 8px 14px; cursor: pointer; }
 
   .buyer-feedback-section {
     margin-top: 16px;
