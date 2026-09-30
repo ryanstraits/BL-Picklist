@@ -1172,3 +1172,24 @@ Token Secret as sensitive as an API key that can move money.
   text shortly after" pattern `buyerRealNameHtml()` already uses for the
   order list's buyer real name, chosen so the layout doesn't visibly jump
   once the count actually lands.
+
+  Pulled into Add Inventory's own review cards too, right after order
+  detail — same `itemStockCountHtml(row)`, same reasoning ("how many of
+  this exact item+color do I already have, while I'm looking at whether
+  to add more"). Replaced the CSV's own bin/board location line entirely
+  (`Bin: Board_7H`, straight from BrickScan's `LOCATION` column) rather
+  than adding the count alongside it — Ryan doesn't use BrickScan's
+  location feature, so that line was pure noise on every single row;
+  `location` is now gone from `csvObjToInventoryRow()`'s row shape too
+  (confirmed nothing else in the app ever read it — it was never sent to
+  BrickLink either, since Update/Create Inventory has no such field).
+  `patchItemStockCounts(container)` — the "find every `.item-stock-count`
+  placeholder under here and fill it in" half of the order-detail
+  version — got pulled out into its own shared function so both pages
+  could call it without duplicating the loop; `handleInventoryFileChange()`
+  kicks off `ensureManageInventoryLoaded()` right after the CSV parses,
+  same fire-and-forget shape as `openOrder()`'s own call. A field edit
+  afterward (qty, price, condition, anything) re-renders the row through
+  the normal path and needs no special handling — by then
+  `manageInventoryRows` is already warm, so `itemStockCountHtml()` just
+  renders the real number synchronously like any other render.

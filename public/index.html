@@ -2905,16 +2905,31 @@
   }
 
   // Renders filled in immediately if manageInventoryRows is already warm
-  // this session (e.g. Manage Inventory was visited earlier, or a
-  // previous order this session already triggered the same lazy load);
-  // otherwise an empty placeholder — same reserved-space-now,
+  // this session (e.g. Manage Inventory was visited earlier, or an order
+  // or an earlier Add Inventory CSV already triggered the same lazy
+  // load); otherwise an empty placeholder — same reserved-space-now,
   // filled-in-shortly-after approach as buyerRealNameHtml — patched by
-  // openOrder()'s ensureManageInventoryLoaded().then() once the
-  // background fetch resolves.
+  // patchItemStockCounts() below once the background fetch resolves.
   function itemStockCountHtml(item) {
     var count = manageInventoryRows ? inventoryStockCount(item.itemNo, item.colorId) : "";
     return '<div class="item-stock-count" data-item-no="' + escapeHtml(item.itemNo) + '" data-color-id="' + escapeHtml(item.colorId) + '">'
       + (count !== "" ? count + ' in inventory' : '') + '</div>';
+  }
+
+  // Shared by the order detail page and Add Inventory's review list —
+  // both leave itemStockCountHtml()'s placeholder in place when the
+  // count isn't ready yet, then call this once ensureManageInventoryLoaded()
+  // resolves to fill in every such placeholder currently in the DOM under
+  // the given container. A later re-render (editing a field, tapping a
+  // checkbox) doesn't need this again — by then manageInventoryRows is
+  // warm, so itemStockCountHtml() renders the real count synchronously
+  // the next time it's called.
+  function patchItemStockCounts(container) {
+    container.querySelectorAll(".item-stock-count[data-item-no]").forEach(function (el) {
+      var itemNo = el.getAttribute("data-item-no");
+      var colorId = parseInt(el.getAttribute("data-color-id"), 10) || 0;
+      el.textContent = inventoryStockCount(itemNo, colorId) + " in inventory";
+    });
   }
 
   function renderOrderDetail(order, items, messages, contact) {
@@ -3691,18 +3706,11 @@
 
     // Best-effort, fire-and-forget — never awaited, so a first-ever load
     // this session (the only time it isn't already cached) never delays
-    // the order detail page itself from showing. Patches the placeholder
-    // itemStockCountHtml() left in each item row rather than triggering a
-    // full re-render, same reasoning as the buyer-real-name/feedback-icon
-    // patches elsewhere in this file.
+    // the order detail page itself from showing.
     function refreshItemStockCounts() {
       ensureManageInventoryLoaded().then(function () {
         if (currentView !== "order" || order.orderId !== orderId) return;
-        orderView.querySelectorAll(".item-stock-count[data-item-no]").forEach(function (el) {
-          var itemNo = el.getAttribute("data-item-no");
-          var colorId = parseInt(el.getAttribute("data-color-id"), 10) || 0;
-          el.textContent = inventoryStockCount(itemNo, colorId) + " in inventory";
-        });
+        patchItemStockCounts(orderView);
       }).catch(function () { /* ignore — lines just stay blank */ });
     }
 
@@ -3857,7 +3865,6 @@
       unitPrice: formatPriceInput(obj.PRICE),
       description: description,
       remarks: remarks,
-      location: obj.LOCATION || "",
       stockRoomId: "",
       result: null,
       priceExpanded: false,
@@ -4063,6 +4070,14 @@
       if (!objs.length) { renderInventoryUpload("No rows found in that file."); return; }
       inventoryRows = objs.map(csvObjToInventoryRow);
       renderInventoryView();
+      // Best-effort, fire-and-forget, same reasoning as openOrder()'s own
+      // call — never delays the review screen itself. A later re-render
+      // from editing a field doesn't need this again: manageInventoryRows
+      // is warm by then, so itemStockCountHtml() renders real counts
+      // synchronously from that point on.
+      ensureManageInventoryLoaded().then(function () {
+        if (currentView === "inventory") patchItemStockCounts(inventoryView);
+      }).catch(function () { /* ignore — lines just stay blank */ });
     }).catch(function (err) {
       renderInventoryUpload("Couldn't read that file: " + err.message);
     });
@@ -4109,7 +4124,7 @@
         + '</div>'
         + '<div class="item-name">' + escapeHtml(row.name || "(name unknown)") + '</div>'
         + (isRealColorName(row.colorName) ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
-        + (row.location ? '<div class="item-color">Bin: ' + escapeHtml(row.location) + '</div>' : '')
+        + itemStockCountHtml(row)
         + '<div class="inventory-fields">'
         + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="quantity" value="' + escapeHtml(row.quantity) + '"' + (locked ? ' disabled' : '') + '></div>'
         + '<div class="inventory-field"><label>Price</label><input type="text" inputmode="decimal" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="unitPrice" value="' + escapeHtml(row.unitPrice) + '"' + (locked ? ' disabled' : '') + '></div>'
