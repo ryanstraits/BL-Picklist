@@ -3011,7 +3011,7 @@
     MINIFIG: ["minifig", "minifigs"],
     PART: ["part", "parts"],
     PART_FIG: ["fig part", "fig parts"],
-    PART_MISC: ["misc part", "misc parts"],
+    PART_GEN: ["gen part", "gen parts"],
     SET: ["set", "sets"],
     BOOK: ["book", "books"],
     GEAR: ["gear", "gear"],
@@ -3022,38 +3022,56 @@
   };
 
   // A quick "what's actually in here" glance at the top of the order
-  // detail page, e.g. "5 misc parts · 2 fig parts · 1 minifig" — Ryan
-  // wanted this specifically so he doesn't have to open every item row
-  // just to see the mix. Sums quantity per BrickLink item type (not
-  // lot/line count — "2 minifigs" should mean two physical minifigs,
-  // whether that's two separate 1-qty lots or one 2-qty lot), sorted by
-  // count descending so the most common type in the order leads.
-  // Deliberately only on the detail page, never on any list/card view —
-  // Ryan explicitly didn't want more crowding there, where several cards
-  // are already stacked and busy; the detail page only ever shows one
-  // order at a time, so there's room for it here that there isn't there.
+  // detail page, e.g. "5 gen parts (1 lb 2.000 oz) · 2 fig parts (3.500
+  // oz) · 1 minifig" — Ryan wanted this specifically so he doesn't have
+  // to open every item row just to see the mix. Sums quantity per
+  // BrickLink item type (not lot/line count — "2 minifigs" should mean
+  // two physical minifigs, whether that's two separate 1-qty lots or one
+  // 2-qty lot), sorted by count descending so the most common type in
+  // the order leads. Deliberately only on the detail page, never on any
+  // list/card view — Ryan explicitly didn't want more crowding there,
+  // where several cards are already stacked and busy; the detail page
+  // only ever shows one order at a time, so there's room for it here
+  // that there isn't there.
   //
-  // PART splits further into fig-related vs. general misc — Ryan tracks
-  // that distinction in his own spreadsheet since fig parts (torsos,
-  // heads, legs, accessories) run a noticeably different dollar value
-  // than general parts. Needs categoriesById loaded (see openOrder) to
-  // tell the two apart; falls back to the old unsplit "parts" bucket if
-  // categories haven't loaded for some reason, rather than guessing.
+  // PART splits further into fig-related vs. general ("gen", matching
+  // the label Ryan already uses in his own spreadsheet) — that
+  // distinction matters to him since fig parts (torsos, heads, legs,
+  // accessories) run a noticeably different dollar value than general
+  // parts. Needs categoriesById loaded (see openOrder) to tell the two
+  // apart; falls back to the old unsplit "parts" bucket (no weight
+  // shown, since that fallback can't tell which of the two it's
+  // summing) if categories haven't loaded for some reason, rather than
+  // guessing.
+  //
+  // Only the two PART buckets get a weight alongside their count — Ryan
+  // uses part weight to track cost/lb for piece lots, not for minifigs,
+  // sets, or anything else summarized here, so a weight on those would
+  // just be noise. item.weight is BrickLink's per-unit gram weight (see
+  // formatWeightLbOz's own comment on how that's been confirmed against
+  // real orders), so it's multiplied by qty before summing across a
+  // multi-unit lot.
   function orderTypeSummaryHtml(items) {
     var counts = {};
+    var weights = {};
     items.forEach(function (item) {
       var bucket = item.type;
       if (bucket === "PART" && categoriesById) {
-        bucket = isFigPartCategory(item.categoryId, categoriesById) ? "PART_FIG" : "PART_MISC";
+        bucket = isFigPartCategory(item.categoryId, categoriesById) ? "PART_FIG" : "PART_GEN";
       }
       counts[bucket] = (counts[bucket] || 0) + (item.qty || 0);
+      if (bucket === "PART_FIG" || bucket === "PART_GEN") {
+        weights[bucket] = (weights[bucket] || 0) + (parseFloat(item.weight) || 0) * (item.qty || 0);
+      }
     });
     var types = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
     if (!types.length) return "";
     var parts = types.map(function (type) {
       var labels = ITEM_TYPE_LABELS[type] || [type.toLowerCase(), type.toLowerCase() + "s"];
       var n = counts[type];
-      return n + " " + (n === 1 ? labels[0] : labels[1]);
+      var text = n + " " + (n === 1 ? labels[0] : labels[1]);
+      if (weights[type] !== undefined) text += " (" + formatWeightLbOz(weights[type]) + ")";
+      return text;
     });
     return '<div class="order-type-summary">' + escapeHtml(parts.join(" · ")) + '</div>';
   }
