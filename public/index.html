@@ -1020,9 +1020,18 @@
 
   .item-row.inventory-row { flex-wrap: wrap; }
   .inventory-price-guide-block { flex: 1 1 100%; min-width: 0; }
-  .price-guide-toggle-btn {
-    display: block;
+  /* View on BrickLink left, the See/Collapse toggle right — both always
+     visible above the (collapsible) panel itself, rather than the link
+     living inside the panel and only showing once expanded. */
+  .price-guide-header-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
     margin-top: 10px;
+  }
+  .price-guide-toggle-btn {
+    flex: none;
     border: none;
     background: none;
     color: var(--info);
@@ -3925,22 +3934,28 @@
     return '<div class="price-guide-stats">' + escapeHtml(statsLine) + '</div>';
   }
 
+  // Both conditions, US-only (bricklinkCatalogUrl with no cond arg) — one
+  // link covering what used to be a separate New-only and Used-only link.
+  // Lives in the header row above the (collapsible) panel now, not inside
+  // it, so it's reachable without expanding "See active US listings" —
+  // Ryan asked for it moved up, the two side by side.
+  function viewOnBricklinkLinkHtml(row) {
+    return '<a class="price-guide-view-link" href="' + escapeHtml(bricklinkCatalogUrl(row)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>';
+  }
+
   // New and Used used to render as two full, independently-scrolled lists
   // of up to 25 listings each (each with its own "View on BrickLink" link)
   // — a lot of scrolling on a phone, and two links to a page Ryan only
   // ever wants filtered to US anyway, condition included or not. Merged
   // into one list, cheapest-first across both conditions combined and
   // capped at 25 total, with each row tagged New/Used next to its price
-  // instead of condition being implied by which list it's in, and one
-  // "View on BrickLink" link (both conditions, US-only — bricklinkCatalogUrl
-  // with no cond arg) instead of a separate one per condition.
+  // instead of condition being implied by which list it's in.
   function renderPriceGuidePanel(row) {
     if (!row.priceExpanded) return "";
-    var viewOnBricklink = '<a class="price-guide-view-link" href="' + escapeHtml(bricklinkCatalogUrl(row)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>';
     var stateN = priceGuideCache[priceGuideKey(row, "N")];
     var stateU = priceGuideCache[priceGuideKey(row, "U")];
     if (!stateN || !stateU || stateN.loading || stateU.loading) {
-      return '<div class="price-guide-panel">Loading active US listings… ' + viewOnBricklink + '</div>';
+      return '<div class="price-guide-panel">Loading active US listings…</div>';
     }
 
     var combined = [];
@@ -3973,7 +3988,6 @@
     }).join("");
 
     return '<div class="price-guide-panel">'
-      + '<div class="price-guide-stats"><span>Active US listings</span>' + viewOnBricklink + '</div>'
       + renderPriceGuideStatsLine(row, "N")
       + renderPriceGuideStatsLine(row, "U")
       + (combined.length ? '<div class="price-guide-hint">Tap a listing to use its price (also sets Condition)</div>' + rows : '')
@@ -4083,7 +4097,10 @@
         + resultHtml
         + '</div>'
         + '<div class="inventory-price-guide-block">'
+        + '<div class="price-guide-header-row">'
+        + viewOnBricklinkLinkHtml(row)
         + '<button type="button" class="price-guide-toggle-btn" data-key="' + escapeHtml(row.key) + '">' + (row.priceExpanded ? "▾" : "▸") + ' See active US listings</button>'
+        + '</div>'
         + renderPriceGuidePanel(row)
         + '</div>'
         + '</div>';

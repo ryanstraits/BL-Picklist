@@ -586,11 +586,24 @@ Token Secret as sensitive as an API key that can move money.
   own Condition (editing color refetches both; changing Condition doesn't
   refetch anything, since both are already loaded; qty/price/remarks
   don't affect it either) so re-opening an already-checked panel doesn't
-  re-hit the API. A single "View on BrickLink" link sits above the two
-  stats lines (there used to be one per condition — Ryan only wants the
-  one, since he doesn't split his own browsing by condition either),
-  pre-scoped to the row's color (if any) and US-only but *not* to a
-  condition, so it opens BrickLink's own catalog page showing New and
+  re-hit the API. A single "View on BrickLink" link (there used to be one
+  per condition — Ryan only wants the one, since he doesn't split his own
+  browsing by condition either) sits in its own header row alongside the
+  "See active US listings" toggle — link left-justified, toggle
+  right-justified (`.price-guide-header-row`, `justify-content:
+  space-between`) — above the collapsible panel itself, not inside it, so
+  it's reachable without expanding anything. Originally lived inside the
+  panel, below the toggle, alongside a now-removed "Active US listings"
+  label line that was purely redundant with the toggle's own text; moved
+  per Ryan's own ask once he was using it live, since a link that only
+  shows up after expanding a "see more" toggle defeats a lot of the point
+  of a quick link out. `viewOnBricklinkLinkHtml(row)` builds it once,
+  called from the header row now instead of from inside
+  `renderPriceGuidePanel()` (which used to build and return it, including
+  a duplicate copy embedded in its own "Loading…" state — gone too, since
+  the header row's copy is already visible throughout, loading state
+  included). Pre-scoped to the row's color (if any) and US-only but *not*
+  to a condition, so it opens BrickLink's own catalog page showing New and
   Used together. `bricklinkCatalogUrl(row, cond)`'s `cond` argument is
   optional for exactly this — passed by the order-detail and Manage
   Inventory item links (which do want one specific condition), omitted
