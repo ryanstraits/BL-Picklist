@@ -2039,9 +2039,24 @@
     return normalized !== "" && normalized.indexOf("applicable") === -1;
   }
 
+  // BrickLink's timestamps are logically always UTC, but not every field
+  // actually carries a timezone marker (a trailing Z or +/-HH:MM offset)
+  // confirming that — date_rated on a Feedback entry is the one caught
+  // live doing this (no marker), and without one the browser's Date
+  // parser treats the string as already being in local time instead of
+  // converting it from UTC. That silently shifts the displayed date by
+  // the local UTC offset — confirmed live as a buyer's feedback reading
+  // "Oct 1" at 9:33pm CDT on Sep 30 (CDT is UTC-5, so a date_rated of
+  // "...T02:33:00" with no Z, read as UTC, is actually 9:33pm Sep 30
+  // local — exactly matching real time — but read as already-local
+  // shows the UTC digits unshifted, a full day ahead). Normalizing a
+  // marker-less string to explicit UTC before parsing fixes this without
+  // touching any timestamp that already carries its own marker (order
+  // dates, which have never shown this symptom, pass through unchanged).
   function formatDate(iso) {
     if (!iso) return "";
-    var d = new Date(iso);
+    var normalized = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso.replace(" ", "T") + "Z";
+    var d = new Date(normalized);
     if (isNaN(d.getTime())) return iso;
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   }
