@@ -3651,7 +3651,7 @@
       + '<div class="buyer-feedback-section ' + tone + '">'
       + '<div class="buyer-feedback-heading">Buyer left feedback' + (fb.rating ? ': ' + escapeHtml(fb.rating) : '') + '</div>'
       + (fb.comment ? '<div class="buyer-feedback-comment">' + escapeHtml(fb.comment) + '</div>' : '')
-      + (fb.dateRated ? '<div class="buyer-feedback-date">' + escapeHtml(formatDate(fb.dateRated)) + ' <span style="opacity:.5">(raw: ' + escapeHtml(fb.dateRated) + ')</span></div>' : '')
+      + (fb.dateRated ? '<div class="buyer-feedback-date">' + escapeHtml(formatDate(fb.dateRated)) + '</div>' : '')
       + '</div>';
   }
 
