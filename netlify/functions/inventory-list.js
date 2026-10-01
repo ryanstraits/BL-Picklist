@@ -47,7 +47,15 @@ exports.handler = requireAuth(async () => {
       remarks: row.remarks || '',
       dateCreated: row.date_created || null,
     }));
-    return json(200, { items });
+    // TEMPORARY — weight is coming through as 0 for every row on Ryan's
+    // real account (confirmed live), unlike order-items.js's entry.item.weight,
+    // which does work. Returning one real raw row unprocessed so the
+    // frontend can surface it and settle whether BrickLink's Inventory
+    // resource just doesn't embed catalog weight the way Order Items does,
+    // or whether it's under a different field/path than row.item.weight.
+    // Remove once diagnosed.
+    const rawSample = (Array.isArray(data) && data.length) ? data[0] : null;
+    return json(200, { items, rawSample });
   } catch (err) {
     return errorResponse(err);
   }

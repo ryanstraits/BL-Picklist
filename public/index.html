@@ -4818,6 +4818,8 @@
   // check this and quietly hide themselves if it's not really there,
   // rather than offering a feature that can't work.
   var manageInventoryHasDates = false;
+  // TEMPORARY — see loadManageInventoryRows()/inventory-list.js.
+  var manageInventoryRawSample = null;
 
   // Raw fetch-and-cache, pulled out of fetchManageInventory() so a
   // read-only consumer that has nothing to do with Manage Inventory's own
@@ -4861,6 +4863,10 @@
         };
       });
       manageInventoryHasDates = manageInventoryRows.some(function (r) { return !!r.dateCreated; });
+      // TEMPORARY — see inventory-list.js's own comment. Stashed here so
+      // the Manage Inventory page can show it; remove alongside the
+      // backend's rawSample once the weight disconnect is diagnosed.
+      manageInventoryRawSample = res.rawSample || null;
       return manageInventoryRows;
     });
   }
@@ -5384,8 +5390,18 @@
   }
 
   function renderManageInventoryView() {
+    // TEMPORARY — raw first-row dump so Ryan can report back exactly what
+    // BrickLink's /inventories really returns (weight is coming through
+    // as 0 for every row; need to see if it's under a different field or
+    // genuinely absent from this endpoint). Remove this block, the
+    // manageInventoryRawSample variable, and loadManageInventoryRows()'s
+    // assignment to it, plus inventory-list.js's rawSample, once diagnosed.
+    var debugHtml = manageInventoryRawSample
+      ? '<pre style="font-size:10px; white-space:pre-wrap; word-break:break-all; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px; margin-top:10px;">DEBUG raw first row:\n' + escapeHtml(JSON.stringify(manageInventoryRawSample, null, 2)) + '</pre>'
+      : '';
     manageInventoryView.innerHTML = ""
       + '<input type="search" class="manage-inventory-search" id="manageInventorySearchInput" placeholder="Search by item name or number…" value="' + escapeHtml(manageInventorySearchQuery) + '" autocomplete="off">'
+      + debugHtml
       + '<div id="manageInventoryResults"></div>';
 
     document.getElementById("manageInventorySearchInput").addEventListener("input", function (e) {
