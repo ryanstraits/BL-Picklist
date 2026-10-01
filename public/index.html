@@ -390,6 +390,20 @@
   }
   .order-summary .order-id { font-size: 17px; }
   .order-summary .order-buyer { margin-top: 4px; }
+
+  /* Order Lookup detail only (readOnly) — id/status/buyer/weight/type
+     breakdown pins below the topbar while the action row and item list
+     scroll underneath. `top` is set inline at render time to the topbar's
+     actual measured height (it varies by view/state), the same pattern
+     jumpToItemsBtn's scroll handler already uses. background+border-bottom
+     keep it visually distinct from the item list scrolling under it. */
+  .order-sticky-top {
+    position: sticky;
+    z-index: 4;
+    background: var(--bg);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
   .picked-count {
     margin-top: 10px;
     font-size: 13px;
@@ -3179,8 +3193,31 @@
         + '</div>';
     }).join("");
 
+    var actionRowHtml = '<div class="order-action-row">'
+      + detailStatusAction
+      + (canSendDriveThru ? '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>' : '')
+      + renderSpreadsheetLoggedAction(order)
+      + (items.length ? '<button class="jump-to-items-btn" id="jumpToItemsBtn">Jump to items ↓</button>' : '')
+      + '</div>';
+
     orderView.innerHTML = ""
-      + '<div class="order-summary">'
+      // Sticky only in read-only (Order Lookup) detail views — Ryan's own
+      // ask, scoped there specifically. Breaks right above the action
+      // row (File/Log/Jump to items/...), which stays in normal flow and
+      // scrolls away with the rest of the page; only the id/status/buyer/
+      // weight/type-summary block above it pins in place. A sticky
+      // element only stays stuck for as long as there's more content
+      // below it inside its own PARENT — so this block has to be a
+      // direct child of orderView (a sibling of the action row, item
+      // list, etc.), not nested inside the small .order-summary box the
+      // non-readOnly path keeps using, which is barely taller than the
+      // sticky content itself and would make it unstick almost
+      // immediately. The main pick list's own order detail has the
+      // picked-count line and nothing to scroll past before the item
+      // list anyway, and pinning the same block there wasn't asked for,
+      // so it's left exactly as before (action row stays inside
+      // .order-summary there, same as pre-existing behavior).
+      + '<div class="order-summary' + (readOnly ? ' order-sticky-top' : '') + '"' + (readOnly ? ' id="orderStickyTop"' : '') + '>'
       + '<div class="order-id-group">'
       + '<div class="order-id mono">Order #' + escapeHtml(order.orderId) + '</div>'
       + statusBadgeHtml(order.status)
@@ -3192,13 +3229,9 @@
       + (contact && contact.weightG ? '<div class="order-weight mono">' + escapeHtml(formatWeightLbOz(contact.weightG)) + '</div>' : '')
       + orderTypeSummaryHtml(items)
       + (readOnly ? '' : '<div class="picked-count" id="pickedCountText"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>')
-      + '<div class="order-action-row">'
-      + detailStatusAction
-      + (canSendDriveThru ? '<button class="drive-thru-btn" id="driveThruBtn"' + (driveThruSent[order.orderId] ? " disabled" : "") + '>' + (driveThruSent[order.orderId] ? "Drive Thru Sent" : "Send Drive Thru") + '</button>' : '')
-      + renderSpreadsheetLoggedAction(order)
-      + (items.length ? '<button class="jump-to-items-btn" id="jumpToItemsBtn">Jump to items ↓</button>' : '')
+      + (readOnly ? '' : actionRowHtml)
       + '</div>'
-      + '</div>'
+      + (readOnly ? actionRowHtml : '')
       + renderBoxChoiceSection(order)
       + renderContactSection(contact)
       + renderFinancialSection(contact, order)
@@ -3216,6 +3249,14 @@
       + (items.length && !readOnly ? '<button class="select-all-btn">Select all as picked</button>'
         + '<button class="reset-btn">Clear picks for this order</button>' : '')
       + '</div>';
+
+    if (readOnly) {
+      var orderStickyTop = document.getElementById("orderStickyTop");
+      var topbarEl = document.querySelector(".topbar");
+      if (orderStickyTop && topbarEl) {
+        orderStickyTop.style.top = topbarEl.getBoundingClientRect().height + "px";
+      }
+    }
 
     wireThumbLinks(orderView);
     sizeThumbsToRows(orderView);
