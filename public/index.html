@@ -2554,13 +2554,12 @@
 
   // Square, not round — same ✓ glyph and gold tint as "you left feedback"
   // above, but .logged's border-radius keeps it from reading as a second
-  // feedback mark at a glance (Ryan's own ask). Kept separate from
-  // feedbackIconsHtml (which also calls this) so Order Lookup's cards can
-  // show just this — feedbackSent/feedbackReceived only ever get filled in
-  // for orders the main pick list has actually fetched (loadOrders' bulk
-  // /api/feedback-list call, or a per-order status-check), so an old filed
-  // order reached only through Order Lookup would show those as
-  // incomplete/wrong more often than not.
+  // feedback mark at a glance (Ryan's own ask). Split out from
+  // feedbackIconsHtml (which calls this) purely for that visual distinction
+  // — feedbackSent/feedbackReceived/isOrderLogged are all populated by the
+  // same account-wide bulk calls (feedback-list, order-actions) regardless
+  // of which view they're first needed in, so there's no data-completeness
+  // reason left to keep logged-only separate from the full icon set.
   function loggedIconHtml(orderId) {
     return isOrderLogged(orderId) ? '<span class="feedback-icon logged" title="Logged in spreadsheet">✓</span>' : "";
   }
@@ -3652,7 +3651,7 @@
       + '<div class="buyer-feedback-section ' + tone + '">'
       + '<div class="buyer-feedback-heading">Buyer left feedback' + (fb.rating ? ': ' + escapeHtml(fb.rating) : '') + '</div>'
       + (fb.comment ? '<div class="buyer-feedback-comment">' + escapeHtml(fb.comment) + '</div>' : '')
-      + (fb.dateRated ? '<div class="buyer-feedback-date">' + escapeHtml(formatDate(fb.dateRated)) + '</div>' : '')
+      + (fb.dateRated ? '<div class="buyer-feedback-date">' + escapeHtml(formatDate(fb.dateRated)) + ' <span style="opacity:.5">(raw: ' + escapeHtml(fb.dateRated) + ')</span></div>' : '')
       + '</div>';
   }
 
@@ -5749,7 +5748,7 @@
       + '<span class="order-id-group">'
       + '<span class="order-id mono">#' + escapeHtml(o.orderId) + '</span>'
       + statusBadgeHtml(o.status)
-      + (loggedIconHtml(o.orderId) ? '<span class="feedback-icons">' + loggedIconHtml(o.orderId) + '</span>' : '')
+      + feedbackIconsHtml(o.orderId)
       + '</span>'
       + '<span class="order-date">' + escapeHtml(formatDate(o.date)) + '</span>'
       + '</div>'
