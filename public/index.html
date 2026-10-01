@@ -821,9 +821,6 @@
     font-size: 14.5px;
     margin-top: 4px;
   }
-  .manage-inventory-search-row { display: flex; gap: 8px; align-items: center; }
-  .manage-inventory-search-row .manage-inventory-search { width: auto; flex: 1 1 auto; min-width: 0; }
-  .manage-inventory-search-row .inventory-bulk-actions { margin-top: 4px; flex: 0 0 auto; }
   .manage-inventory-hint { color: var(--text-secondary); font-size: 13px; margin-top: 14px; }
   .manage-inventory-cap-note { color: var(--text-secondary); font-size: 12px; text-align: center; margin-top: 10px; }
   .manage-inventory-sort-select,
@@ -4850,15 +4847,23 @@
     });
   }
 
+  // setRefreshing() here spins/disables the same shared topbar button
+  // Orders uses — it's only ever visible on this page while Manage
+  // Inventory is the active view, so there's no risk of it spinning while
+  // looking at something unrelated. Every path that forces a real re-fetch
+  // (the topbar button, the search-scoped Refresh, Retry-on-error) goes
+  // through here, so all three stay in sync with it for free.
   function fetchManageInventory() {
     manageInventoryLoading = true;
     manageInventoryError = "";
+    setRefreshing(true);
     renderManageInventoryView();
 
-    loadManageInventoryRows().catch(function (err) {
+    return loadManageInventoryRows().catch(function (err) {
       manageInventoryError = "Couldn't load your inventory: " + err.message;
     }).finally(function () {
       manageInventoryLoading = false;
+      setRefreshing(false);
       renderManageInventoryView();
     });
   }
@@ -5211,6 +5216,7 @@
       var capped = matches.slice(0, MANAGE_INVENTORY_RESULT_CAP);
       body = '<div class="inventory-summary-row">'
         + '<span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span>'
+        + '<div class="inventory-bulk-actions"><button type="button" id="manageInventoryRefreshBtn">Refresh</button></div>'
         + '</div>'
         + capped.map(manageInventoryCardHtml).join("")
         + (matches.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + matches.length + ' matches — refine your search to see the rest.</div>' : '');
@@ -5304,38 +5310,35 @@
     var retryBtn = document.getElementById("manageInventoryRetryBtn");
     if (retryBtn) retryBtn.addEventListener("click", fetchManageInventory);
 
+    // Scoped to the current search's results only — the topbar's own
+    // Refresh button (wired once near the other topbar controls) is the
+    // one that covers the whole page, browsing included, matching the
+    // Orders page's button; this one's just a quick re-fetch without
+    // needing to clear out of a search first.
+    var refreshBtnEl = document.getElementById("manageInventoryRefreshBtn");
+    if (refreshBtnEl) {
+      refreshBtnEl.addEventListener("click", function () {
+        var pendingCount = (manageInventoryRows || []).filter(isManageInventoryRowDirty).length;
+        if (pendingCount && !window.confirm("Refresh from BrickLink? This discards " + pendingCount + " unsaved change" + (pendingCount === 1 ? "" : "s") + ".")) return;
+        fetchManageInventory();
+      });
+    }
+
     var submitBtnEl = document.getElementById("manageInventorySubmitBtn");
     if (submitBtnEl) submitBtnEl.addEventListener("click", handleManageInventorySubmit);
     var cancelBtnEl = document.getElementById("manageInventoryCancelBtn");
     if (cancelBtnEl) cancelBtnEl.addEventListener("click", handleManageInventoryCancel);
   }
 
-  // Refresh moved here (was previously inline in renderManageInventoryResults,
-  // only shown while actively searching) so it's present no matter how deep
-  // you are in browsing — Ryan's ask after adding inventory via the Add
-  // Inventory page and expecting this page to pick it up without a full
-  // page reload. Wired once here rather than in renderManageInventoryResults
-  // (which reruns on every keystroke/sort/browse-tile click) since the
-  // search input and this row are the one part of the view that's never
-  // torn down and rebuilt by that function.
   function renderManageInventoryView() {
     manageInventoryView.innerHTML = ""
-      + '<div class="manage-inventory-search-row">'
       + '<input type="search" class="manage-inventory-search" id="manageInventorySearchInput" placeholder="Search by item name or number…" value="' + escapeHtml(manageInventorySearchQuery) + '" autocomplete="off">'
-      + '<div class="inventory-bulk-actions"><button type="button" id="manageInventoryRefreshBtn">Refresh</button></div>'
-      + '</div>'
       + '<div id="manageInventoryResults"></div>';
 
     document.getElementById("manageInventorySearchInput").addEventListener("input", function (e) {
       manageInventorySearchQuery = e.target.value;
       clearTimeout(manageInventorySearchDebounceTimer);
       manageInventorySearchDebounceTimer = setTimeout(renderManageInventoryResults, 150);
-    });
-
-    document.getElementById("manageInventoryRefreshBtn").addEventListener("click", function () {
-      var pendingCount = (manageInventoryRows || []).filter(isManageInventoryRowDirty).length;
-      if (pendingCount && !window.confirm("Refresh from BrickLink? This discards " + pendingCount + " unsaved change" + (pendingCount === 1 ? "" : "s") + ".")) return;
-      fetchManageInventory();
     });
 
     renderManageInventoryResults();
@@ -5892,6 +5895,7 @@
     backBtn.style.display = "none";
     setTopbarNav("orders", "Label Prep", goToLabelPrep);
     refreshBtn.style.display = "";
+    refreshBtn.setAttribute("aria-label", "Refresh orders");
     brandSub.textContent = "Open BrickLink orders";
     renderOrdersList();
   }
@@ -5942,7 +5946,8 @@
     manageInventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory", "+ Add Inventory", goToInventory);
-    refreshBtn.style.display = "none";
+    refreshBtn.style.display = "";
+    refreshBtn.setAttribute("aria-label", "Refresh inventory");
     brandSub.textContent = "Manage Inventory";
     renderManageInventoryView();
     if (!manageInventoryRows) fetchManageInventory();
@@ -5999,7 +6004,18 @@
   categoryOrdersBtn.addEventListener("click", goToOrders);
   categoryInventoryBtn.addEventListener("click", goToManageInventory);
   categoryStatsBtn.addEventListener("click", goToStats);
+  // Same button, same spinning/disabled treatment either way — just a
+  // different underlying refresh depending on which page it's showing on
+  // (only ever one of the two, per goToOrders()/goToManageInventory()
+  // toggling its visibility). Manage Inventory's own dirty-change guard
+  // applies here too, same as its page-local Refresh.
   refreshBtn.addEventListener("click", function () {
+    if (currentView === "manage-inventory") {
+      var pendingCount = (manageInventoryRows || []).filter(isManageInventoryRowDirty).length;
+      if (pendingCount && !window.confirm("Refresh from BrickLink? This discards " + pendingCount + " unsaved change" + (pendingCount === 1 ? "" : "s") + ".")) return;
+      fetchManageInventory();
+      return;
+    }
     itemsCache = {};
     loadOrders();
     syncStateFromRemote();
