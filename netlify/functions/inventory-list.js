@@ -30,6 +30,14 @@ exports.handler = requireAuth(async () => {
       type: (row.item && row.item.type) || 'PART',
       name: (row.item && row.item.name) || '',
       categoryId: (row.item && row.item.category_id) || 0,
+      // Per-unit catalog weight in grams — same field, same units, as
+      // order-items.js already uses (entry.item's weight there vs.
+      // row.item's here, both the Catalog Item resource BrickLink embeds
+      // consistently across endpoints). Not yet independently confirmed
+      // against a captured Inventory response the way the fields above
+      // were, so it's a best-effort assumption carried over from that
+      // proven case rather than fresh verification.
+      weight: (row.item && row.item.weight) || 0,
       colorId: row.color_id || 0,
       colorName: row.color_name || '',
       quantity: row.quantity,

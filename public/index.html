@@ -841,7 +841,13 @@
      orders list and Sales Stats, where .stats-summary's own 4px default is
      already right), so this needs the same 12px gap the old
      Manage-Inventory-only version of this banner used. */
-  .stats-summary.manage-inventory-stats { margin-top: 12px; }
+  /* 5 tiles (lots/items/value/avg price/weight) instead of the 3 every
+     other .stats-summary consumer uses — wraps 3-and-2 instead of
+     squeezing five into one row, with a smaller number size so currency
+     and "X lb Y.YYY oz" strings actually fit their third-width tiles. */
+  .stats-summary.manage-inventory-stats { margin-top: 12px; flex-wrap: wrap; }
+  .stats-summary.manage-inventory-stats .stats-summary-tile { flex: 1 1 30%; min-width: 0; }
+  .stats-summary.manage-inventory-stats .stats-summary-tile strong { font-size: 14.5px; }
 
   /* ---- Stat tiles (Orders list header, Manage Inventory banner, Sales
      Stats summary all share this block styling) ---- */
@@ -967,7 +973,7 @@
   .browse-tile {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     width: 100%;
     text-align: left;
     background: var(--surface);
@@ -981,7 +987,11 @@
     font-size: 14px;
   }
   .browse-tile:active { background: var(--surface-alt); }
-  .browse-tile-name { font-weight: 600; }
+  /* Sized down and allowed to wrap, per Ryan's own ask — the part-category
+     tree's names (e.g. "Minifigure, Torso Assembly") run long enough to
+     need the room now that the right side carries three lines instead of
+     one. */
+  .browse-tile-name { font-weight: 600; font-size: 13px; flex: 1 1 auto; min-width: 0; padding-right: 10px; }
   .browse-tile-count {
     color: var(--text-secondary);
     font-size: 12.5px;
@@ -990,6 +1000,13 @@
     border-radius: 999px;
     padding: 2px 9px;
   }
+  /* Right-aligned, stacked, close to the count pill it sits under — Ryan's
+     own ask, so weight/value/avg read as "belonging to" the quantity
+     rather than floating separately in the tile. */
+  .browse-tile-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: 0 0 auto; }
+  .browse-tile-money { font-size: 11px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+  .browse-tile-avg { font-weight: 400; opacity: 0.8; }
+  .browse-tile-weight { font-size: 10.5px; color: var(--text-secondary); white-space: nowrap; }
 
   .inventory-submit-row {
     margin-top: 18px;
@@ -4828,6 +4845,7 @@
           itemNo: item.itemNo,
           type: item.type,
           categoryId: item.categoryId || 0,
+          weight: item.weight || 0,
           name: decodeHtmlEntities(item.name),
           colorId: item.colorId,
           colorName: item.colorName,
@@ -4965,40 +4983,74 @@
   // quantities across those lots) — the two numbers differ any time a
   // lot has quantity > 1, and conflating them ("N items" meaning "N
   // rows") is exactly the mislabeling this replaces.
+  // avgPrice is per-piece (value / items, not value / lots) — the same
+  // basis Ryan already thinks in for cost/lb on parts, so it's directly
+  // comparable rather than mixing two different units of "average."
   function manageInventoryStats(rows) {
-    var items = 0, value = 0;
+    var items = 0, value = 0, weightG = 0;
     rows.forEach(function (r) {
       var qty = parseInt(r.quantity, 10) || 0;
       var price = parseFloat(r.unitPrice) || 0;
+      var weight = parseFloat(r.weight) || 0;
       items += qty;
       value += qty * price;
+      weightG += qty * weight;
     });
-    return { lots: rows.length, items: items, value: value };
+    return { lots: rows.length, items: items, value: value, weightG: weightG, avgPrice: items > 0 ? value / items : 0 };
   }
   function manageInventoryStatsHtml(stats) {
     return '<div class="stats-summary manage-inventory-stats">'
       + '<div class="stats-summary-tile"><strong>' + stats.lots + '</strong><span>lots</span></div>'
       + '<div class="stats-summary-tile"><strong>' + stats.items + '</strong><span>items</span></div>'
       + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatCurrency(stats.value, "USD")) + '</strong><span>total value</span></div>'
+      + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatCurrency(stats.avgPrice, "USD")) + '</strong><span>avg price</span></div>'
+      + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatWeightLbOz(stats.weightG)) + '</strong><span>weight</span></div>'
       + '</div>';
   }
 
+  // Right-aligned, stacked stat block shared by every browse-tile (type,
+  // theme/category, and Recently Added) — count pill on top (unchanged),
+  // then total value + avg price, then weight, each sized down from the
+  // tile's base font since some category names (the part-category tree
+  // especially, e.g. "Minifigure, Torso Assembly") already run long and
+  // need the room on the left.
+  function browseTileStatsHtml(stats) {
+    return '<span class="browse-tile-stats">'
+      + '<span class="browse-tile-count">' + stats.lots + '</span>'
+      + '<span class="browse-tile-money">' + escapeHtml(formatCurrency(stats.value, "USD")) + ' <span class="browse-tile-avg">avg ' + escapeHtml(formatCurrency(stats.avgPrice, "USD")) + '</span></span>'
+      + '<span class="browse-tile-weight">' + escapeHtml(formatWeightLbOz(stats.weightG)) + '</span>'
+      + '</span>';
+  }
+
+  // type -> full manageInventoryStats() shape (lots/items/value/avgPrice/
+  // weightG), not just a lot count — so each type tile can show the same
+  // rollup the page-level summary does, without re-deriving it per row at
+  // render time.
   function manageInventoryTypeCounts() {
-    var counts = {};
+    var groups = {};
     (manageInventoryRows || []).forEach(function (r) {
-      counts[r.type] = (counts[r.type] || 0) + 1;
+      (groups[r.type] = groups[r.type] || []).push(r);
     });
+    var counts = {};
+    Object.keys(groups).forEach(function (t) { counts[t] = manageInventoryStats(groups[t]); });
     return counts;
   }
 
+  // topCategoryId (string) -> manageInventoryStats() shape plus `name`.
   function manageInventoryThemeCounts(type) {
-    var counts = {}; // topCategoryId (string) -> { name, count }
+    var groups = {}; // topCategoryId (string) -> { name, rows }
     (manageInventoryRows || []).forEach(function (r) {
       if (r.type !== type) return;
       var topId = r.categoryId ? topCategoryId(r.categoryId, categoriesById) : 0;
       var key = String(topId || 0);
-      if (!counts[key]) counts[key] = { name: categoryDisplayNameById(topId), count: 0 };
-      counts[key].count++;
+      if (!groups[key]) groups[key] = { name: categoryDisplayNameById(topId), rows: [] };
+      groups[key].rows.push(r);
+    });
+    var counts = {};
+    Object.keys(groups).forEach(function (id) {
+      var stats = manageInventoryStats(groups[id].rows);
+      stats.name = groups[id].name;
+      counts[id] = stats;
     });
     return counts;
   }
@@ -5046,17 +5098,17 @@
 
     if (!manageInventoryBrowseType) {
       var typeCounts = manageInventoryTypeCounts();
-      var types = Object.keys(typeCounts).sort(function (a, b) { return typeCounts[b] - typeCounts[a]; });
+      var types = Object.keys(typeCounts).sort(function (a, b) { return typeCounts[b].lots - typeCounts[a].lots; });
       var typeTiles = types.map(function (t) {
         return '<button type="button" class="browse-tile" data-browse-type="' + escapeHtml(t) + '">'
           + '<span class="browse-tile-name">' + escapeHtml(t) + '</span>'
-          + '<span class="browse-tile-count">' + typeCounts[t] + '</span>'
+          + browseTileStatsHtml(typeCounts[t])
           + '</button>';
       }).join("");
       var recentTile = manageInventoryHasDates
         ? '<button type="button" class="browse-tile browse-tile-recent" data-browse-recent="1">'
           + '<span class="browse-tile-name">Recently Added</span>'
-          + '<span class="browse-tile-count">' + manageInventoryRecentRows(manageInventoryRecentDays).length + '</span>'
+          + browseTileStatsHtml(manageInventoryStats(manageInventoryRecentRows(manageInventoryRecentDays)))
           + '</button>'
         : '';
       return hint
@@ -5081,12 +5133,12 @@
 
     if (manageInventoryBrowseCategory === null) {
       var themeCounts = manageInventoryThemeCounts(manageInventoryBrowseType);
-      var themeIds = Object.keys(themeCounts).sort(function (a, b) { return themeCounts[b].count - themeCounts[a].count; });
+      var themeIds = Object.keys(themeCounts).sort(function (a, b) { return themeCounts[b].lots - themeCounts[a].lots; });
       var themeTiles = themeIds.map(function (id) {
         var t = themeCounts[id];
         return '<button type="button" class="browse-tile" data-browse-category="' + escapeHtml(id) + '">'
           + '<span class="browse-tile-name">' + escapeHtml(t.name) + '</span>'
-          + '<span class="browse-tile-count">' + t.count + '</span>'
+          + browseTileStatsHtml(t)
           + '</button>';
       }).join("");
       var typeRows = (manageInventoryRows || []).filter(function (r) { return r.type === manageInventoryBrowseType; });
@@ -5218,6 +5270,7 @@
         + '<span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span>'
         + '<div class="inventory-bulk-actions"><button type="button" id="manageInventoryRefreshBtn">Refresh</button></div>'
         + '</div>'
+        + manageInventoryStatsHtml(manageInventoryStats(matches))
         + capped.map(manageInventoryCardHtml).join("")
         + (matches.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + matches.length + ' matches — refine your search to see the rest.</div>' : '');
     }
