@@ -20,6 +20,16 @@ const { requireAuth } = require('./lib/site-auth');
 // recently-added features on the frontend both check for its actual
 // presence at runtime and quietly hide themselves if it's missing,
 // rather than assuming it's there.
+//
+// No catalog weight here — confirmed against a real raw row that this
+// endpoint's item sub-object is only {no, name, type, category_id}.
+// The only weight-shaped field present is the top-level my_weight, a
+// seller-set per-listing override (defaults to "0.0000", unlike the
+// real catalog weight order-items.js gets from a different BrickLink
+// endpoint). Getting the real figure here would mean a separate
+// GET /items/{type}/{no} lookup per distinct item number — Ryan opted
+// to leave weight out of the Manage Inventory stats rather than take
+// that on.
 exports.handler = requireAuth(async () => {
   try {
     const data = await blGet('/inventories');
@@ -30,14 +40,6 @@ exports.handler = requireAuth(async () => {
       type: (row.item && row.item.type) || 'PART',
       name: (row.item && row.item.name) || '',
       categoryId: (row.item && row.item.category_id) || 0,
-      // Per-unit catalog weight in grams — same field, same units, as
-      // order-items.js already uses (entry.item's weight there vs.
-      // row.item's here, both the Catalog Item resource BrickLink embeds
-      // consistently across endpoints). Not yet independently confirmed
-      // against a captured Inventory response the way the fields above
-      // were, so it's a best-effort assumption carried over from that
-      // proven case rather than fresh verification.
-      weight: (row.item && row.item.weight) || 0,
       colorId: row.color_id || 0,
       colorName: row.color_name || '',
       quantity: row.quantity,
@@ -47,15 +49,7 @@ exports.handler = requireAuth(async () => {
       remarks: row.remarks || '',
       dateCreated: row.date_created || null,
     }));
-    // TEMPORARY — weight is coming through as 0 for every row on Ryan's
-    // real account (confirmed live), unlike order-items.js's entry.item.weight,
-    // which does work. Returning one real raw row unprocessed so the
-    // frontend can surface it and settle whether BrickLink's Inventory
-    // resource just doesn't embed catalog weight the way Order Items does,
-    // or whether it's under a different field/path than row.item.weight.
-    // Remove once diagnosed.
-    const rawSample = (Array.isArray(data) && data.length) ? data[0] : null;
-    return json(200, { items, rawSample });
+    return json(200, { items });
   } catch (err) {
     return errorResponse(err);
   }

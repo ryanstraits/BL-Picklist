@@ -840,13 +840,13 @@
      line here instead of being the first thing in the view (unlike the
      orders list and Sales Stats, where .stats-summary's own 4px default is
      already right), so this needs the same 12px gap the old
-     Manage-Inventory-only version of this banner used. */
-  /* 5 tiles (lots/items/value/avg price/weight) instead of the 3 every
-     other .stats-summary consumer uses — wraps 3-and-2 instead of
-     squeezing five into one row, with a smaller number size so currency
-     and "X lb Y.YYY oz" strings actually fit their third-width tiles. */
+     Manage-Inventory-only version of this banner used.
+     4 tiles (lots/items/value/avg price) instead of the 3 every other
+     .stats-summary consumer uses — wraps 2-and-2 rather than squeezing
+     four into one row, with a smaller number size so currency fits
+     comfortably at half width. */
   .stats-summary.manage-inventory-stats { margin-top: 12px; flex-wrap: wrap; }
-  .stats-summary.manage-inventory-stats .stats-summary-tile { flex: 1 1 30%; min-width: 0; }
+  .stats-summary.manage-inventory-stats .stats-summary-tile { flex: 1 1 45%; min-width: 0; }
   .stats-summary.manage-inventory-stats .stats-summary-tile strong { font-size: 14.5px; }
 
   /* ---- Stat tiles (Orders list header, Manage Inventory banner, Sales
@@ -1001,12 +1001,11 @@
     padding: 2px 9px;
   }
   /* Right-aligned, stacked, close to the count pill it sits under — Ryan's
-     own ask, so weight/value/avg read as "belonging to" the quantity
-     rather than floating separately in the tile. */
+     own ask, so value/avg read as "belonging to" the quantity rather than
+     floating separately in the tile. */
   .browse-tile-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: 0 0 auto; }
   .browse-tile-money { font-size: 11px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
   .browse-tile-avg { font-weight: 400; opacity: 0.8; }
-  .browse-tile-weight { font-size: 10.5px; color: var(--text-secondary); white-space: nowrap; }
 
   .inventory-submit-row {
     margin-top: 18px;
@@ -4818,8 +4817,6 @@
   // check this and quietly hide themselves if it's not really there,
   // rather than offering a feature that can't work.
   var manageInventoryHasDates = false;
-  // TEMPORARY — see loadManageInventoryRows()/inventory-list.js.
-  var manageInventoryRawSample = null;
 
   // Raw fetch-and-cache, pulled out of fetchManageInventory() so a
   // read-only consumer that has nothing to do with Manage Inventory's own
@@ -4847,7 +4844,6 @@
           itemNo: item.itemNo,
           type: item.type,
           categoryId: item.categoryId || 0,
-          weight: item.weight || 0,
           name: decodeHtmlEntities(item.name),
           colorId: item.colorId,
           colorName: item.colorName,
@@ -4863,10 +4859,6 @@
         };
       });
       manageInventoryHasDates = manageInventoryRows.some(function (r) { return !!r.dateCreated; });
-      // TEMPORARY — see inventory-list.js's own comment. Stashed here so
-      // the Manage Inventory page can show it; remove alongside the
-      // backend's rawSample once the weight disconnect is diagnosed.
-      manageInventoryRawSample = res.rawSample || null;
       return manageInventoryRows;
     });
   }
@@ -4992,17 +4984,24 @@
   // avgPrice is per-piece (value / items, not value / lots) — the same
   // basis Ryan already thinks in for cost/lb on parts, so it's directly
   // comparable rather than mixing two different units of "average."
+  //
+  // No weight here — BrickLink's Inventory List endpoint doesn't embed
+  // catalog weight the way Order Items does (confirmed against a real
+  // raw row: its item sub-object is just {no, name, type, category_id},
+  // and the only weight-shaped field present, my_weight, is a seller-set
+  // per-listing override that defaults to "0.0000" and reads as 0 for
+  // virtually every real row). Getting the real figure would mean a
+  // separate catalog lookup per distinct item number — Ryan opted to
+  // drop weight from this feature rather than take on that cost.
   function manageInventoryStats(rows) {
-    var items = 0, value = 0, weightG = 0;
+    var items = 0, value = 0;
     rows.forEach(function (r) {
       var qty = parseInt(r.quantity, 10) || 0;
       var price = parseFloat(r.unitPrice) || 0;
-      var weight = parseFloat(r.weight) || 0;
       items += qty;
       value += qty * price;
-      weightG += qty * weight;
     });
-    return { lots: rows.length, items: items, value: value, weightG: weightG, avgPrice: items > 0 ? value / items : 0 };
+    return { lots: rows.length, items: items, value: value, avgPrice: items > 0 ? value / items : 0 };
   }
   function manageInventoryStatsHtml(stats) {
     return '<div class="stats-summary manage-inventory-stats">'
@@ -5010,28 +5009,25 @@
       + '<div class="stats-summary-tile"><strong>' + stats.items + '</strong><span>items</span></div>'
       + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatCurrency(stats.value, "USD")) + '</strong><span>total value</span></div>'
       + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatCurrency(stats.avgPrice, "USD")) + '</strong><span>avg price</span></div>'
-      + '<div class="stats-summary-tile"><strong class="mono">' + escapeHtml(formatWeightLbOz(stats.weightG)) + '</strong><span>weight</span></div>'
       + '</div>';
   }
 
   // Right-aligned, stacked stat block shared by every browse-tile (type,
   // theme/category, and Recently Added) — count pill on top (unchanged),
-  // then total value + avg price, then weight, each sized down from the
-  // tile's base font since some category names (the part-category tree
+  // then total value + avg price below it, sized down from the tile's
+  // base font since some category names (the part-category tree
   // especially, e.g. "Minifigure, Torso Assembly") already run long and
   // need the room on the left.
   function browseTileStatsHtml(stats) {
     return '<span class="browse-tile-stats">'
       + '<span class="browse-tile-count">' + stats.lots + '</span>'
       + '<span class="browse-tile-money">' + escapeHtml(formatCurrency(stats.value, "USD")) + ' <span class="browse-tile-avg">avg ' + escapeHtml(formatCurrency(stats.avgPrice, "USD")) + '</span></span>'
-      + '<span class="browse-tile-weight">' + escapeHtml(formatWeightLbOz(stats.weightG)) + '</span>'
       + '</span>';
   }
 
-  // type -> full manageInventoryStats() shape (lots/items/value/avgPrice/
-  // weightG), not just a lot count — so each type tile can show the same
-  // rollup the page-level summary does, without re-deriving it per row at
-  // render time.
+  // type -> full manageInventoryStats() shape (lots/items/value/avgPrice),
+  // not just a lot count — so each type tile can show the same rollup the
+  // page-level summary does, without re-deriving it per row at render time.
   function manageInventoryTypeCounts() {
     var groups = {};
     (manageInventoryRows || []).forEach(function (r) {
@@ -5390,18 +5386,8 @@
   }
 
   function renderManageInventoryView() {
-    // TEMPORARY — raw first-row dump so Ryan can report back exactly what
-    // BrickLink's /inventories really returns (weight is coming through
-    // as 0 for every row; need to see if it's under a different field or
-    // genuinely absent from this endpoint). Remove this block, the
-    // manageInventoryRawSample variable, and loadManageInventoryRows()'s
-    // assignment to it, plus inventory-list.js's rawSample, once diagnosed.
-    var debugHtml = manageInventoryRawSample
-      ? '<pre style="font-size:10px; white-space:pre-wrap; word-break:break-all; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px; margin-top:10px;">DEBUG raw first row:\n' + escapeHtml(JSON.stringify(manageInventoryRawSample, null, 2)) + '</pre>'
-      : '';
     manageInventoryView.innerHTML = ""
       + '<input type="search" class="manage-inventory-search" id="manageInventorySearchInput" placeholder="Search by item name or number…" value="' + escapeHtml(manageInventorySearchQuery) + '" autocomplete="off">'
-      + debugHtml
       + '<div id="manageInventoryResults"></div>';
 
     document.getElementById("manageInventorySearchInput").addEventListener("input", function (e) {
