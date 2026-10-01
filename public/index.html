@@ -2796,6 +2796,24 @@
     return "Couldn't update order #" + orderId + ": " + err.message;
   }
 
+  // Both status-change paths below (list card + order detail) mutate the
+  // `orders` array in place, which is enough for the main Orders list to
+  // immediately reflect the change on its own. Order Lookup reads from
+  // its own separate statsRows snapshot though (its own /api/order-stats
+  // fetch, not derived from `orders` — see statsRows below), and an order
+  // opened from Order Lookup gets a throwaway fallback object built fresh
+  // from a statsRows row each time (openLookupOrder), not a reference
+  // back into statsRows itself. Without this, Order Lookup keeps showing
+  // the pre-change status for the rest of the session, since statsRows is
+  // only ever fetched once per session — confirmed live as two orders
+  // still reading "Shipped" there after confirming "Mark as completed"
+  // from an order opened through Order Lookup.
+  function syncStatsRowStatus(orderId, status) {
+    if (!statsRows) return;
+    var row = statsRows.filter(function (r) { return r.orderId === orderId; })[0];
+    if (row) row.status = status;
+  }
+
   function handleStatusChange(btn) {
     var orderId = btn.getAttribute("data-order");
     var targetStatus = btn.getAttribute("data-target-status");
@@ -2811,6 +2829,7 @@
       .then(function () {
         var order = orders.find(function (o) { return o.orderId === orderId; });
         if (order) order.status = targetStatus;
+        syncStatsRowStatus(orderId, targetStatus);
         renderOrdersList();
       })
       .catch(function (err) {
@@ -3237,9 +3256,14 @@
         postJSON("/api/update-order-status", { orderId: order.orderId, status: targetStatus })
           .then(function () {
             // order is the same object referenced from the orders array
-            // (openOrder finds it there, not a copy), so this mutation
-            // also updates what the orders list shows once you go back.
+            // (openOrder finds it there, not a copy) when reached from the
+            // main list, so this mutation also updates what the orders
+            // list shows once you go back. When reached from Order Lookup
+            // instead, order is a throwaway fallback object (see
+            // openLookupOrder) — syncStatsRowStatus is what keeps that
+            // path's own statsRows snapshot in sync too.
             order.status = targetStatus;
+            syncStatsRowStatus(order.orderId, targetStatus);
             renderOrderDetail(order, items, messages, contact);
           })
           .catch(function (err) {
