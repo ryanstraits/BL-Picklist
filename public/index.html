@@ -1016,10 +1016,21 @@
   }
   /* Right-aligned, stacked, close to the count pill it sits under — Ryan's
      own ask, so value/avg read as "belonging to" the quantity rather than
-     floating separately in the tile. */
-  .browse-tile-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: 0 0 auto; }
-  .browse-tile-money { font-size: 11px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
-  .browse-tile-avg { font-weight: 400; opacity: 0.8; }
+     floating separately in the tile. Total value and avg price each get
+     their own boxed chip (like the count pill above them) rather than
+     running together as one line, so they're easier to pick out at a
+     glance while scanning down a long tile list. */
+  .browse-tile-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
+  .browse-tile-value-box, .browse-tile-avg-box {
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--surface-alt);
+    border-radius: 5px;
+    padding: 2px 7px;
+  }
+  .browse-tile-value-box { color: var(--text); }
+  .browse-tile-avg-box { color: var(--text-secondary); font-weight: 500; }
 
   .inventory-submit-row {
     margin-top: 18px;
@@ -4080,7 +4091,7 @@
   // it comes through blank — never overwrites text Ryan (or BrickScan)
   // already set. Still editable afterward via either field on the
   // review card.
-  var DEFAULT_REMARKS_USED = "Typical light play wear, otherwise excellent condition. No cracks or scratches. Fast shipping!";
+  var DEFAULT_REMARKS_USED = "Typical light playwear, otherwise excellent condition. Fast shipping!";
   var DEFAULT_REMARKS_NEW = "Taken straight out of packaging. Fast shipping!";
 
   // Maps one BrickScan CSV row to this app's internal shape. Column names
@@ -5055,14 +5066,16 @@
 
   // Right-aligned, stacked stat block shared by every browse-tile (type,
   // theme/category, and Recently Added) — count pill on top (unchanged),
-  // then total value + avg price below it, sized down from the tile's
-  // base font since some category names (the part-category tree
-  // especially, e.g. "Minifigure, Torso Assembly") already run long and
-  // need the room on the left.
+  // then total value and avg price each in their own boxed chip below it,
+  // sized down from the tile's base font since some category names (the
+  // part-category tree especially, e.g. "Minifigure, Torso Assembly")
+  // already run long and need the room on the left. "avg" trails the
+  // number (not "avg $X") to match how the number itself reads first.
   function browseTileStatsHtml(stats) {
     return '<span class="browse-tile-stats">'
       + '<span class="browse-tile-count">' + stats.lots + '</span>'
-      + '<span class="browse-tile-money">' + escapeHtml(formatCurrency(stats.value, "USD")) + ' <span class="browse-tile-avg">avg ' + escapeHtml(formatCurrency(stats.avgPrice, "USD")) + '</span></span>'
+      + '<span class="browse-tile-value-box">' + escapeHtml(formatCurrency(stats.value, "USD")) + '</span>'
+      + '<span class="browse-tile-avg-box">' + escapeHtml(formatCurrency(stats.avgPrice, "USD")) + ' avg</span>'
       + '</span>';
   }
 
