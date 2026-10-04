@@ -2690,7 +2690,14 @@
       if (o.status === "COMPLETED" || (meta && meta.tone === "problem")) return false;
       return !orderPickProgress(o).done;
     }).length;
-    var toShipCount = orders.filter(function (o) { return o.status === "PACKED"; }).length;
+    // "To ship" used to only count PACKED — but a PAID order that hasn't
+    // been packed yet still needs to ship just as much, it just has one
+    // more step first. Count any status earlier than SHIPPED in
+    // BrickLink's own pipeline (PENDING/UPDATED/PROCESSING/READY/PAID/
+    // PACKED), same exclusion of problem statuses (Cancelled/NPB/NRS/NSS)
+    // as toPickCount above — those were never really "to ship" either.
+    var PRE_SHIP_STATUSES = { PENDING: true, UPDATED: true, PROCESSING: true, READY: true, PAID: true, PACKED: true };
+    var toShipCount = orders.filter(function (o) { return !!PRE_SHIP_STATUSES[o.status]; }).length;
 
     // Manual "mental note" reminder, not tied to any single order or to
     // where pickup happens to fall in Ryan's picking workflow (it varies
