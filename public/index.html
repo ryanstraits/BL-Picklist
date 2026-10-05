@@ -5257,6 +5257,7 @@
       + '</div>'
       + '<div class="item-name">' + escapeHtml(row.name || "(name unknown)") + '</div>'
       + (isRealColorName(row.colorName) ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
+      + (row.dateCreated ? '<div class="item-color">Listed ' + escapeHtml(formatDate(row.dateCreated)) + '</div>' : '')
       + (marked ? '<div class="delete-pending-note">Marked for deletion — submit to remove from BrickLink</div>' : '')
       + '<div class="inventory-fields">'
       + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="quantity" value="' + escapeHtml(row.quantity) + '"' + fieldsDisabled + '></div>'
