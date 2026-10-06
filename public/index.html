@@ -3029,11 +3029,19 @@
       + '</svg>';
   }
 
+  // v2 busts every cache layer (Netlify's own edge, not just the
+  // browser) for item-image URLs cached before the color-priority fix —
+  // Cache-Control: public on that response means *any* intermediate
+  // cache was allowed to store the old wrong-color bytes under this
+  // exact URL, not just the browser, so a client-side cache clear alone
+  // doesn't reach it. Bump this again if item-image.js's selection logic
+  // ever changes in a way that could flip an already-cached answer.
   function catalogImageUrl(item) {
     return "/api/item-image?type=" + encodeURIComponent(item.type)
       + "&no=" + encodeURIComponent(item.itemNo)
       + "&color=" + encodeURIComponent(item.colorId || 0)
-      + "&nu=" + encodeURIComponent(item.newOrUsed === "U" ? "U" : "N");
+      + "&nu=" + encodeURIComponent(item.newOrUsed === "U" ? "U" : "N")
+      + "&v=2";
   }
 
   function thumbHtml(item) {
