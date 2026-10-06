@@ -57,27 +57,42 @@ exports.handler = requireAuth(async (event) => {
   // types — e.g. minifigs' "large" photo is a .jpg with no color segment,
   // while parts' is a .gif and the small thumbnail needs a color segment
   // parts don't need for minifigs. Rather than guess one fixed shape per
-  // tier, try every plausible variant and let the biggest surviving file
-  // win — same idea as picking between the Catalog API and hotlink CDN.
+  // tier, try every plausible variant — but "biggest file wins" (the
+  // original rule) can only arbitrate between sources that are actually
+  // picturing the requested color in the first place. The "large" hotlink
+  // URLs, the no-color small thumbnail, and the Catalog API's image_url
+  // all carry the item's one default/primary photo regardless of which
+  // color was asked for — only the two `color`-segment URLs actually vary
+  // per color. If one of those succeeds, it wins outright over every
+  // color-agnostic candidate even when a color-agnostic file is larger;
+  // confirmed live by Ryan (27145 Minifigure Utility Belt, color Red):
+  // the generic default-color photo (yellow) was winning the byte-size
+  // race over the correct red thumbnail, so the picklist showed the
+  // wrong color entirely. Color-agnostic sources only get used when no
+  // color-aware one came back at all (a genuine 404, or colorId 0 for an
+  // item color doesn't apply to).
   const urlCandidates = [
-    { tier: "hires", url: `https://img.bricklink.com/ItemImage/${letter}${newOrUsed}/${color}/${no}.png` },
-    { tier: "large", url: `https://www.bricklink.com/${letter}L/${no}.jpg` },
-    { tier: "large", url: `https://www.bricklink.com/${letter}L/${no}.gif` },
-    { tier: "small", url: `https://img.bricklink.com/${letter}/${color}/${no}.jpg` },
-    { tier: "small", url: `https://img.bricklink.com/${letter}/${no}.jpg` },
+    { tier: "hires", colorAware: true, url: `https://img.bricklink.com/ItemImage/${letter}${newOrUsed}/${color}/${no}.png` },
+    { tier: "small", colorAware: true, url: `https://img.bricklink.com/${letter}/${color}/${no}.jpg` },
+    { tier: "large", colorAware: false, url: `https://www.bricklink.com/${letter}L/${no}.jpg` },
+    { tier: "large", colorAware: false, url: `https://www.bricklink.com/${letter}L/${no}.gif` },
+    { tier: "small-generic", colorAware: false, url: `https://img.bricklink.com/${letter}/${no}.jpg` },
   ];
 
   try {
     const fetches = urlCandidates
-      .map((c) => tryFetch(c.url).then((result) => ({ result, tier: c.tier })))
-      .concat([tryCatalogApiImage(itemType, itemNo).then((result) => ({ result, tier: "catalog-api" }))]);
+      .map((c) => tryFetch(c.url).then((result) => ({ result, tier: c.tier, colorAware: c.colorAware })))
+      .concat([tryCatalogApiImage(itemType, itemNo).then((result) => ({ result, tier: "catalog-api", colorAware: false }))]);
 
     const settled = await Promise.all(fetches);
+    const succeeded = settled.filter((s) => s.result);
+    const colorAwareHits = succeeded.filter((s) => s.colorAware);
+    const pool = colorAwareHits.length ? colorAwareHits : succeeded;
 
     let best = null;
     let tier = null;
-    for (const { result, tier: t } of settled) {
-      if (result && (!best || result.buffer.length > best.buffer.length)) {
+    for (const { result, tier: t } of pool) {
+      if (!best || result.buffer.length > best.buffer.length) {
         best = result;
         tier = t;
       }
