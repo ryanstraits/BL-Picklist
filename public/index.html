@@ -5301,6 +5301,8 @@
       + '<div class="inventory-field description-field"><label>Description <span class="field-hint">(shown to buyer)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="description"' + fieldsDisabled + '>' + escapeHtml(row.description) + '</textarea></div>'
       + '<div class="inventory-field remarks-field"><label>Remarks <span class="field-hint">(private, only you see this)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks"' + fieldsDisabled + '>' + escapeHtml(row.remarks) + '</textarea></div>'
       + '</div>'
+      + resultHtml
+      + '</div>'
       + '<div class="inventory-price-guide-block">'
       + '<div class="price-guide-header-row">'
       + viewOnBricklinkLinkHtml(row)
@@ -5310,8 +5312,6 @@
       + '</div>'
       + '<div class="inventory-row-actions">'
       + '<button type="button" class="delete-row-btn' + (marked ? ' marked' : '') + '" data-key="' + escapeHtml(row.key) + '">' + (marked ? 'Undo delete' : 'Delete') + '</button>'
-      + '</div>'
-      + resultHtml
       + '</div>'
       + '</div>';
   }
