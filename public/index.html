@@ -345,7 +345,7 @@
     color: var(--text-secondary);
     margin-top: 2px;
   }
-  .order-weight, .order-type-summary {
+  .order-weight, .order-type-summary, .buyer-previous-orders {
     font-size: 12.5px;
     color: var(--text-secondary);
     margin-top: 2px;
@@ -650,11 +650,10 @@
   .item-bl-link:active { color: var(--accent); }
   .inventory-row-actions {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     margin-top: 5px;
   }
-  .inventory-row-actions .item-bl-link { margin-top: 0; }
   .delete-row-btn {
     background: none;
     border: 1px solid var(--danger);
@@ -3244,6 +3243,7 @@
       + '<span>' + escapeHtml(order.buyer || "") + ' · ' + escapeHtml(formatDate(order.date)) + ' <span class="buyer-rating" id="buyerRatingBadge"></span></span>'
       + (order.orderTotal ? '<span class="order-total mono">' + escapeHtml(formatCurrency(order.orderTotal, order.currencyCode)) + '</span>' : '')
       + '</div>'
+      + previousOrdersHtml(order)
       + (contact && contact.weightG ? '<div class="order-weight mono">' + escapeHtml(formatWeightLbOz(contact.weightG)) + '</div>' : '')
       + orderTypeSummaryHtml(items)
       + (readOnly ? '' : '<div class="picked-count" id="pickedCountText"><strong>' + picked + ' of ' + items.length + '</strong> lots picked' + (allDone ? ' — ready to pack' : '') + '</div>')
@@ -3539,6 +3539,32 @@
       + '<input type="text" class="tracking-input" id="trackingInput" placeholder="Enter tracking number" autocomplete="off">'
       + '<button class="copy-btn tracking-save-btn" id="saveTrackingBtn">Save</button>'
       + '</span>'
+      + '</div>';
+  }
+
+  // Reuses Order Lookup/Sales Stats' already-fetched statsRows (full order
+  // history, filed and unfiled alike) rather than issuing any API call of
+  // its own — if neither of those has been visited yet this session,
+  // statsRows is still null and this just renders nothing, same as the
+  // buyer-rating badge does for a username it hasn't looked up. Counts
+  // every other order from the same buyer regardless of status (a
+  // cancelled or problem order still means "this isn't their first time
+  // ordering"), matched case-insensitively since BrickLink usernames
+  // aren't case-sensitive identifiers. Hidden entirely for a first-time
+  // buyer rather than printing "Previous orders: 0" — there's nothing
+  // useful to say about a buyer with no history yet.
+  function previousOrdersHtml(order) {
+    if (!statsRows || !order.buyer) return "";
+    var buyerLower = order.buyer.toLowerCase();
+    var others = statsRows.filter(function (r) {
+      return r.orderId !== order.orderId && r.buyer && r.buyer.toLowerCase() === buyerLower;
+    });
+    if (!others.length) return "";
+    var mostRecent = others.reduce(function (latest, r) {
+      return (!latest || new Date(r.date) > new Date(latest.date)) ? r : latest;
+    }, null);
+    return '<div class="buyer-previous-orders">Previous orders: ' + others.length
+      + (mostRecent ? ' (most recent ' + escapeHtml(formatDate(mostRecent.date)) + ')' : '')
       + '</div>';
   }
 
@@ -4147,8 +4173,13 @@
 
   // Fetches both New and Used listings for a row — always both, since
   // Ryan wants to compare pricing across conditions regardless of what
-  // condition the item's actually being listed as.
-  function fetchPriceGuide(row) {
+  // condition the item's actually being listed as. Shared by Add
+  // Inventory and Manage Inventory (the cache is keyed on item/color/
+  // condition, not on which page asked, so looking a price up in one
+  // page reuses the result in the other too) — `rerender` is whichever
+  // page's own render function, since each has to re-render its own view
+  // once the fetch lands.
+  function fetchPriceGuide(row, rerender) {
     var needsRender = false;
     ["N", "U"].forEach(function (cond) {
       var key = priceGuideKey(row, cond);
@@ -4162,13 +4193,13 @@
 
       fetchJSON("/api/price-guide?" + qs).then(function (data) {
         priceGuideCache[key] = { loading: false, data: data, error: null };
-        renderInventoryReview();
+        rerender();
       }).catch(function (err) {
         priceGuideCache[key] = { loading: false, data: null, error: err.message };
-        renderInventoryReview();
+        rerender();
       });
     });
-    if (needsRender) renderInventoryReview();
+    if (needsRender) rerender();
   }
 
   // Reverses INVENTORY_TYPE_CODE_TO_WORD (already confirmed against a real
@@ -4484,7 +4515,7 @@
         // keystroke-triggering "change" would drop focus mid-edit for no
         // benefit, since qty/price/remarks don't affect anything else shown.
         if (field === "colorId") {
-          if (row.priceExpanded) fetchPriceGuide(row); else renderInventoryReview();
+          if (row.priceExpanded) fetchPriceGuide(row, renderInventoryReview); else renderInventoryReview();
         } else if (field === "quantity" || field === "unitPrice") {
           // Keep the running total live without a full re-render, which
           // would otherwise drop focus mid-edit (see comment above).
@@ -4500,7 +4531,7 @@
         var row = findInventoryRow(el.getAttribute("data-key"));
         if (!row) return;
         row.priceExpanded = !row.priceExpanded;
-        if (row.priceExpanded) fetchPriceGuide(row);
+        if (row.priceExpanded) fetchPriceGuide(row, renderInventoryReview);
         renderInventoryReview();
       });
     });
@@ -4915,6 +4946,7 @@
           orig: snapshot,
           result: null,
           markedForDelete: false,
+          priceExpanded: false,
         };
       });
       manageInventoryHasDates = manageInventoryRows.some(function (r) { return !!r.dateCreated; });
@@ -5269,8 +5301,14 @@
       + '<div class="inventory-field description-field"><label>Description <span class="field-hint">(shown to buyer)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="description"' + fieldsDisabled + '>' + escapeHtml(row.description) + '</textarea></div>'
       + '<div class="inventory-field remarks-field"><label>Remarks <span class="field-hint">(private, only you see this)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks"' + fieldsDisabled + '>' + escapeHtml(row.remarks) + '</textarea></div>'
       + '</div>'
+      + '<div class="inventory-price-guide-block">'
+      + '<div class="price-guide-header-row">'
+      + viewOnBricklinkLinkHtml(row)
+      + '<button type="button" class="price-guide-toggle-btn" data-key="' + escapeHtml(row.key) + '">' + (row.priceExpanded ? "▾" : "▸") + ' See active US listings</button>'
+      + '</div>'
+      + renderPriceGuidePanel(row)
+      + '</div>'
       + '<div class="inventory-row-actions">'
-      + '<a class="item-bl-link" href="' + escapeHtml(bricklinkCatalogUrl(row, row.newOrUsed === "U" ? "U" : "N")) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>'
       + '<button type="button" class="delete-row-btn' + (marked ? ' marked' : '') + '" data-key="' + escapeHtml(row.key) + '">' + (marked ? 'Undo delete' : 'Delete') + '</button>'
       + '</div>'
       + resultHtml
@@ -5376,6 +5414,38 @@
         var row = findManageInventoryRow(el.getAttribute("data-key"));
         if (!row) return;
         row.markedForDelete = !row.markedForDelete;
+        renderManageInventoryResults();
+      });
+    });
+
+    // Same "See active US listings" panel Add Inventory uses — the cache
+    // is keyed on item/color/condition, not on which page asked, so a
+    // lookup already done in Add Inventory (or for another row of the
+    // same item/color here) is reused for free.
+    container.querySelectorAll(".price-guide-toggle-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var row = findManageInventoryRow(el.getAttribute("data-key"));
+        if (!row) return;
+        row.priceExpanded = !row.priceExpanded;
+        if (row.priceExpanded) fetchPriceGuide(row, renderManageInventoryResults);
+        renderManageInventoryResults();
+      });
+    });
+    container.querySelectorAll(".price-guide-collapse-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var row = findManageInventoryRow(el.getAttribute("data-key"));
+        if (!row) return;
+        row.priceExpanded = false;
+        renderManageInventoryResults();
+      });
+    });
+    container.querySelectorAll(".price-guide-row").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var row = findManageInventoryRow(el.getAttribute("data-key"));
+        if (!row) return;
+        row.unitPrice = formatPriceInput(el.getAttribute("data-price"));
+        row.newOrUsed = el.getAttribute("data-condition") === "U" ? "U" : "N";
+        row.result = null;
         renderManageInventoryResults();
       });
     });
