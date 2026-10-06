@@ -136,3 +136,8 @@
   to = "/.netlify/functions/file-order"
   status = 200
 
+[[redirects]]
+  from = "/api/debug-item-image"
+  to = "/.netlify/functions/debug-item-image"
+  status = 200
+
