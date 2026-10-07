@@ -3552,17 +3552,20 @@
   }
 
   // Reuses Order Lookup/Sales Stats' already-fetched statsRows (full order
-  // history, filed and unfiled alike) rather than issuing any API call of
-  // its own — if neither of those has been visited yet this session,
-  // statsRows is still null and this just renders nothing, same as the
-  // buyer-rating badge does for a username it hasn't looked up. Counts
-  // every other order from the same buyer regardless of status (a
-  // cancelled or problem order still means "this isn't their first time
-  // ordering"), matched case-insensitively since BrickLink usernames
-  // aren't case-sensitive identifiers. Hidden entirely for a first-time
-  // buyer rather than printing "Previous orders: 0" — there's nothing
-  // useful to say about a buyer with no history yet.
-  function previousOrdersHtml(order) {
+  // history, filed and unfiled alike), lazily topped up by
+  // ensureStatsLoaded() if neither of those pages has been visited yet
+  // this session — openOrder() kicks that off in the background (see
+  // refreshPreviousOrders() there) and patches #buyerPreviousOrders in
+  // place once it resolves, same deferred-fill pattern as the buyer
+  // rating badge, rather than this function itself ever blocking the
+  // order detail page on a fetch. Counts every other order from the same
+  // buyer regardless of status (a cancelled or problem order still means
+  // "this isn't their first time ordering"), matched case-insensitively
+  // since BrickLink usernames aren't case-sensitive identifiers. Hidden
+  // entirely for a first-time buyer rather than printing "Previous
+  // orders: 0" — there's nothing useful to say about a buyer with no
+  // history yet.
+  function previousOrdersText(order) {
     if (!statsRows || !order.buyer) return "";
     var buyerLower = order.buyer.toLowerCase();
     var others = statsRows.filter(function (r) {
@@ -3572,9 +3575,17 @@
     var mostRecent = others.reduce(function (latest, r) {
       return (!latest || new Date(r.date) > new Date(latest.date)) ? r : latest;
     }, null);
-    return '<div class="buyer-previous-orders">Previous orders: ' + others.length
-      + (mostRecent ? ' (most recent ' + escapeHtml(formatDate(mostRecent.date)) + ')' : '')
-      + '</div>';
+    return "Previous orders: " + others.length
+      + (mostRecent ? " (most recent " + formatDate(mostRecent.date) + ")" : "");
+  }
+
+  function previousOrdersHtml(order) {
+    return '<div class="buyer-previous-orders" id="buyerPreviousOrders">' + escapeHtml(previousOrdersText(order)) + '</div>';
+  }
+
+  function refreshPreviousOrdersLine(order) {
+    var el = document.getElementById("buyerPreviousOrders");
+    if (el) el.textContent = previousOrdersText(order);
   }
 
   function renderContactSection(contact) {
@@ -4006,6 +4017,18 @@
       }).catch(function () { /* ignore — lines just stay blank */ });
     }
 
+    // Same best-effort, fire-and-forget shape as refreshItemStockCounts()
+    // above — loads the buyer's order history in the background (unless
+    // Order Lookup/Stats already warmed it up this session) and patches
+    // the "Previous orders" line in place once it lands, rather than
+    // making every order open wait on an extra fetch.
+    function refreshPreviousOrders() {
+      ensureStatsLoaded().then(function () {
+        if (currentView !== "order" || order.orderId !== orderId) return;
+        refreshPreviousOrdersLine(order);
+      }).catch(function () { /* ignore — line just stays hidden */ });
+    }
+
     // Best-effort — only used to split the type summary's "parts" bucket
     // into fig/misc (see isFigPartCategory); a failure here just means
     // that split falls back to the old unsplit "parts" label, not that
@@ -4018,6 +4041,7 @@
       if (currentView === "order" && order.orderId === orderId) {
         renderOrderDetail(order, cached, messagesCache[orderId] || [], contactCache[orderId] || null);
         refreshItemStockCounts();
+        refreshPreviousOrders();
       }
       return;
     }
@@ -4061,6 +4085,7 @@
       if (currentView === "order" && order.orderId === orderId) {
         renderOrderDetail(order, items, messages, contact);
         refreshItemStockCounts();
+        refreshPreviousOrders();
       }
     } catch (err) {
       if (currentView === "order" && order.orderId === orderId) {
@@ -5640,6 +5665,28 @@
   // to reflect a brand-new order the instant it comes in.
   var statsRows = null;
   var statsError = null;
+
+  // Lazy, cached, session-lifetime load for read-only consumers (the
+  // order detail page's "Previous orders" line) that want this same
+  // history without forcing Ryan to visit Order Lookup/Stats first —
+  // same "fetch once, reuse forever this session" pattern as
+  // ensureManageInventoryLoaded(). Explicit Retry on the Stats/Order
+  // Lookup pages themselves still goes through fetchStats() directly,
+  // which always re-fetches regardless of what's already cached.
+  var statsLazyLoadPromise = null;
+  function ensureStatsLoaded() {
+    if (statsRows) return Promise.resolve(statsRows);
+    if (!statsLazyLoadPromise) {
+      statsLazyLoadPromise = fetchJSON("/api/order-stats").then(function (rows) {
+        statsRows = rows || [];
+        return statsRows;
+      }).catch(function (err) {
+        statsLazyLoadPromise = null; // let a later call retry rather than caching the failure forever
+        throw err;
+      });
+    }
+    return statsLazyLoadPromise;
+  }
 
   // Order Lookup (see below) reuses this same fetch and statsRows/
   // statsError rather than issuing its own — it's the same full order
