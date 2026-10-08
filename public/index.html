@@ -872,6 +872,11 @@
      off pick-list item, backwards here: "owned" should look available,
      not crossed out). */
   .set-fig-match-row.owned { background: var(--success-bg); border-color: transparent; }
+  /* Same reason Manage Inventory's .item-row.inventory-row needs this —
+     the price-guide block is a third flex child (sibling of .item-thumb/
+     .item-body) meant to drop to its own full-width line below them. */
+  .set-fig-match-row { flex-wrap: wrap; }
+  .set-fig-missing-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .manage-inventory-cap-note { color: var(--text-secondary); font-size: 12px; text-align: center; margin-top: 10px; }
   .manage-inventory-sort-select,
   .order-lookup-sort-select {
@@ -4360,7 +4365,10 @@
   // into one list, cheapest-first across both conditions combined and
   // capped at 25 total, with each row tagged New/Used next to its price
   // instead of condition being implied by which list it's in.
-  function renderPriceGuidePanel(row) {
+  // readOnly skips the "Tap a listing to use its price" hint — true for
+  // Set/Fig Lookup, which has no editable price/Condition field for a tap
+  // to fill in, same panel otherwise (stats lines, listing rows, collapse).
+  function renderPriceGuidePanel(row, readOnly) {
     if (!row.priceExpanded) return "";
     var stateN = priceGuideCache[priceGuideKey(row, "N")];
     var stateU = priceGuideCache[priceGuideKey(row, "U")];
@@ -4400,7 +4408,7 @@
     return '<div class="price-guide-panel">'
       + renderPriceGuideStatsLine(row, "N")
       + renderPriceGuideStatsLine(row, "U")
-      + (combined.length ? '<div class="price-guide-hint">Tap a listing to use its price (also sets Condition)</div>' + rows : '')
+      + (combined.length ? (readOnly ? '' : '<div class="price-guide-hint">Tap a listing to use its price (also sets Condition)</div>') + rows : '')
       + '<button type="button" class="price-guide-collapse-btn" data-key="' + escapeHtml(row.key) + '">▴ Collapse</button>'
       + '</div>';
   }
@@ -6206,7 +6214,15 @@
       setFigLookupCache[key] = { loading: true, entries: null, error: null };
       fetchJSON("/api/item-subsets?type=" + encodeURIComponent(setFigLookupType) + "&no=" + encodeURIComponent(no))
         .then(function (data) {
-          setFigLookupCache[key] = { loading: false, entries: data.entries || [], error: null };
+          var entries = data.entries || [];
+          // .key/.priceExpanded mirror manageInventoryRows's own fields so
+          // these entries can be handed straight to the shared price-guide
+          // helpers (viewOnBricklinkLinkHtml, fetchPriceGuide,
+          // renderPriceGuidePanel) as if they were ordinary rows. Assigned
+          // once here, not recomputed per render, so toggling one entry's
+          // panel open survives re-renders (entries array itself is cached).
+          entries.forEach(function (e, i) { e.key = key + ":" + i; e.priceExpanded = false; });
+          setFigLookupCache[key] = { loading: false, entries: entries, error: null };
           if (currentView === "set-fig-lookup") renderSetFigLookupResults();
         })
         .catch(function (err) {
@@ -6275,11 +6291,75 @@
       + (isRealColorName(colorName) ? '<div class="item-color">' + escapeHtml(colorName) + '</div>' : '')
       + '<div class="item-stock-count">Needs ' + e.quantity
       + (bucket.haveQty > 0
-        ? ' · Have ' + bucket.haveQty + ' (avg ' + escapeHtml(formatCurrency(bucket.avgPrice, "USD")) + ')'
+        ? ' · Have ' + bucket.haveQty + ' (listed at ' + escapeHtml(formatCurrency(bucket.avgPrice, "USD")) + ')'
         : ' · None in stock')
       + '</div>'
       + '</div>'
+      // e doubles as the "row" the shared price-guide helpers expect —
+      // it already carries type/itemNo/colorId/key/priceExpanded, same
+      // fields they read off a manageInventoryRows row.
+      + '<div class="inventory-price-guide-block">'
+      + '<div class="price-guide-header-row">'
+      + viewOnBricklinkLinkHtml(e)
+      + '<button type="button" class="price-guide-toggle-btn" data-key="' + escapeHtml(e.key) + '">' + (e.priceExpanded ? "▾" : "▸") + ' See active US listings</button>'
+      + '</div>'
+      + renderPriceGuidePanel(e, true)
+      + '</div>'
       + '</div>';
+  }
+
+  function findSetFigLookupEntry(entryKey) {
+    var state = setFigLookupActiveKey && setFigLookupCache[setFigLookupActiveKey];
+    if (!state || !state.entries) return null;
+    for (var i = 0; i < state.entries.length; i++) {
+      if (state.entries[i].key === entryKey) return state.entries[i];
+    }
+    return null;
+  }
+
+  // BrickLink's classic Wanted List XML import format — same ITEMTYPE
+  // single-letter codes as the BrickScan inventory-upload format already
+  // parsed elsewhere in this file (INVENTORY_TYPE_WORD_TO_CODE), plus the
+  // wanted-list-specific tags (MINQTY/CONDITION/REMARKS/NOTIFY). Only the
+  // not-in-stock entries go in — those are the ones actually missing —
+  // with the needed quantity as MINQTY and REMARKS noting which set/fig
+  // pulled it in, so the wanted list entry still makes sense out of context.
+  function buildSetFigWantedListXml(missingBuckets, label) {
+    var items = missingBuckets.map(function (bucket) {
+      var e = bucket.entry;
+      var typeCode = INVENTORY_TYPE_WORD_TO_CODE[e.type] || "P";
+      return '<ITEM>'
+        + '<ITEMTYPE>' + typeCode + '</ITEMTYPE>'
+        + '<ITEMID>' + escapeHtml(e.itemNo) + '</ITEMID>'
+        + (e.colorId ? '<COLOR>' + e.colorId + '</COLOR>' : '')
+        + '<MINQTY>' + e.quantity + '</MINQTY>'
+        + '<CONDITION>N</CONDITION>'
+        + '<REMARKS>' + escapeHtml(label) + '</REMARKS>'
+        + '<NOTIFY>Y</NOTIFY>'
+        + '</ITEM>';
+    }).join("\n");
+    return '<INVENTORY>\n' + items + '\n</INVENTORY>\n';
+  }
+
+  // Same Blob-URL-download pattern downloadLabelPrepPdf uses — a data:
+  // URL's download attribute doesn't reliably fire on iOS Safari, a Blob
+  // URL does (or at worst opens in-browser with a working Share/Save).
+  function downloadSetFigWantedListXml(missingBuckets) {
+    if (!missingBuckets.length) return;
+    var no = normalizeSetFigNo(setFigLookupType, setFigLookupQuery);
+    var label = (setFigLookupType === "SET" ? "Set " : "Minifig ") + no;
+    var xml = buildSetFigWantedListXml(missingBuckets, label);
+    var blob = new Blob([xml], { type: "text/xml" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = no.replace(/[^A-Za-z0-9_-]/g, "") + "-wanted-list.xml";
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
   }
 
   function renderSetFigLookupMatches(container, entries, colorsMap) {
@@ -6298,7 +6378,33 @@
 
     container.innerHTML = '<div class="inventory-summary-row"><span>' + owned.length + ' of ' + entries.length + ' in stock</span></div>'
       + (owned.length ? '<div class="manage-inventory-hint">In stock</div>' + owned.map(rowHtml).join("") : '')
-      + (missing.length ? '<div class="manage-inventory-hint">Not in stock</div>' + missing.map(rowHtml).join("") : '');
+      + (missing.length
+        ? '<div class="manage-inventory-hint set-fig-missing-hint"><span>Not in stock</span><button type="button" class="reset-btn" id="setFigWantedListBtn">Export wanted list XML</button></div>' + missing.map(rowHtml).join("")
+        : '');
+
+    var wantedListBtn = document.getElementById("setFigWantedListBtn");
+    if (wantedListBtn) wantedListBtn.addEventListener("click", function () { downloadSetFigWantedListXml(missing); });
+
+    // Same "See active US listings" toggle/collapse wiring Manage
+    // Inventory uses — the cache is keyed on item/color/condition, not on
+    // which page asked, so a lookup already done elsewhere is reused free.
+    container.querySelectorAll(".price-guide-toggle-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
+        if (!entry) return;
+        entry.priceExpanded = !entry.priceExpanded;
+        if (entry.priceExpanded) fetchPriceGuide(entry, renderSetFigLookupResults);
+        renderSetFigLookupResults();
+      });
+    });
+    container.querySelectorAll(".price-guide-collapse-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
+        if (!entry) return;
+        entry.priceExpanded = false;
+        renderSetFigLookupResults();
+      });
+    });
 
     wireThumbLinks(container);
     sizeThumbsToRows(container);
