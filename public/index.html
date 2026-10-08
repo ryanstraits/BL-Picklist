@@ -886,7 +886,17 @@
     color: var(--text-secondary);
     cursor: pointer;
   }
-  .set-fig-manual-owned-toggle input { margin: 0; cursor: pointer; }
+  .set-fig-manual-owned-toggle input[type="checkbox"] { margin: 0; cursor: pointer; }
+  .set-fig-manual-qty-input {
+    width: 52px;
+    font-family: inherit;
+    font-size: 13px;
+    padding: 3px 5px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
   /* Same reason Manage Inventory's .item-row.inventory-row needs this —
      the price-guide block is a third flex child (sibling of .item-thumb/
      .item-body) meant to drop to its own full-width line below them. */
@@ -6253,7 +6263,7 @@
           // as if they were ordinary rows. Assigned once here, not
           // recomputed per render, so toggling a panel open survives
           // re-renders (entries/item are cached, not rebuilt each render).
-          entries.forEach(function (e, i) { e.key = key + ":" + i; e.priceExpanded = false; e.manualOwned = false; });
+          entries.forEach(function (e, i) { e.key = key + ":" + i; e.priceExpanded = false; e.manualQty = 0; });
           var item = data.item || { itemNo: no, name: "", type: setFigLookupType };
           item.key = key + ":item";
           item.priceExpanded = false;
@@ -6349,25 +6359,42 @@
     var pseudoItem = { type: e.type, itemNo: e.itemNo, colorId: e.colorId, newOrUsed: "N" };
     var colorName = e.colorId ? (colorsMap[e.colorId] || null) : null;
     // "Really" owned (a real inventory match) vs "manually" owned (Ryan
-    // ticked the checkbox below to count loose parts he hasn't listed) —
-    // both land in the same In-stock section and count toward the summary,
-    // but only a real match has a listed price to show, and only a manual
-    // mark needs the checkbox (a real match needs no override).
+    // entered a temp-add-to-stock quantity for loose parts he hasn't
+    // listed) — both land in the same In-stock section and count toward
+    // the summary (any amount on hand counts as "in stock" here, same as
+    // a real match for 1 of 10 needed already did — this list means "do I
+    // have some," not "do I have enough," so there's no separate partial
+    // bucket), but only a real match has a listed price to show, and only
+    // a manual mark needs the field (a real match needs no override).
     var reallyOwned = bucket.haveQty > 0;
-    var manuallyOwned = !reallyOwned && e.manualOwned;
+    var manuallyOwned = !reallyOwned && e.manualQty > 0;
     var stockLine;
     if (reallyOwned) {
       stockLine = ' · Have ' + bucket.haveQty + ' (listed at ' + escapeHtml(formatCurrency(bucket.avgPrice, "USD")) + ')';
     } else if (manuallyOwned) {
-      stockLine = ' · Marked as on hand (not in your listed inventory)';
+      stockLine = ' · Temp added ' + e.manualQty + ' (not in your listed inventory)';
     } else {
       stockLine = ' · None in stock';
     }
-    var manualToggleHtml = reallyOwned ? '' : (''
-      + '<label class="set-fig-manual-owned-toggle">'
-      + '<input type="checkbox" class="set-fig-manual-owned-checkbox" data-key="' + escapeHtml(e.key) + '"' + (e.manualOwned ? ' checked' : '') + '>'
-      + ' I have some of these, just not listed'
-      + '</label>');
+    // A stepper only makes sense when there's more than one to count up to
+    // — for a qty-1 need, on hand or not is the whole question, so it stays
+    // a plain checkbox (still writes into the same e.manualQty, just 0/1).
+    var manualFieldHtml;
+    if (reallyOwned) {
+      manualFieldHtml = '';
+    } else if (e.quantity > 1) {
+      manualFieldHtml = ''
+        + '<label class="set-fig-manual-owned-toggle">'
+        + '<span>Temp add to stock</span>'
+        + '<input type="number" class="set-fig-manual-qty-input" data-key="' + escapeHtml(e.key) + '" min="0" max="' + e.quantity + '" step="1" value="' + (e.manualQty || 0) + '">'
+        + '</label>';
+    } else {
+      manualFieldHtml = ''
+        + '<label class="set-fig-manual-owned-toggle">'
+        + '<input type="checkbox" class="set-fig-manual-owned-checkbox" data-key="' + escapeHtml(e.key) + '"' + (e.manualQty > 0 ? ' checked' : '') + '>'
+        + ' Temp add to stock'
+        + '</label>';
+    }
     return '<div class="item-row set-fig-match-row' + ((reallyOwned || manuallyOwned) ? ' owned' : '') + (manuallyOwned ? ' manual-owned' : '') + '">'
       + '<div class="item-thumb">' + thumbHtml(pseudoItem) + '<span class="qty-chip">' + e.quantity + '</span></div>'
       + '<div class="item-body">'
@@ -6378,7 +6405,7 @@
       + '<div class="item-name">' + escapeHtml(decodeHtmlEntities(e.name || "")) + '</div>'
       + (isRealColorName(colorName) ? '<div class="item-color">' + escapeHtml(colorName) + '</div>' : '')
       + '<div class="item-stock-count">Needs ' + e.quantity + stockLine + '</div>'
-      + manualToggleHtml
+      + manualFieldHtml
       + '</div>'
       // e doubles as the "row" the shared price-guide helpers expect —
       // it already carries type/itemNo/colorId/key/priceExpanded, same
@@ -6487,13 +6514,13 @@
     var missing = [];
     entries.forEach(function (e) {
       var bucket = setFigLookupMatch(e);
-      // A manual mark (the "I have some of these, just not listed"
-      // checkbox) counts as in-stock here same as a real inventory match —
-      // it moves the row into the In-stock section, counts toward the
-      // summary, and drops out of the wanted-list XML (built from `missing`
-      // below) — but it's never written to Ryan's actual BrickLink
-      // inventory, purely a client-side/session note.
-      (bucket.haveQty > 0 || e.manualOwned ? owned : missing).push(bucket);
+      // A manual "temp add to stock" quantity counts as in-stock here same
+      // as a real inventory match — it moves the row into the In-stock
+      // section, counts toward the summary, and drops out of the
+      // wanted-list XML (built from `missing` below) — but it's never
+      // written to Ryan's actual BrickLink inventory, purely a
+      // client-side/session note.
+      (bucket.haveQty > 0 || e.manualQty > 0 ? owned : missing).push(bucket);
     });
 
     function rowHtml(bucket) { return setFigLookupRowHtml(bucket, colorsMap); }
@@ -6512,7 +6539,16 @@
       el.addEventListener("change", function () {
         var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
         if (!entry) return;
-        entry.manualOwned = el.checked;
+        entry.manualQty = el.checked ? 1 : 0;
+        renderSetFigLookupResults();
+      });
+    });
+    container.querySelectorAll(".set-fig-manual-qty-input").forEach(function (el) {
+      el.addEventListener("change", function () {
+        var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
+        if (!entry) return;
+        var raw = parseInt(el.value, 10) || 0;
+        entry.manualQty = Math.max(0, Math.min(entry.quantity, raw));
         renderSetFigLookupResults();
       });
     });
