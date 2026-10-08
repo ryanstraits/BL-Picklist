@@ -23,10 +23,17 @@ exports.handler = requireAuth(async (event) => {
     const itemNo = params.no;
     if (!itemType || !itemNo) return json(400, { error: 'Missing type or no' });
 
-    const data = await blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/subsets`);
+    // Fetched alongside the subsets call (not instead of it) — the frontend
+    // shows a header card for the set/fig itself (name, View on BrickLink,
+    // active US listings) above its parts list, which needs the plain Get
+    // Item endpoint's own name/category, not anything subsets returns.
+    const [subsetsData, itemData] = await Promise.all([
+      blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/subsets`),
+      blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}`),
+    ]);
 
     const entries = [];
-    (Array.isArray(data) ? data : []).forEach((group) => {
+    (Array.isArray(subsetsData) ? subsetsData : []).forEach((group) => {
       ((group && group.entries) || []).forEach((e) => {
         if (!e || !e.item) return;
         entries.push({
@@ -42,7 +49,14 @@ exports.handler = requireAuth(async (event) => {
       });
     });
 
-    return json(200, { entries });
+    const item = {
+      itemNo: (itemData && itemData.no) || itemNo,
+      name: (itemData && itemData.name) || '',
+      type: (itemData && itemData.type) || itemType,
+      categoryId: (itemData && itemData.category_id) || 0,
+    };
+
+    return json(200, { item, entries });
   } catch (err) {
     return errorResponse(err);
   }
