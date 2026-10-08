@@ -872,6 +872,21 @@
      off pick-list item, backwards here: "owned" should look available,
      not crossed out). */
   .set-fig-match-row.owned { background: var(--success-bg); border-color: transparent; }
+  /* A manual mark gets the same green as a real inventory match (it reads
+     as "in stock" either way) but a dashed accent border on top, so Ryan
+     can still tell "really in my listed inventory" apart from "I just
+     ticked the box" at a glance. */
+  .set-fig-match-row.manual-owned { border: 1px dashed var(--accent); }
+  .set-fig-manual-owned-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .set-fig-manual-owned-toggle input { margin: 0; cursor: pointer; }
   /* Same reason Manage Inventory's .item-row.inventory-row needs this —
      the price-guide block is a third flex child (sibling of .item-thumb/
      .item-body) meant to drop to its own full-width line below them. */
@@ -6212,11 +6227,20 @@
     return no;
   }
 
+  // Flips the submit button's label in place (no full re-render, so focus/
+  // cursor position in the field is untouched) — called right at submit
+  // time, not after the fetch resolves, so it reads "Clear" immediately.
+  function updateSetFigLookupSubmitBtn() {
+    var btn = document.querySelector(".set-fig-lookup-btn");
+    if (btn) btn.textContent = setFigLookupActiveKey ? "Clear" : "Look up";
+  }
+
   function runSetFigLookup() {
     var no = normalizeSetFigNo(setFigLookupType, setFigLookupQuery);
     if (!no) return;
     var key = setFigLookupKey(setFigLookupType, no);
     setFigLookupActiveKey = key;
+    updateSetFigLookupSubmitBtn();
     if (!setFigLookupCache[key]) {
       setFigLookupCache[key] = { loading: true, entries: null, error: null };
       fetchJSON("/api/item-subsets?type=" + encodeURIComponent(setFigLookupType) + "&no=" + encodeURIComponent(no))
@@ -6229,7 +6253,7 @@
           // as if they were ordinary rows. Assigned once here, not
           // recomputed per render, so toggling a panel open survives
           // re-renders (entries/item are cached, not rebuilt each render).
-          entries.forEach(function (e, i) { e.key = key + ":" + i; e.priceExpanded = false; });
+          entries.forEach(function (e, i) { e.key = key + ":" + i; e.priceExpanded = false; e.manualOwned = false; });
           var item = data.item || { itemNo: no, name: "", type: setFigLookupType };
           item.key = key + ":item";
           item.priceExpanded = false;
@@ -6253,24 +6277,57 @@
       + '</div>'
       + '<form class="set-fig-lookup-form" id="setFigLookupForm">'
       + '<input type="text" class="set-fig-lookup-search" id="setFigLookupInput" placeholder="' + (setFigLookupType === "SET" ? "e.g. 75192 or 75192-1" : "e.g. sw0359") + '" value="' + escapeHtml(setFigLookupQuery) + '" autocomplete="off">'
-      + '<button type="submit" class="set-fig-lookup-btn">Look up</button>'
+      + '<button type="submit" class="set-fig-lookup-btn">' + (setFigLookupActiveKey ? "Clear" : "Look up") + '</button>'
       + '</form>'
       + '<div id="setFigLookupResults"></div>';
 
     setFigLookupView.querySelectorAll(".set-fig-type-btn").forEach(function (el) {
       el.addEventListener("click", function () {
         setFigLookupType = el.getAttribute("data-type");
+        // Switching Set/Minifig also resets the query/results — otherwise
+        // the box would keep showing the other type's number (and the
+        // button "Clear" from its still-active lookup) instead of a fresh
+        // field ready for a number of the newly-selected type.
+        setFigLookupQuery = "";
+        setFigLookupActiveKey = null;
         renderSetFigLookupView();
       });
     });
 
+    // The button (and Enter in the field) does one of two things depending
+    // on whether a lookup is currently active: submits the typed number, or
+    // — once results are showing, button reads "Clear" — resets the field
+    // and results so Ryan doesn't have to select-all/delete by hand before
+    // typing the next number.
     document.getElementById("setFigLookupForm").addEventListener("submit", function (e) {
       e.preventDefault();
-      setFigLookupQuery = document.getElementById("setFigLookupInput").value;
-      runSetFigLookup();
+      if (setFigLookupActiveKey) {
+        clearSetFigLookup();
+      } else {
+        setFigLookupQuery = document.getElementById("setFigLookupInput").value;
+        runSetFigLookup();
+      }
+    });
+
+    // If Ryan edits the box after a lookup's gone through (retrying past
+    // an error, or just typing the next number without hitting Clear
+    // first), the button shouldn't stay stuck on "Clear" — as soon as the
+    // field no longer matches what was actually submitted, it reverts to
+    // "Look up" so Enter/the button submits the edited text instead.
+    document.getElementById("setFigLookupInput").addEventListener("input", function () {
+      if (setFigLookupActiveKey && this.value !== setFigLookupQuery) {
+        setFigLookupActiveKey = null;
+        updateSetFigLookupSubmitBtn();
+      }
     });
 
     renderSetFigLookupResults();
+  }
+
+  function clearSetFigLookup() {
+    setFigLookupQuery = "";
+    setFigLookupActiveKey = null;
+    renderSetFigLookupView();
   }
 
   // Each subset entry's match against Ryan's own inventory — type checked
@@ -6291,7 +6348,27 @@
     var e = bucket.entry;
     var pseudoItem = { type: e.type, itemNo: e.itemNo, colorId: e.colorId, newOrUsed: "N" };
     var colorName = e.colorId ? (colorsMap[e.colorId] || null) : null;
-    return '<div class="item-row set-fig-match-row' + (bucket.haveQty > 0 ? ' owned' : '') + '">'
+    // "Really" owned (a real inventory match) vs "manually" owned (Ryan
+    // ticked the checkbox below to count loose parts he hasn't listed) —
+    // both land in the same In-stock section and count toward the summary,
+    // but only a real match has a listed price to show, and only a manual
+    // mark needs the checkbox (a real match needs no override).
+    var reallyOwned = bucket.haveQty > 0;
+    var manuallyOwned = !reallyOwned && e.manualOwned;
+    var stockLine;
+    if (reallyOwned) {
+      stockLine = ' · Have ' + bucket.haveQty + ' (listed at ' + escapeHtml(formatCurrency(bucket.avgPrice, "USD")) + ')';
+    } else if (manuallyOwned) {
+      stockLine = ' · Marked as on hand (not in your listed inventory)';
+    } else {
+      stockLine = ' · None in stock';
+    }
+    var manualToggleHtml = reallyOwned ? '' : (''
+      + '<label class="set-fig-manual-owned-toggle">'
+      + '<input type="checkbox" class="set-fig-manual-owned-checkbox" data-key="' + escapeHtml(e.key) + '"' + (e.manualOwned ? ' checked' : '') + '>'
+      + ' I have some of these, just not listed'
+      + '</label>');
+    return '<div class="item-row set-fig-match-row' + ((reallyOwned || manuallyOwned) ? ' owned' : '') + (manuallyOwned ? ' manual-owned' : '') + '">'
       + '<div class="item-thumb">' + thumbHtml(pseudoItem) + '<span class="qty-chip">' + e.quantity + '</span></div>'
       + '<div class="item-body">'
       + '<div class="item-line1">'
@@ -6300,11 +6377,8 @@
       + '</div>'
       + '<div class="item-name">' + escapeHtml(decodeHtmlEntities(e.name || "")) + '</div>'
       + (isRealColorName(colorName) ? '<div class="item-color">' + escapeHtml(colorName) + '</div>' : '')
-      + '<div class="item-stock-count">Needs ' + e.quantity
-      + (bucket.haveQty > 0
-        ? ' · Have ' + bucket.haveQty + ' (listed at ' + escapeHtml(formatCurrency(bucket.avgPrice, "USD")) + ')'
-        : ' · None in stock')
-      + '</div>'
+      + '<div class="item-stock-count">Needs ' + e.quantity + stockLine + '</div>'
+      + manualToggleHtml
       + '</div>'
       // e doubles as the "row" the shared price-guide helpers expect —
       // it already carries type/itemNo/colorId/key/priceExpanded, same
@@ -6413,7 +6487,13 @@
     var missing = [];
     entries.forEach(function (e) {
       var bucket = setFigLookupMatch(e);
-      (bucket.haveQty > 0 ? owned : missing).push(bucket);
+      // A manual mark (the "I have some of these, just not listed"
+      // checkbox) counts as in-stock here same as a real inventory match —
+      // it moves the row into the In-stock section, counts toward the
+      // summary, and drops out of the wanted-list XML (built from `missing`
+      // below) — but it's never written to Ryan's actual BrickLink
+      // inventory, purely a client-side/session note.
+      (bucket.haveQty > 0 || e.manualOwned ? owned : missing).push(bucket);
     });
 
     function rowHtml(bucket) { return setFigLookupRowHtml(bucket, colorsMap); }
@@ -6427,6 +6507,15 @@
 
     var wantedListBtn = document.getElementById("setFigWantedListBtn");
     if (wantedListBtn) wantedListBtn.addEventListener("click", function () { downloadSetFigWantedListXml(missing); });
+
+    container.querySelectorAll(".set-fig-manual-owned-checkbox").forEach(function (el) {
+      el.addEventListener("change", function () {
+        var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
+        if (!entry) return;
+        entry.manualOwned = el.checked;
+        renderSetFigLookupResults();
+      });
+    });
 
     wireSetFigLookupPriceGuideHandlers(container);
     wireThumbLinks(container);
