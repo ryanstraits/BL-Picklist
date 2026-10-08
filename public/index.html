@@ -856,16 +856,20 @@
   .set-fig-lookup-btn {
     flex: none;
     margin-top: 4px;
-    border: none;
+    border: 1.5px solid transparent;
     background: var(--accent);
     color: var(--accent-contrast);
     font-family: inherit;
     font-size: 13.5px;
     font-weight: 600;
-    padding: 10px 14px;
+    padding: 9px 14px;
     border-radius: 8px;
     cursor: pointer;
   }
+  /* Outlined rather than filled while it reads "Clear" — a visually
+     lighter, less primary-looking action than "Look up", since it's
+     resetting the search rather than submitting it. */
+  .set-fig-lookup-btn.clear { background: none; border-color: var(--accent); color: var(--accent); }
   .set-fig-match-row .item-stock-count { margin-top: 4px; }
   /* Own tint rather than reusing .item-row.picked — that class also
      strikes through the name and dims the thumbnail (right for a picked-
@@ -6219,7 +6223,7 @@
   // Results are cached per type+no for the rest of the session — same
   // {loading, data, error} shape as priceGuideCache — so re-looking-up
   // the same number (switching away and back) is free.
-  var setFigLookupType = "SET"; // "SET" | "MINIFIG"
+  var setFigLookupType = "MINIFIG"; // "SET" | "MINIFIG"
   var setFigLookupQuery = "";
   var setFigLookupCache = {};
   var setFigLookupActiveKey = null;
@@ -6242,7 +6246,9 @@
   // time, not after the fetch resolves, so it reads "Clear" immediately.
   function updateSetFigLookupSubmitBtn() {
     var btn = document.querySelector(".set-fig-lookup-btn");
-    if (btn) btn.textContent = setFigLookupActiveKey ? "Clear" : "Look up";
+    if (!btn) return;
+    btn.textContent = setFigLookupActiveKey ? "Clear" : "Look up";
+    btn.classList.toggle("clear", !!setFigLookupActiveKey);
   }
 
   function runSetFigLookup() {
@@ -6287,7 +6293,7 @@
       + '</div>'
       + '<form class="set-fig-lookup-form" id="setFigLookupForm">'
       + '<input type="text" class="set-fig-lookup-search" id="setFigLookupInput" placeholder="' + (setFigLookupType === "SET" ? "e.g. 75192 or 75192-1" : "e.g. sw0359") + '" value="' + escapeHtml(setFigLookupQuery) + '" autocomplete="off">'
-      + '<button type="submit" class="set-fig-lookup-btn">' + (setFigLookupActiveKey ? "Clear" : "Look up") + '</button>'
+      + '<button type="submit" class="set-fig-lookup-btn' + (setFigLookupActiveKey ? ' clear' : '') + '">' + (setFigLookupActiveKey ? "Clear" : "Look up") + '</button>'
       + '</form>'
       + '<div id="setFigLookupResults"></div>';
 
