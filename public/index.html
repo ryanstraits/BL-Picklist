@@ -822,7 +822,8 @@
   .item-row.row-dirty { background: var(--accent-soft); border-color: transparent; }
 
   .manage-inventory-search,
-  .order-lookup-search {
+  .order-lookup-search,
+  .set-fig-lookup-search {
     width: 100%;
     box-sizing: border-box;
     padding: 10px 12px;
@@ -835,6 +836,42 @@
     margin-top: 4px;
   }
   .manage-inventory-hint { color: var(--text-secondary); font-size: 13px; margin-top: 14px; }
+  .set-fig-lookup-intro { color: var(--text-secondary); font-size: 13.5px; }
+  .set-fig-lookup-type-row { display: flex; gap: 8px; margin-top: 10px; }
+  .set-fig-type-btn {
+    flex: 1;
+    border: 1px dashed var(--accent);
+    background: none;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .set-fig-type-btn.active { background: var(--accent); color: var(--accent-contrast); border-style: solid; }
+  .set-fig-lookup-form { display: flex; gap: 8px; align-items: center; }
+  .set-fig-lookup-form .set-fig-lookup-search { flex: 1; }
+  .set-fig-lookup-btn {
+    flex: none;
+    margin-top: 4px;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 10px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .set-fig-match-row .item-stock-count { margin-top: 4px; }
+  /* Own tint rather than reusing .item-row.picked — that class also
+     strikes through the name and dims the thumbnail (right for a picked-
+     off pick-list item, backwards here: "owned" should look available,
+     not crossed out). */
+  .set-fig-match-row.owned { background: var(--success-bg); border-color: transparent; }
   .manage-inventory-cap-note { color: var(--text-secondary); font-size: 12px; text-align: center; margin-top: 10px; }
   .manage-inventory-sort-select,
   .order-lookup-sort-select {
@@ -1599,6 +1636,7 @@
     </div>
     <div class="topbar-row topbar-row-nav topbar-row-subnav" id="topbarSubNavRow">
       <button class="nav-tab-btn" id="orderLookupBtn">Order Lookup</button>
+      <button class="nav-tab-btn" id="setFigLookupBtn">Set/Fig Lookup</button>
       <button class="nav-tab-btn" id="subNavBtn"></button>
     </div>
     <div class="order-progress-row hidden" id="topbarProgressRow">
@@ -1623,6 +1661,7 @@
     <section id="view-manage-inventory" class="hidden"></section>
     <section id="view-stats" class="hidden"></section>
     <section id="view-order-lookup" class="hidden"></section>
+    <section id="view-set-fig-lookup" class="hidden"></section>
   </main>
 </div>
 
@@ -2298,6 +2337,7 @@
   var manageInventoryView = document.getElementById("view-manage-inventory");
   var statsView = document.getElementById("view-stats");
   var orderLookupView = document.getElementById("view-order-lookup");
+  var setFigLookupView = document.getElementById("view-set-fig-lookup");
   var backBtn = document.getElementById("backBtn");
   var brandSub = document.getElementById("brandSub");
   var refreshBtn = document.getElementById("refreshBtn");
@@ -2308,6 +2348,7 @@
   var categoryStatsBtn = document.getElementById("categoryStatsBtn");
   var subNavBtn = document.getElementById("subNavBtn");
   var orderLookupBtn = document.getElementById("orderLookupBtn");
+  var setFigLookupBtn = document.getElementById("setFigLookupBtn");
   var topbarProgressRow = document.getElementById("topbarProgressRow");
   var topbarProgressFill = document.getElementById("topbarProgressFill");
   var topbarProgressLabel = document.getElementById("topbarProgressLabel");
@@ -2348,6 +2389,7 @@
     categoryInventoryBtn.classList.toggle("active", category === "inventory");
     categoryStatsBtn.classList.toggle("active", category === "stats");
     orderLookupBtn.style.display = (category === "orders" && currentView !== "order-lookup") ? "" : "none";
+    setFigLookupBtn.style.display = (category === "inventory" && currentView !== "set-fig-lookup") ? "" : "none";
     if (subLabel) {
       topbarSubNavRow.style.display = "";
       subNavBtn.textContent = subLabel;
@@ -6126,6 +6168,171 @@
     renderOrderLookupResults();
   }
 
+  // ---- Set/Fig Lookup ----
+
+  // Type a BrickLink set or minifig number, see which of its parts/figs
+  // (per BrickLink's own Get Item Subsets BOM) Ryan already has in
+  // inventory — "could I build/part this out of what's on the shelf."
+  // Deliberately NOT a type-as-you-go search like Order Lookup's: each
+  // lookup is a real BrickLink API call (no local data to filter), so it
+  // fires on explicit submit (Enter or the button), never per keystroke.
+  // Results are cached per type+no for the rest of the session — same
+  // {loading, data, error} shape as priceGuideCache — so re-looking-up
+  // the same number (switching away and back) is free.
+  var setFigLookupType = "SET"; // "SET" | "MINIFIG"
+  var setFigLookupQuery = "";
+  var setFigLookupCache = {};
+  var setFigLookupActiveKey = null;
+
+  function setFigLookupKey(type, no) { return type + ":" + no; }
+
+  // Bare set numbers are sold/printed without BrickLink's own "-1" variant
+  // suffix (e.g. the box says "75192", BrickLink's own number is
+  // "75192-1") — appended automatically so Ryan doesn't have to know or
+  // type that convention. Left alone if he already typed a suffix, or for
+  // a minifig number, which never takes one.
+  function normalizeSetFigNo(type, raw) {
+    var no = (raw || "").trim();
+    if (type === "SET" && no && no.indexOf("-") === -1) no += "-1";
+    return no;
+  }
+
+  function runSetFigLookup() {
+    var no = normalizeSetFigNo(setFigLookupType, setFigLookupQuery);
+    if (!no) return;
+    var key = setFigLookupKey(setFigLookupType, no);
+    setFigLookupActiveKey = key;
+    if (!setFigLookupCache[key]) {
+      setFigLookupCache[key] = { loading: true, entries: null, error: null };
+      fetchJSON("/api/item-subsets?type=" + encodeURIComponent(setFigLookupType) + "&no=" + encodeURIComponent(no))
+        .then(function (data) {
+          setFigLookupCache[key] = { loading: false, entries: data.entries || [], error: null };
+          if (currentView === "set-fig-lookup") renderSetFigLookupResults();
+        })
+        .catch(function (err) {
+          setFigLookupCache[key] = { loading: false, entries: null, error: err.message };
+          if (currentView === "set-fig-lookup") renderSetFigLookupResults();
+        });
+    }
+    renderSetFigLookupResults();
+  }
+
+  function renderSetFigLookupView() {
+    setFigLookupView.innerHTML = ""
+      + '<div class="set-fig-lookup-intro">Enter a BrickLink set or minifig number to see which of its parts/figs you already have in inventory.</div>'
+      + '<div class="set-fig-lookup-type-row">'
+      + '<button type="button" class="set-fig-type-btn' + (setFigLookupType === "SET" ? " active" : "") + '" data-type="SET">Set</button>'
+      + '<button type="button" class="set-fig-type-btn' + (setFigLookupType === "MINIFIG" ? " active" : "") + '" data-type="MINIFIG">Minifig</button>'
+      + '</div>'
+      + '<form class="set-fig-lookup-form" id="setFigLookupForm">'
+      + '<input type="text" class="set-fig-lookup-search" id="setFigLookupInput" placeholder="' + (setFigLookupType === "SET" ? "e.g. 75192 or 75192-1" : "e.g. sw0359") + '" value="' + escapeHtml(setFigLookupQuery) + '" autocomplete="off">'
+      + '<button type="submit" class="set-fig-lookup-btn">Look up</button>'
+      + '</form>'
+      + '<div id="setFigLookupResults"></div>';
+
+    setFigLookupView.querySelectorAll(".set-fig-type-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        setFigLookupType = el.getAttribute("data-type");
+        renderSetFigLookupView();
+      });
+    });
+
+    document.getElementById("setFigLookupForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      setFigLookupQuery = document.getElementById("setFigLookupInput").value;
+      runSetFigLookup();
+    });
+
+    renderSetFigLookupResults();
+  }
+
+  // Each subset entry's match against Ryan's own inventory — type checked
+  // alongside itemNo+colorId (unlike inventoryStockCount's simpler two-
+  // field match) since a PART and a MINIFIG can't collide on number but a
+  // SET's subset list is exactly the case where telling them apart
+  // actually matters here.
+  function setFigLookupMatch(entry) {
+    var rows = manageInventoryRows.filter(function (r) {
+      return r.itemNo === entry.itemNo && r.colorId === (entry.colorId || 0) && r.type === entry.type && !r.markedForDelete;
+    });
+    var haveQty = rows.reduce(function (sum, r) { return sum + (parseInt(r.quantity, 10) || 0); }, 0);
+    var totalValue = rows.reduce(function (sum, r) { return sum + (parseFloat(r.unitPrice) || 0) * (parseInt(r.quantity, 10) || 0); }, 0);
+    return { entry: entry, haveQty: haveQty, avgPrice: haveQty ? totalValue / haveQty : 0 };
+  }
+
+  function setFigLookupRowHtml(bucket, colorsMap) {
+    var e = bucket.entry;
+    var pseudoItem = { type: e.type, itemNo: e.itemNo, colorId: e.colorId, newOrUsed: "N" };
+    var colorName = e.colorId ? (colorsMap[e.colorId] || null) : null;
+    return '<div class="item-row set-fig-match-row' + (bucket.haveQty > 0 ? ' owned' : '') + '">'
+      + '<div class="item-thumb">' + thumbHtml(pseudoItem) + '<span class="qty-chip">' + e.quantity + '</span></div>'
+      + '<div class="item-body">'
+      + '<div class="item-line1">'
+      + '<span class="item-no mono">' + escapeHtml(e.itemNo) + '</span>'
+      + '<span class="item-line1-right"><span class="item-type-tag">' + escapeHtml(e.type) + '</span></span>'
+      + '</div>'
+      + '<div class="item-name">' + escapeHtml(e.name || "") + '</div>'
+      + (isRealColorName(colorName) ? '<div class="item-color">' + escapeHtml(colorName) + '</div>' : '')
+      + '<div class="item-stock-count">Needs ' + e.quantity
+      + (bucket.haveQty > 0
+        ? ' · Have ' + bucket.haveQty + ' (avg ' + escapeHtml(formatCurrency(bucket.avgPrice, "USD")) + ')'
+        : ' · None in stock')
+      + '</div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  function renderSetFigLookupMatches(container, entries, colorsMap) {
+    if (!entries.length) {
+      container.innerHTML = '<div class="state-block">No parts found for that number.</div>';
+      return;
+    }
+    var owned = [];
+    var missing = [];
+    entries.forEach(function (e) {
+      var bucket = setFigLookupMatch(e);
+      (bucket.haveQty > 0 ? owned : missing).push(bucket);
+    });
+
+    function rowHtml(bucket) { return setFigLookupRowHtml(bucket, colorsMap); }
+
+    container.innerHTML = '<div class="inventory-summary-row"><span>' + owned.length + ' of ' + entries.length + ' in stock</span></div>'
+      + (owned.length ? '<div class="manage-inventory-hint">In stock</div>' + owned.map(rowHtml).join("") : '')
+      + (missing.length ? '<div class="manage-inventory-hint">Not in stock</div>' + missing.map(rowHtml).join("") : '');
+
+    wireThumbLinks(container);
+    sizeThumbsToRows(container);
+  }
+
+  function renderSetFigLookupResults() {
+    var container = document.getElementById("setFigLookupResults");
+    if (!container) return;
+    if (!setFigLookupActiveKey) { container.innerHTML = ""; return; }
+    var state = setFigLookupCache[setFigLookupActiveKey];
+    if (!state || state.loading) {
+      container.innerHTML = '<div class="state-block">Loading parts list…</div>';
+      return;
+    }
+    if (state.error) {
+      container.innerHTML = '<div class="state-block error">' + escapeHtml(state.error) + '<br><button class="reset-btn" id="setFigLookupRetryBtn">Retry</button></div>';
+      var retryBtn = document.getElementById("setFigLookupRetryBtn");
+      if (retryBtn) retryBtn.addEventListener("click", function () {
+        delete setFigLookupCache[setFigLookupActiveKey];
+        runSetFigLookup();
+      });
+      return;
+    }
+    var entries = state.entries;
+    Promise.all([ensureManageInventoryLoaded(), getColors()]).then(function (results) {
+      var colorsMap = results[1];
+      var resultsEl = document.getElementById("setFigLookupResults");
+      if (currentView !== "set-fig-lookup" || !resultsEl) return;
+      renderSetFigLookupMatches(resultsEl, entries, colorsMap);
+    }).catch(function (err) {
+      container.innerHTML = '<div class="state-block error">Couldn’t load your inventory to match against: ' + escapeHtml(err.message) + '</div>';
+    });
+  }
+
   function goToOrders() {
     currentView = "orders";
     orderView.classList.add("hidden");
@@ -6134,6 +6341,7 @@
     manageInventoryView.classList.add("hidden");
     statsView.classList.add("hidden");
     orderLookupView.classList.add("hidden");
+    setFigLookupView.classList.add("hidden");
     ordersView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders", "Label Prep", goToLabelPrep);
@@ -6151,6 +6359,7 @@
     manageInventoryView.classList.add("hidden");
     statsView.classList.add("hidden");
     orderLookupView.classList.add("hidden");
+    setFigLookupView.classList.add("hidden");
     inventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory", "Manage Inventory", goToManageInventory);
@@ -6170,6 +6379,7 @@
     manageInventoryView.classList.add("hidden");
     statsView.classList.add("hidden");
     orderLookupView.classList.add("hidden");
+    setFigLookupView.classList.add("hidden");
     labelPrepView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders", "Order List", goToOrders);
@@ -6186,6 +6396,7 @@
     labelPrepView.classList.add("hidden");
     statsView.classList.add("hidden");
     orderLookupView.classList.add("hidden");
+    setFigLookupView.classList.add("hidden");
     manageInventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory", "+ Add Inventory", goToInventory);
@@ -6204,6 +6415,7 @@
     labelPrepView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
     orderLookupView.classList.add("hidden");
+    setFigLookupView.classList.add("hidden");
     statsView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("stats");
@@ -6220,6 +6432,7 @@
     labelPrepView.classList.add("hidden");
     manageInventoryView.classList.add("hidden");
     statsView.classList.add("hidden");
+    setFigLookupView.classList.add("hidden");
     orderLookupView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders", "Order List", goToOrders);
@@ -6232,10 +6445,28 @@
     if (!statsRows && !statsError) fetchStats();
   }
 
+  function goToSetFigLookup() {
+    currentView = "set-fig-lookup";
+    ordersView.classList.add("hidden");
+    orderView.classList.add("hidden");
+    inventoryView.classList.add("hidden");
+    labelPrepView.classList.add("hidden");
+    manageInventoryView.classList.add("hidden");
+    statsView.classList.add("hidden");
+    orderLookupView.classList.add("hidden");
+    setFigLookupView.classList.remove("hidden");
+    backBtn.style.display = "none";
+    setTopbarNav("inventory", "Manage Inventory", goToManageInventory);
+    refreshBtn.style.display = "none";
+    brandSub.textContent = "Set/Fig Lookup";
+    renderSetFigLookupView();
+  }
+
   backBtn.addEventListener("click", function () {
     if (currentView === "order" && orderDetailReadOnly) goToOrderLookup(); else goToOrders();
   });
   orderLookupBtn.addEventListener("click", goToOrderLookup);
+  setFigLookupBtn.addEventListener("click", goToSetFigLookup);
   // Wired once here rather than per-render like the in-page submit
   // buttons — these topbar mirrors are static DOM nodes that live inside
   // <header>, never rebuilt by innerHTML, so a listener attached once
@@ -6305,6 +6536,7 @@
     else if (currentView === "manage-inventory") goToManageInventory();
     else if (currentView === "stats") goToStats();
     else if (currentView === "order-lookup") goToOrderLookup();
+    else if (currentView === "set-fig-lookup") goToSetFigLookup();
     else goToOrders();
   }
 

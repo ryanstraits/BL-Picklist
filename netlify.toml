@@ -136,3 +136,8 @@
   to = "/.netlify/functions/file-order"
   status = 200
 
+[[redirects]]
+  from = "/api/item-subsets"
+  to = "/.netlify/functions/item-subsets"
+  status = 200
+
