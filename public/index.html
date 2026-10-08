@@ -3158,8 +3158,10 @@
   // patchItemStockCounts() below once the background fetch resolves.
   function itemStockCountHtml(item) {
     var count = manageInventoryRows ? inventoryStockCount(item.itemNo, item.colorId) : "";
+    var priceSummary = (count && manageInventoryRows) ? inventoryStockPriceSummary(item.itemNo, item.colorId) : "";
     return '<div class="item-stock-count" data-item-no="' + escapeHtml(item.itemNo) + '" data-color-id="' + escapeHtml(item.colorId) + '">'
-      + (count !== "" ? count + ' in inventory' : '') + '</div>';
+      + (count !== "" ? count + ' in inventory' + (priceSummary ? ' (listed at ' + escapeHtml(priceSummary) + ')' : '') : '')
+      + '</div>';
   }
 
   // Shared by the order detail page and Add Inventory's review list —
@@ -3174,7 +3176,9 @@
     container.querySelectorAll(".item-stock-count[data-item-no]").forEach(function (el) {
       var itemNo = el.getAttribute("data-item-no");
       var colorId = parseInt(el.getAttribute("data-color-id"), 10) || 0;
-      el.textContent = inventoryStockCount(itemNo, colorId) + " in inventory";
+      var count = inventoryStockCount(itemNo, colorId);
+      var priceSummary = count ? inventoryStockPriceSummary(itemNo, colorId) : "";
+      el.textContent = count + " in inventory" + (priceSummary ? " (listed at " + priceSummary + ")" : "");
     });
   }
 
@@ -5127,6 +5131,27 @@
       if (r.itemNo === itemNo && r.colorId === colorId && !r.markedForDelete) total += Number(r.quantity) || 0;
     });
     return total;
+  }
+
+  // "X in inventory" told Ryan he already has some, but not at what price
+  // — so matching a new listing's price to his existing ones meant going
+  // to look them up separately. Each *distinct* price among the matching
+  // lots, not a blended average — the point is picking one to match, and
+  // an average isn't a price anyone's actually listed at. Summed quantity
+  // per price (not lot count) so two lots at the same price don't show
+  // that price twice.
+  function inventoryStockPriceSummary(itemNo, colorId) {
+    var qtyByPrice = {};
+    manageInventoryRows.forEach(function (r) {
+      if (r.itemNo !== itemNo || r.colorId !== colorId || r.markedForDelete) return;
+      var price = parseFloat(r.unitPrice);
+      if (isNaN(price)) return;
+      var key = price.toFixed(2);
+      qtyByPrice[key] = (qtyByPrice[key] || 0) + (parseInt(r.quantity, 10) || 0);
+    });
+    var prices = Object.keys(qtyByPrice).sort(function (a, b) { return Number(a) - Number(b); });
+    if (!prices.length) return "";
+    return prices.map(function (p) { return formatCurrency(p, "USD") + " ×" + qtyByPrice[p]; }).join(", ");
   }
 
   function findManageInventoryRow(key) {
