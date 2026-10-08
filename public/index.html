@@ -879,8 +879,11 @@
   .set-fig-missing-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   /* The set/fig itself, not one of its parts — distinguished from the
      match rows below it with the accent color rather than the plain/owned
-     tint, same idea as a section header rather than a list item. */
-  .set-fig-header-card { border-color: var(--accent); border-width: 1.5px; margin-top: 0; }
+     tint, same idea as a section header rather than a list item. A bit
+     more top margin than an ordinary .item-row's 10px — it's sitting
+     right under the lookup form, not another card, so it read as too
+     snug against it at the default spacing. */
+  .set-fig-header-card { border-color: var(--accent); border-width: 1.5px; margin-top: 16px; }
   .manage-inventory-cap-note { color: var(--text-secondary); font-size: 12px; text-align: center; margin-top: 10px; }
   .manage-inventory-sort-select,
   .order-lookup-sort-select {
@@ -6295,7 +6298,7 @@
       + '<span class="item-no mono">' + escapeHtml(e.itemNo) + '</span>'
       + '<span class="item-line1-right"><span class="item-type-tag">' + escapeHtml(e.type) + '</span></span>'
       + '</div>'
-      + '<div class="item-name">' + escapeHtml(e.name || "") + '</div>'
+      + '<div class="item-name">' + escapeHtml(decodeHtmlEntities(e.name || "")) + '</div>'
       + (isRealColorName(colorName) ? '<div class="item-color">' + escapeHtml(colorName) + '</div>' : '')
       + '<div class="item-stock-count">Needs ' + e.quantity
       + (bucket.haveQty > 0
@@ -6340,7 +6343,7 @@
       + '<span class="item-no mono">' + escapeHtml(item.itemNo) + '</span>'
       + '<span class="item-line1-right"><span class="item-type-tag">' + escapeHtml(item.type) + '</span></span>'
       + '</div>'
-      + '<div class="item-name">' + escapeHtml(item.name || "(name unknown)") + '</div>'
+      + '<div class="item-name">' + escapeHtml(decodeHtmlEntities(item.name) || "(name unknown)") + '</div>'
       + '</div>'
       + '<div class="inventory-price-guide-block">'
       + '<div class="price-guide-header-row">'
@@ -6416,7 +6419,7 @@
     function rowHtml(bucket) { return setFigLookupRowHtml(bucket, colorsMap); }
 
     container.innerHTML = headerHtml
-      + '<div class="inventory-summary-row"><span>' + owned.length + ' of ' + entries.length + ' in stock</span></div>'
+      + '<div class="inventory-summary-row"><span>' + owned.length + ' of ' + entries.length + ' parts/figs in stock</span></div>'
       + (owned.length ? '<div class="manage-inventory-hint">In stock</div>' + owned.map(rowHtml).join("") : '')
       + (missing.length
         ? '<div class="manage-inventory-hint set-fig-missing-hint"><span>Not in stock</span><button type="button" class="reset-btn" id="setFigWantedListBtn">Export wanted list XML</button></div>' + missing.map(rowHtml).join("")
