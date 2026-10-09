@@ -6562,51 +6562,6 @@
       + '</div>';
   }
 
-  // BrickLink's classic Wanted List XML import format — same ITEMTYPE
-  // single-letter codes as the BrickScan inventory-upload format already
-  // parsed elsewhere in this file (INVENTORY_TYPE_WORD_TO_CODE), plus the
-  // wanted-list-specific tags (MINQTY/CONDITION/REMARKS/NOTIFY). Only the
-  // not-in-stock entries go in — those are the ones actually missing —
-  // with the needed quantity as MINQTY and REMARKS noting which set/fig
-  // pulled it in, so the wanted list entry still makes sense out of context.
-  function buildSetFigWantedListXml(missingBuckets, label) {
-    var items = missingBuckets.map(function (bucket) {
-      var e = bucket.entry;
-      var typeCode = INVENTORY_TYPE_WORD_TO_CODE[e.type] || "P";
-      return '<ITEM>'
-        + '<ITEMTYPE>' + typeCode + '</ITEMTYPE>'
-        + '<ITEMID>' + escapeHtml(e.itemNo) + '</ITEMID>'
-        + (e.colorId ? '<COLOR>' + e.colorId + '</COLOR>' : '')
-        + '<MINQTY>' + e.quantity + '</MINQTY>'
-        + '<CONDITION>N</CONDITION>'
-        + '<REMARKS>' + escapeHtml(label) + '</REMARKS>'
-        + '<NOTIFY>Y</NOTIFY>'
-        + '</ITEM>';
-    }).join("\n");
-    return '<INVENTORY>\n' + items + '\n</INVENTORY>\n';
-  }
-
-  // Same Blob-URL-download pattern downloadLabelPrepPdf uses — a data:
-  // URL's download attribute doesn't reliably fire on iOS Safari, a Blob
-  // URL does (or at worst opens in-browser with a working Share/Save).
-  function downloadSetFigWantedListXml(missingBuckets) {
-    if (!missingBuckets.length) return;
-    var no = normalizeSetFigNo(setFigLookupType, setFigLookupQuery);
-    var label = (setFigLookupType === "SET" ? "Set " : "Minifig ") + no;
-    var xml = buildSetFigWantedListXml(missingBuckets, label);
-    var blob = new Blob([xml], { type: "text/xml" });
-    var url = URL.createObjectURL(blob);
-    var link = document.createElement("a");
-    link.href = url;
-    link.download = no.replace(/[^A-Za-z0-9_-]/g, "") + "-wanted-list.xml";
-    link.target = "_blank";
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
-  }
-
   function renderSetFigLookupMatches(container, item, entries, colorsMap) {
     var headerHtml = item ? setFigLookupHeaderCardHtml(item) : "";
     if (!entries.length) {
@@ -6622,24 +6577,47 @@
       var bucket = setFigLookupMatch(e);
       // A manual "temp add to stock" quantity counts as in-stock here same
       // as a real inventory match — it moves the row into the In-stock
-      // section, counts toward the summary, and drops out of the
-      // wanted-list XML (built from `missing` below) — but it's never
-      // written to Ryan's actual BrickLink inventory, purely a
+      // section, counts toward the summary, and drops out of `missing`
+      // (so it's skipped by "Add all to wanted list" below) — but it's
+      // never written to Ryan's actual BrickLink inventory, purely a
       // client-side/session note.
       (bucket.haveQty > 0 || e.manualQty > 0 ? owned : missing).push(bucket);
     });
 
     function rowHtml(bucket) { return setFigLookupRowHtml(bucket, colorsMap); }
 
+    // Source label travels with each item into the bank so it still makes
+    // sense on the Wanted List page, pulled in from however many other
+    // lookups by then. Computed up front so both the per-row button and
+    // the "Add all" bulk button below can share it.
+    var sourceLabel = item ? (item.itemNo + (item.name ? " " + decodeHtmlEntities(item.name) : "")) : "";
+    var allMissingAdded = missing.length > 0 && missing.every(function (bucket) { return bucket.entry.wantedBankAdded; });
+
     container.innerHTML = headerHtml
       + '<div class="inventory-summary-row"><span>' + owned.length + ' of ' + entries.length + ' parts/figs in stock</span></div>'
       + (owned.length ? '<div class="manage-inventory-hint">In stock</div>' + owned.map(rowHtml).join("") : '')
       + (missing.length
-        ? '<div class="manage-inventory-hint set-fig-missing-hint"><span>Not in stock</span><button type="button" class="reset-btn" id="setFigWantedListBtn">Export wanted list XML</button></div>' + missing.map(rowHtml).join("")
+        ? '<div class="manage-inventory-hint set-fig-missing-hint"><span>Not in stock</span><button type="button" class="reset-btn" id="setFigAddAllWantedBtn"' + (allMissingAdded ? ' disabled' : '') + '>' + (allMissingAdded ? '✓ All added to wanted list' : 'Add all to wanted list') + '</button></div>' + missing.map(rowHtml).join("")
         : '');
 
-    var exportXmlBtn = document.getElementById("setFigWantedListBtn");
-    if (exportXmlBtn) exportXmlBtn.addEventListener("click", function () { downloadSetFigWantedListXml(missing); });
+    // Adds every not-yet-added row below in one tap — skips any row already
+    // in the bank (e.g. added individually, or left over from a previous
+    // tap of this same button) rather than double-adding its quantity.
+    var addAllBtn = document.getElementById("setFigAddAllWantedBtn");
+    if (addAllBtn) {
+      addAllBtn.addEventListener("click", function () {
+        missing.forEach(function (bucket) {
+          var entry = bucket.entry;
+          if (entry.wantedBankAdded) return;
+          addToWantedListBank({
+            type: entry.type, itemNo: entry.itemNo, colorId: entry.colorId,
+            name: decodeHtmlEntities(entry.name || ""), quantity: entry.quantity,
+          }, sourceLabel);
+          entry.wantedBankAdded = true;
+        });
+        renderSetFigLookupResults();
+      });
+    }
 
     // Toggles 0 <-> the full needed quantity — the primary on/off gesture,
     // same as "Add to wanted list" below. The qty field (qty-1 needs don't
@@ -6663,10 +6641,6 @@
         renderSetFigLookupResults();
       });
     });
-    // Source label travels with the item into the bank so it still makes
-    // sense on the Wanted List page, pulled in from however many other
-    // lookups by then — same reasoning as the per-lookup XML's REMARKS.
-    var sourceLabel = item ? (item.itemNo + (item.name ? " " + decodeHtmlEntities(item.name) : "")) : "";
     container.querySelectorAll(".set-fig-wanted-bank-btn").forEach(function (el) {
       el.addEventListener("click", function () {
         var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
@@ -6817,11 +6791,11 @@
     return Object.keys(wantedListBank).map(function (k) { return { key: k, entry: wantedListBank[k] }; });
   }
 
-  // Same classic Wanted List XML shape buildSetFigWantedListXml uses for a
-  // single lookup's missing parts — this is the combined-across-lookups
-  // version, built from the bank instead of one lookup's `missing` bucket.
-  // REMARKS joins every source lot an item was pulled in from, rather than
-  // the single label a per-lookup export always has.
+  // BrickLink's classic Wanted List XML import format — same ITEMTYPE
+  // single-letter codes as the BrickScan inventory-upload format already
+  // parsed elsewhere in this file (INVENTORY_TYPE_WORD_TO_CODE). REMARKS
+  // joins every source lot an item was pulled in from, since a bank line
+  // can merge the same part from several different lookups.
   function buildWantedListBankXml() {
     var items = wantedListBankEntries().map(function (r) {
       var e = r.entry;
