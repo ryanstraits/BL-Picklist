@@ -5050,7 +5050,7 @@
         var unitPrice = formatPriceInput(item.unitPrice);
         var snapshot = {
           quantity: item.quantity, newOrUsed: item.newOrUsed, unitPrice: unitPrice,
-          description: description, remarks: remarks,
+          description: description, remarks: remarks, stockRoomId: item.stockRoomId || "",
         };
         return {
           key: item.key,
@@ -5066,6 +5066,7 @@
           unitPrice: unitPrice,
           description: description,
           remarks: remarks,
+          stockRoomId: item.stockRoomId || "",
           dateCreated: item.dateCreated || null,
           orig: snapshot,
           result: null,
@@ -5164,7 +5165,8 @@
       || row.newOrUsed !== row.orig.newOrUsed
       || String(row.unitPrice) !== String(row.orig.unitPrice)
       || row.description !== row.orig.description
-      || row.remarks !== row.orig.remarks;
+      || row.remarks !== row.orig.remarks
+      || row.stockRoomId !== row.orig.stockRoomId;
   }
 
   // BrickLink item numbers mix pure-digit ("3001") and letter-prefixed
@@ -5443,6 +5445,12 @@
       + '<option value="N"' + (row.newOrUsed === "N" ? ' selected' : '') + '>New</option>'
       + '<option value="U"' + (row.newOrUsed === "U" ? ' selected' : '') + '>Used</option>'
       + '</select></div>'
+      + '<div class="inventory-field"><label>Stock Room</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="stockRoomId"' + fieldsDisabled + '>'
+      + '<option value=""' + (row.stockRoomId === "" ? ' selected' : '') + '>No</option>'
+      + '<option value="A"' + (row.stockRoomId === "A" ? ' selected' : '') + '>A</option>'
+      + '<option value="B"' + (row.stockRoomId === "B" ? ' selected' : '') + '>B</option>'
+      + '<option value="C"' + (row.stockRoomId === "C" ? ' selected' : '') + '>C</option>'
+      + '</select></div>'
       + '<div class="inventory-field description-field"><label>Description <span class="field-hint">(shown to buyer)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="description"' + fieldsDisabled + '>' + escapeHtml(row.description) + '</textarea></div>'
       + '<div class="inventory-field remarks-field"><label>Remarks <span class="field-hint">(private, only you see this)</span></label><textarea rows="2" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="remarks"' + fieldsDisabled + '>' + escapeHtml(row.remarks) + '</textarea></div>'
       + '</div>'
@@ -5707,7 +5715,7 @@
         items: toUpdate.map(function (r) {
           return {
             key: r.key, inventoryId: r.inventoryId, quantity: r.quantity, newOrUsed: r.newOrUsed,
-            unitPrice: r.unitPrice, description: r.description, remarks: r.remarks,
+            unitPrice: r.unitPrice, description: r.description, remarks: r.remarks, stockRoomId: r.stockRoomId,
           };
         }),
       }));
@@ -5736,7 +5744,7 @@
         } else {
           row.orig = {
             quantity: row.quantity, newOrUsed: row.newOrUsed, unitPrice: row.unitPrice,
-            description: row.description, remarks: row.remarks,
+            description: row.description, remarks: row.remarks, stockRoomId: row.stockRoomId,
           };
           row.result = { success: true };
         }
@@ -5762,6 +5770,7 @@
       row.unitPrice = row.orig.unitPrice;
       row.description = row.orig.description;
       row.remarks = row.orig.remarks;
+      row.stockRoomId = row.orig.stockRoomId;
       row.markedForDelete = false;
     });
     renderManageInventoryResults();

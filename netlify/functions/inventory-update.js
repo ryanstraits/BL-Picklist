@@ -5,10 +5,10 @@ const { requireAuth } = require('./lib/site-auth');
 // Update Inventory — PUT /inventories/{inventory_id} — a partial update per
 // BrickLink's own documented behavior for this endpoint (only the fields
 // sent are changed; everything else on the listing is left alone), which
-// is why this only ever sends the five fields Manage Inventory lets Ryan
-// edit — quantity, unit_price, new_or_used, description, remarks — and
-// never color_id or the item itself, both of which are part of a listing's
-// identity, not something you'd "edit" after the fact.
+// is why this only ever sends the six fields Manage Inventory lets Ryan
+// edit — quantity, unit_price, new_or_used, description, remarks,
+// stock room — and never color_id or the item itself, both of which are
+// part of a listing's identity, not something you'd "edit" after the fact.
 async function updateOne(item) {
   const payload = {
     quantity: item.quantity,
@@ -16,7 +16,15 @@ async function updateOne(item) {
     new_or_used: item.newOrUsed === 'U' ? 'U' : 'N',
     description: item.description || '',
     remarks: item.remarks || '',
+    // Same is_stock_room/stock_room_id pairing inventory-create.js uses,
+    // and the same reasoning for when stock_room_id is included at all —
+    // is_stock_room:false is what actually signals "not in a stock room"
+    // (BrickLink only validated an omitted stock_room_id there, not an
+    // empty string, so clearing a room sends the flag alone rather than
+    // risking an empty value this endpoint hasn't been tested against).
+    is_stock_room: !!item.stockRoomId,
   };
+  if (item.stockRoomId) payload.stock_room_id = item.stockRoomId;
   await blPut(`/inventories/${encodeURIComponent(item.inventoryId)}`, payload);
   return { key: item.key, success: true };
 }

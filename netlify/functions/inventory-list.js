@@ -47,6 +47,7 @@ exports.handler = requireAuth(async () => {
       unitPrice: row.unit_price || '',
       description: row.description || '',
       remarks: row.remarks || '',
+      stockRoomId: row.stock_room_id || '',
       dateCreated: row.date_created || null,
     }));
     return json(200, { items });
