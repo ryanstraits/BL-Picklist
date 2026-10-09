@@ -854,7 +854,11 @@
   .manage-inventory-hint { color: var(--text-secondary); font-size: 13px; margin-top: 14px; }
   .set-fig-lookup-intro { color: var(--text-secondary); font-size: 13.5px; }
   .set-fig-lookup-type-row { display: flex; gap: 8px; margin-top: 10px; }
-  .set-fig-type-btn {
+  /* The Set/Minifig lookup-type toggle and the Minifigs/Parts results
+     sub-toggle share this look on purpose — both are "pick one of two
+     modes" controls, just at different levels (which number to look up,
+     vs. which half of one lookup's results to show). */
+  .set-fig-type-btn, .set-fig-subview-btn {
     flex: 1;
     border: 1px dashed var(--accent);
     background: none;
@@ -866,7 +870,7 @@
     border-radius: 7px;
     cursor: pointer;
   }
-  .set-fig-type-btn.active { background: var(--accent); color: var(--accent-contrast); border-style: solid; }
+  .set-fig-type-btn.active, .set-fig-subview-btn.active { background: var(--accent); color: var(--accent-contrast); border-style: solid; }
   .set-fig-lookup-form { display: flex; gap: 8px; align-items: center; }
   .set-fig-lookup-form .set-fig-lookup-search { flex: 1; }
   .set-fig-lookup-btn {
@@ -6312,6 +6316,11 @@
   var setFigLookupQuery = "";
   var setFigLookupCache = {};
   var setFigLookupActiveKey = null;
+  // Which half of a SET's results is showing when it has both ordinary
+  // parts and loose minifigs ("FIGS" | "PARTS") — reset to minifigs-first
+  // on every new submit, same lifetime as setFigLookupActiveKey. Unused
+  // (and irrelevant) for a lookup whose entries are all one type.
+  var setFigResultsSubView = "FIGS";
 
   function setFigLookupKey(type, no) { return type + ":" + no; }
 
@@ -6341,6 +6350,7 @@
     if (!no) return;
     var key = setFigLookupKey(setFigLookupType, no);
     setFigLookupActiveKey = key;
+    setFigResultsSubView = "FIGS";
     updateSetFigLookupSubmitBtn();
     if (!setFigLookupCache[key]) {
       setFigLookupCache[key] = { loading: true, entries: null, error: null };
@@ -6571,9 +6581,35 @@
       wireSetFigLookupPriceGuideHandlers(container);
       return;
     }
+
+    // A SET's subset list can include loose minifigs alongside ordinary
+    // parts — BrickLink returns them as one flat list, typed PART/MINIFIG.
+    // When both are present, split them into their own Minifigs/Parts tabs
+    // — fully separate In-stock/Not-in-stock sections and "Add all to
+    // wanted list" buttons, not just reordered within one list — so each
+    // half gets the same standalone treatment the figs-only lookup page
+    // already has. A lookup whose entries are all one type (a MINIFIG's
+    // own parts breakdown, or a parts-only set) has nothing to split, so
+    // it falls through to the single-list behavior this always had.
+    var figEntries = entries.filter(function (e) { return e.type === "MINIFIG"; });
+    var partEntries = entries.filter(function (e) { return e.type !== "MINIFIG"; });
+    var hasSplit = figEntries.length > 0 && partEntries.length > 0;
+    var activeEntries = hasSplit ? (setFigResultsSubView === "PARTS" ? partEntries : figEntries) : entries;
+    var activeLabel = hasSplit ? (setFigResultsSubView === "PARTS" ? "parts" : "minifigs") : "parts/figs";
+
+    // Minifigs sit on the left/default tab — the more valuable, easier-
+    // to-overlook half of a set's BOM next to a long list of ordinary
+    // parts, and setFigResultsSubView already opens here on a fresh submit.
+    var subViewHtml = hasSplit
+      ? '<div class="set-fig-lookup-type-row">'
+        + '<button type="button" class="set-fig-subview-btn' + (setFigResultsSubView !== "PARTS" ? " active" : "") + '" data-subview="FIGS">Minifigs (' + figEntries.length + ')</button>'
+        + '<button type="button" class="set-fig-subview-btn' + (setFigResultsSubView === "PARTS" ? " active" : "") + '" data-subview="PARTS">Parts (' + partEntries.length + ')</button>'
+        + '</div>'
+      : '';
+
     var owned = [];
     var missing = [];
-    entries.forEach(function (e) {
+    activeEntries.forEach(function (e) {
       var bucket = setFigLookupMatch(e);
       // A manual "temp add to stock" quantity counts as in-stock here same
       // as a real inventory match — it moves the row into the In-stock
@@ -6594,11 +6630,23 @@
     var allMissingAdded = missing.length > 0 && missing.every(function (bucket) { return bucket.entry.wantedBankAdded; });
 
     container.innerHTML = headerHtml
-      + '<div class="inventory-summary-row"><span>' + owned.length + ' of ' + entries.length + ' parts/figs in stock</span></div>'
+      + subViewHtml
+      + '<div class="inventory-summary-row"><span>' + owned.length + ' of ' + activeEntries.length + ' ' + activeLabel + ' in stock</span></div>'
       + (owned.length ? '<div class="manage-inventory-hint">In stock</div>' + owned.map(rowHtml).join("") : '')
       + (missing.length
         ? '<div class="manage-inventory-hint set-fig-missing-hint"><span>Not in stock</span><button type="button" class="reset-btn" id="setFigAddAllWantedBtn"' + (allMissingAdded ? ' disabled' : '') + '>' + (allMissingAdded ? '✓ All added to wanted list' : 'Add all to wanted list') + '</button></div>' + missing.map(rowHtml).join("")
         : '');
+
+    // Switches which half of the split shows below — the rest of this
+    // function already works off `activeEntries`/`owned`/`missing`, which
+    // were computed for the tab active when this render started, so a
+    // click here just re-renders from scratch against the new tab.
+    container.querySelectorAll(".set-fig-subview-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        setFigResultsSubView = el.getAttribute("data-subview");
+        renderSetFigLookupResults();
+      });
+    });
 
     // Adds every not-yet-added row below in one tap — skips any row already
     // in the bank (e.g. added individually, or left over from a previous
