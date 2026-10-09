@@ -247,15 +247,16 @@
     color: inherit;
   }
   .order-card:active { background: var(--surface-alt); }
-  /* Blue, not the gold .needs-pick already uses for "still needs picked"
-     — a card that's merely unlogged in the spreadsheet reads as a
-     different kind of reminder, not a second "new order" flag. Declared
-     before .needs-pick so an order needing both (still picking AND not
-     yet logged) shows the picking reminder, the more time-sensitive of
-     the two, when the cascade has to pick one. */
-  .order-card.needs-log { background: var(--info-bg); }
-  .order-card.needs-log:active { background: var(--info-bg); filter: brightness(0.94); }
-  .order-card.needs-pick { background: var(--accent-soft); }
+  /* Blue outline, not the gold tint .needs-pick already uses for "still
+     needs picked" — a card that's merely unlogged in the spreadsheet
+     reads as a different kind of reminder (an outline, not a fill),
+     distinct from a second "new order" flag. Declared before .needs-pick
+     so an order needing both (still picking AND not yet logged) shows the
+     picking reminder, the more time-sensitive of the two, when the
+     cascade has to pick one — .needs-pick resets border-color back to
+     default so the blue outline doesn't linger under the gold fill. */
+  .order-card.needs-log { border-color: var(--info); border-width: 1.5px; }
+  .order-card.needs-pick { background: var(--accent-soft); border-color: var(--border); }
   .order-card.needs-pick:active { background: var(--accent-soft); filter: brightness(0.94); }
   /* A Completed order lingers in the list for a week (see orders.js) so
      Ryan can catch anything the buyer flags, but it's done — nothing left
@@ -301,8 +302,8 @@
   .status-action-btn.pickup-btn { color: var(--accent); border-color: var(--accent); }
   .status-action-btn.list-file-btn,
   .status-action-btn.file-order-btn { color: var(--text-secondary); border-color: var(--text-secondary); }
-  /* Same blue as .needs-log's card tint and the square "logged" badge —
-     one consistent color for the whole spreadsheet-logged feature. */
+  /* Same blue as .needs-log's card outline and the square "logged" badge
+     — one consistent color for the whole spreadsheet-logged feature. */
   .status-action-btn.to-logged { color: var(--info); border-color: var(--info); }
 
   .pickup-reminder-row {
@@ -894,18 +895,8 @@
   /* A manual mark gets the same green as a real inventory match (it reads
      as "in stock" either way) but a dashed accent border on top, so Ryan
      can still tell "really in my listed inventory" apart from "I just
-     ticked the box" at a glance. */
+     tapped Temp add to stock" at a glance. */
   .set-fig-match-row.manual-owned { border: 1px dashed var(--accent); }
-  .set-fig-manual-owned-toggle {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 8px;
-    font-size: 12.5px;
-    color: var(--text-secondary);
-    cursor: pointer;
-  }
-  .set-fig-manual-owned-toggle input[type="checkbox"] { margin: 0; cursor: pointer; }
   .set-fig-manual-qty-input {
     width: 52px;
     font-family: inherit;
@@ -916,7 +907,10 @@
     background: var(--surface);
     color: var(--text);
   }
-  .set-fig-wanted-bank-btn {
+  /* "Temp add to stock" and "Add to wanted list" share this look on
+     purpose — same dashed-outline-to-solid-fill toggle, since both are
+     the same kind of action: tap to flag something about this row. */
+  .set-fig-wanted-bank-btn, .set-fig-manual-owned-btn {
     display: block;
     margin-top: 8px;
     border: 1px dashed var(--accent);
@@ -929,7 +923,7 @@
     border-radius: 6px;
     cursor: pointer;
   }
-  .set-fig-wanted-bank-btn.added { border-style: solid; background: var(--accent); color: var(--accent-contrast); }
+  .set-fig-wanted-bank-btn.added, .set-fig-manual-owned-btn.added { border-style: solid; background: var(--accent); color: var(--accent-contrast); }
   /* Same reason Manage Inventory's .item-row.inventory-row needs this —
      the price-guide block is a third flex child (sibling of .item-thumb/
      .item-body) meant to drop to its own full-width line below them. */
@@ -1353,7 +1347,7 @@
   /* Square, not round, and blue rather than .given's accent gold — shape
      and color both differ so "logged in spreadsheet" never reads as a
      second feedback-given mark at a glance. Same blue as .needs-log's
-     card tint, so the whole logged-in-spreadsheet feature reads as one
+     card outline, so the whole logged-in-spreadsheet feature reads as one
      consistent color, distinct from feedback's gold. */
   .feedback-icon.logged { border-radius: 3px; color: var(--info); background: var(--info-bg); }
 
@@ -6473,24 +6467,24 @@
     } else {
       stockLine = ' · None in stock';
     }
-    // A stepper only makes sense when there's more than one to count up to
-    // — for a qty-1 need, on hand or not is the whole question, so it stays
-    // a plain checkbox (still writes into the same e.manualQty, just 0/1).
+    // Same button look/feel as "Add to wanted list" below — a dashed
+    // outline toggle that fills solid once active. Clicking it is the
+    // primary on/off gesture (0 or the full needed quantity); when there's
+    // more than one to count, a qty field rides alongside it so a partial
+    // amount (e.g. "I have 3 of the 6 needed") is still reachable, same
+    // capability the old number-input-only version had — the button just
+    // replaces the checkbox a qty-1 need used to need on its own.
     var manualFieldHtml;
     if (reallyOwned) {
       manualFieldHtml = '';
-    } else if (e.quantity > 1) {
-      manualFieldHtml = ''
-        + '<label class="set-fig-manual-owned-toggle">'
-        + '<span>Temp add to stock</span>'
-        + '<input type="number" class="set-fig-manual-qty-input" data-key="' + escapeHtml(e.key) + '" min="0" max="' + e.quantity + '" step="1" value="' + (e.manualQty || 0) + '">'
-        + '</label>';
     } else {
-      manualFieldHtml = ''
-        + '<label class="set-fig-manual-owned-toggle">'
-        + '<input type="checkbox" class="set-fig-manual-owned-checkbox" data-key="' + escapeHtml(e.key) + '"' + (e.manualQty > 0 ? ' checked' : '') + '>'
-        + ' Temp add to stock'
-        + '</label>';
+      var manualBtnLabel = manuallyOwned
+        ? '✓ Temp added' + (e.quantity > 1 ? ' ' + e.manualQty : '') + ' — tap to remove'
+        : '+ Temp add to stock';
+      manualFieldHtml = '<button type="button" class="set-fig-manual-owned-btn' + (manuallyOwned ? ' added' : '') + '" data-key="' + escapeHtml(e.key) + '">' + manualBtnLabel + '</button>';
+      if (e.quantity > 1) {
+        manualFieldHtml += '<label class="wanted-bank-qty-field"><span>Qty</span><input type="number" class="set-fig-manual-qty-input" data-key="' + escapeHtml(e.key) + '" min="0" max="' + e.quantity + '" step="1" value="' + (e.manualQty || 0) + '"></label>';
+      }
     }
     // Only a truly still-missing row (not reallyOwned, not temp-added) can
     // be queued for ordering — marking something "temp add to stock" says
@@ -6647,11 +6641,16 @@
     var exportXmlBtn = document.getElementById("setFigWantedListBtn");
     if (exportXmlBtn) exportXmlBtn.addEventListener("click", function () { downloadSetFigWantedListXml(missing); });
 
-    container.querySelectorAll(".set-fig-manual-owned-checkbox").forEach(function (el) {
-      el.addEventListener("change", function () {
+    // Toggles 0 <-> the full needed quantity — the primary on/off gesture,
+    // same as "Add to wanted list" below. The qty field (qty-1 needs don't
+    // get one) can still dial back to a partial amount afterward; its own
+    // "change" handler sets entry.manualQty directly, which this button's
+    // own label/active-state picks up again on the next render either way.
+    container.querySelectorAll(".set-fig-manual-owned-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
         var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
         if (!entry) return;
-        entry.manualQty = el.checked ? 1 : 0;
+        entry.manualQty = entry.manualQty > 0 ? 0 : entry.quantity;
         renderSetFigLookupResults();
       });
     });
