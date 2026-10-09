@@ -649,6 +649,10 @@
     color: var(--text-secondary);
     margin-top: 2px;
   }
+  /* Accent-colored rather than the plain secondary text .item-stock-count
+     uses — a glance-able "is this worth buying or parting out" number, on
+     purpose a little more visually prominent than the stock line above it. */
+  .item-avg-cost { font-size: 12.5px; font-weight: 600; color: var(--accent); margin-top: 2px; }
   .item-remarks {
     font-size: 12px;
     color: var(--danger);
@@ -4453,24 +4457,19 @@
     return '<a class="price-guide-view-link" href="' + escapeHtml(bricklinkCatalogUrl(row)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View on BrickLink ↗</a>';
   }
 
-  // New and Used used to render as two full, independently-scrolled lists
-  // of up to 25 listings each (each with its own "View on BrickLink" link)
-  // — a lot of scrolling on a phone, and two links to a page Ryan only
-  // ever wants filtered to US anyway, condition included or not. Merged
-  // into one list, cheapest-first across both conditions combined and
-  // capped at 25 total, with each row tagged New/Used next to its price
-  // instead of condition being implied by which list it's in.
-  // readOnly skips the "Tap a listing to use its price" hint — true for
-  // Set/Fig Lookup, which has no editable price/Condition field for a tap
-  // to fill in, same panel otherwise (stats lines, listing rows, collapse).
-  function renderPriceGuidePanel(row, readOnly) {
-    if (!row.priceExpanded) return "";
+  // Both conditions' listings merged, cheapest-first, capped at 25 — the
+  // same list the price-guide panel renders as rows, and what the Set/Fig
+  // Lookup row's own "rough cost" line (setFigLookupAvgCostHtml) averages.
+  // Pulled out as its own function so both read one definition of "the
+  // cheapest listings" rather than risking two slightly different copies.
+  // Returns null until both New and Used have finished loading (never
+  // computed off just one still-incomplete condition) — the panel shows
+  // its own "Loading…" placeholder on null; the row's cost line shows
+  // nothing at all rather than a loading flicker on every card.
+  function cheapestListings(row) {
     var stateN = priceGuideCache[priceGuideKey(row, "N")];
     var stateU = priceGuideCache[priceGuideKey(row, "U")];
-    if (!stateN || !stateU || stateN.loading || stateU.loading) {
-      return '<div class="price-guide-panel">Loading active US listings…</div>';
-    }
-
+    if (!stateN || !stateU || stateN.loading || stateU.loading) return null;
     var combined = [];
     ["N", "U"].forEach(function (cond) {
       var state = cond === "N" ? stateN : stateU;
@@ -4486,7 +4485,25 @@
       });
     });
     combined.sort(function (a, b) { return Number(a.unitPrice) - Number(b.unitPrice); });
-    combined = combined.slice(0, 25);
+    return combined.slice(0, 25);
+  }
+
+  // New and Used used to render as two full, independently-scrolled lists
+  // of up to 25 listings each (each with its own "View on BrickLink" link)
+  // — a lot of scrolling on a phone, and two links to a page Ryan only
+  // ever wants filtered to US anyway, condition included or not. Merged
+  // into one list, cheapest-first across both conditions combined and
+  // capped at 25 total, with each row tagged New/Used next to its price
+  // instead of condition being implied by which list it's in.
+  // readOnly skips the "Tap a listing to use its price" hint — true for
+  // Set/Fig Lookup, which has no editable price/Condition field for a tap
+  // to fill in, same panel otherwise (stats lines, listing rows, collapse).
+  function renderPriceGuidePanel(row, readOnly) {
+    if (!row.priceExpanded) return "";
+    var combined = cheapestListings(row);
+    if (combined === null) {
+      return '<div class="price-guide-panel">Loading active US listings…</div>';
+    }
 
     var rows = combined.map(function (l, idx) {
       var condLabel = l.cond === "U" ? "Used" : "New";
@@ -6455,6 +6472,24 @@
     return { entry: entry, haveQty: haveQty, avgPrice: haveQty ? totalValue / haveQty : 0 };
   }
 
+  // A rough "is it worth buying vs. parting out" signal on the row itself
+  // — averages the same cheapest-25-listings list the price-guide panel
+  // shows, not BrickLink's own Avg stat (which spans every listing of a
+  // condition, outliers included, and isn't what anyone actually pays for
+  // the cheap end of the market). Scoped to Set/Fig Lookup only, and only
+  // once Ryan has expanded "See active US listings" for this row at least
+  // once — fetching price data for every row on the page before that would
+  // mean dozens of BrickLink API calls per lookup, risking rate-limiting.
+  // Once fetched it's cached for the session (cheapestListings reads the
+  // same priceGuideCache the panel does), so this line keeps showing here
+  // even after the panel's collapsed again.
+  function setFigLookupAvgCostHtml(row) {
+    var combined = cheapestListings(row);
+    if (!combined || !combined.length) return "";
+    var avg = combined.reduce(function (sum, l) { return sum + Number(l.unitPrice); }, 0) / combined.length;
+    return '<div class="item-avg-cost">~' + escapeHtml(formatCurrency(avg, combined[0].currencyCode)) + ' avg · cheapest ' + combined.length + ' US listing' + (combined.length === 1 ? '' : 's') + '</div>';
+  }
+
   function setFigLookupRowHtml(bucket, colorsMap) {
     var e = bucket.entry;
     var pseudoItem = { type: e.type, itemNo: e.itemNo, colorId: e.colorId, newOrUsed: "N" };
@@ -6520,6 +6555,7 @@
       + '<div class="item-name">' + escapeHtml(decodeHtmlEntities(e.name || "")) + '</div>'
       + (isRealColorName(colorName) ? '<div class="item-color">' + escapeHtml(colorName) + '</div>' : '')
       + '<div class="item-stock-count">Needs ' + e.quantity + stockLine + '</div>'
+      + setFigLookupAvgCostHtml(e)
       + manualFieldHtml
       + wantedBankBtnHtml
       + '</div>'
