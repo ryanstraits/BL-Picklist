@@ -6815,10 +6815,10 @@
   // point being going through a whole lot's worth of partial minifigs one
   // at a time, adding each one's missing pieces here, then placing one
   // combined BrickLink order at the end (fewer sellers to buy from than
-  // ordering separately per minifig). Session-lifetime only, same as every
-  // other cache in this file — keyed by type+itemNo+colorId so the same
-  // part pulled in from two different lookups sums into one line instead
-  // of listing it twice.
+  // ordering separately per minifig). Durable across reloads (see
+  // pushWantedBankState/syncWantedBankFromRemote below) — keyed by
+  // type+itemNo+colorId so the same part pulled in from two different
+  // lookups sums into one line instead of listing it twice.
   var wantedListBank = {}; // key -> { type, itemNo, colorId, name, quantity, sources: [label, ...] }
 
   // Set on a failed import (bad file, nothing recognizable in it) so the
@@ -6856,6 +6856,7 @@
       };
     }
     updateWantedListBadge();
+    pushWantedBankState();
   }
 
   // Full removal — used by the Wanted List page's own Remove button,
@@ -6864,6 +6865,7 @@
   function removeFromWantedListBank(key) {
     delete wantedListBank[key];
     updateWantedListBadge();
+    pushWantedBankState();
   }
 
   // Partial removal — undoes exactly one Set/Fig Lookup row's own
@@ -6882,10 +6884,77 @@
       delete wantedListBank[key];
     }
     updateWantedListBadge();
+    pushWantedBankState();
   }
 
   function wantedListBankEntries() {
     return Object.keys(wantedListBank).map(function (k) { return { key: k, entry: wantedListBank[k] }; });
+  }
+
+  // Durability, same story and same backend as picks/order-actions (see
+  // pushRemoteState/syncStateFromRemote above): reuses /api/pick-state's
+  // Blobs store under a third key ("wantedListBank") rather than standing
+  // up a whole separate endpoint for one more small JSON blob. No
+  // localStorage mirror here (unlike picks) — this one follows the
+  // simpler order-actions precedent of remote-plus-in-memory-only, which
+  // is already what makes driveThruSent/feedbackSent survive a reload.
+  // Best-effort: a failed push just means the next successful one (the
+  // very next mutation, typically) catches it up.
+  function pushWantedBankState() {
+    postJSON("/api/pick-state?key=wantedListBank", wantedListBank).catch(function () { /* offline — ignore */ });
+  }
+
+  // Union by key, same "never lose progress" philosophy as mergeStates
+  // above — an item counts as still wanted if either side has it. Two
+  // conflicting quantities (this device edited one qty field while
+  // another sync was still pending) take the larger one rather than
+  // picking a side outright, so a stale remote value can't quietly
+  // undercut a quantity Ryan just raised; sources from both sides are
+  // combined so the "From:" line never drops a lot it was really pulled
+  // in from.
+  function mergeWantedBankEntries(a, b) {
+    var keys = {};
+    Object.keys(a || {}).forEach(function (k) { keys[k] = true; });
+    Object.keys(b || {}).forEach(function (k) { keys[k] = true; });
+    var merged = {};
+    Object.keys(keys).forEach(function (k) {
+      var ea = a && a[k], eb = b && b[k];
+      if (ea && eb) {
+        var sources = (ea.sources || []).slice();
+        (eb.sources || []).forEach(function (s) { if (sources.indexOf(s) === -1) sources.push(s); });
+        merged[k] = {
+          type: ea.type, itemNo: ea.itemNo, colorId: ea.colorId,
+          name: ea.name || eb.name || "",
+          quantity: Math.max(ea.quantity, eb.quantity),
+          sources: sources,
+        };
+      } else {
+        merged[k] = ea || eb;
+      }
+    });
+    return merged;
+  }
+
+  // Pulled once on app start (see startApp), same point pick-state and
+  // order-actions sync — reconciles whatever's survived in memory this
+  // session (normally nothing, on a fresh launch) against the durable
+  // remote copy, so jumping out of the app and back in later doesn't
+  // reset the bank back to empty.
+  var wantedBankSyncPromise = null;
+  function syncWantedBankFromRemote() {
+    wantedBankSyncPromise = fetchJSON("/api/pick-state?key=wantedListBank")
+      .then(function (remote) {
+        if (remote && typeof remote === "object") {
+          var merged = mergeWantedBankEntries(wantedListBank, remote);
+          var remoteNeedsUpdate = JSON.stringify(merged) !== JSON.stringify(remote);
+          wantedListBank = merged;
+          updateWantedListBadge();
+          if (remoteNeedsUpdate) pushWantedBankState();
+          if (currentView === "wanted-list") renderWantedListView();
+        }
+      })
+      .catch(function () { /* offline or first run — keep whatever's local */ });
+    return wantedBankSyncPromise;
   }
 
   // Combining lists from elsewhere — a BrickScan CSV export (same
@@ -7085,6 +7154,7 @@
       if (!window.confirm("Clear all " + rows.length + " item" + (rows.length === 1 ? "" : "s") + " from your wanted list?")) return;
       wantedListBank = {};
       updateWantedListBadge();
+      pushWantedBankState();
       renderWantedListResults(colorsMap);
     });
 
@@ -7099,6 +7169,7 @@
         var entry = wantedListBank[el.getAttribute("data-key")];
         if (!entry) return;
         entry.quantity = Math.max(1, parseInt(el.value, 10) || 1);
+        pushWantedBankState();
         renderWantedListResults(colorsMap);
       });
     });
@@ -7338,6 +7409,7 @@
     loadOrders();
     syncStateFromRemote();
     syncOrderActionsFromRemote();
+    syncWantedBankFromRemote();
   }
 
   function resumeCurrentView() {
