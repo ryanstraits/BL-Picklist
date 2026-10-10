@@ -178,11 +178,12 @@
   /* Category row (Orders/Inventory) is the persistent top-level switch —
      solid fill on whichever side is active. */
   .nav-tab-btn.active { background: var(--accent); color: var(--accent-contrast); border-style: solid; }
-  /* Sub-nav is one secondary "jump to the sibling page" link, so it reads
-     lighter/smaller than the two primary category buttons above it. */
-  /* flex-wrap, not the un-wrapped base row — a 4th sub-nav button
-     (Wanted List) can tip this row past 390px, where it should wrap to a
-     second line rather than overflow or get clipped. */
+  /* Sub-nav lists every page in the current category (3 for Orders, 4 for
+     Inventory), so it reads lighter/smaller than the two primary category
+     buttons above it. */
+  /* flex-wrap, not the un-wrapped base row — Inventory's 4 buttons don't
+     fit one line at 390px, so this wraps to a second line (consistently,
+     on every Inventory sub-page, rather than overflowing or clipping). */
   .topbar-row-subnav { margin-top: 8px; flex-wrap: wrap; row-gap: 6px; }
   .topbar-row-subnav .nav-tab-btn {
     flex: none;
@@ -1750,10 +1751,13 @@
       <button class="nav-tab-btn" id="categoryStatsBtn">Stats</button>
     </div>
     <div class="topbar-row topbar-row-nav topbar-row-subnav" id="topbarSubNavRow">
+      <button class="nav-tab-btn" id="orderListBtn">Order List</button>
       <button class="nav-tab-btn" id="orderLookupBtn">Order Lookup</button>
+      <button class="nav-tab-btn" id="labelPrepBtn">Label Prep</button>
+      <button class="nav-tab-btn" id="manageInventoryBtn">Manage</button>
       <button class="nav-tab-btn" id="setFigLookupBtn">Set/Fig Lookup</button>
       <button class="nav-tab-btn" id="wantedListBtn">Wanted List<span class="wanted-list-badge hidden" id="wantedListBadge">0</span></button>
-      <button class="nav-tab-btn" id="subNavBtn"></button>
+      <button class="nav-tab-btn" id="addInventoryBtn">+ Add</button>
     </div>
     <div class="order-progress-row hidden" id="topbarProgressRow">
       <div class="progress-track"><div class="progress-fill" id="topbarProgressFill" style="width:0%"></div></div>
@@ -2464,10 +2468,13 @@
   var categoryOrdersBtn = document.getElementById("categoryOrdersBtn");
   var categoryInventoryBtn = document.getElementById("categoryInventoryBtn");
   var categoryStatsBtn = document.getElementById("categoryStatsBtn");
-  var subNavBtn = document.getElementById("subNavBtn");
+  var orderListBtn = document.getElementById("orderListBtn");
   var orderLookupBtn = document.getElementById("orderLookupBtn");
+  var labelPrepBtn = document.getElementById("labelPrepBtn");
+  var manageInventoryBtn = document.getElementById("manageInventoryBtn");
   var setFigLookupBtn = document.getElementById("setFigLookupBtn");
   var wantedListBtn = document.getElementById("wantedListBtn");
+  var addInventoryBtn = document.getElementById("addInventoryBtn");
   var wantedListBadge = document.getElementById("wantedListBadge");
   var topbarProgressRow = document.getElementById("topbarProgressRow");
   var topbarProgressFill = document.getElementById("topbarProgressFill");
@@ -2487,20 +2494,19 @@
   var orderDetailReadOnly = false;
 
   // Two top-level categories — Orders (order list + Label Prep, since
-  // prepping a shipping label is part of order fulfillment) and Inventory
-  // (Manage Inventory + Add Inventory) — each with one secondary page to
-  // jump to via subNavBtn, whose label/handler this swaps per view rather
-  // than keeping a separate button element for every page. orderLookupBtn
-  // is a second, static sub-nav button rather than going through that same
-  // swap mechanism — Order Lookup is reachable from both Orders-category
-  // pages (the main list and Label Prep), not just one of them the way
-  // subNavBtn's single target always is — shown throughout the Orders
-  // category.
-  // subLabel/subHandler are optional — Stats has no sibling page to jump
-  // to the way Orders (↔ Label Prep) and Inventory (↔ Add Inventory) do,
-  // so subNavBtn's row just stays hidden for that category instead of
-  // wiring a click handler to nothing.
-  function setTopbarNav(category, subLabel, subHandler) {
+  // prepping a shipping label is part of order fulfillment, + Order
+  // Lookup) and Inventory (Manage Inventory + Add Inventory + Set/Fig
+  // Lookup + Wanted List) — every page in both gets its own persistent
+  // button here, including each category's own "home" page (Order List,
+  // Manage), rather than a single button whose label/handler swapped per
+  // view: with several sub-pages per category, a stable, always-visible
+  // set reads far more consistently than one whose membership (and which
+  // page even had a button at all) changed depending on where Ryan was.
+  // Each one stays visible (and clickable) throughout its category even
+  // while it's the page Ryan's already on, switching to the same
+  // solid-fill .active treatment the two primary category buttons above
+  // use instead of vanishing from the row.
+  function setTopbarNav(category) {
     topbarCategoryRow.style.display = "";
     topbarProgressRow.classList.add("hidden");
     topbarInventorySubmitRow.classList.add("hidden");
@@ -2508,24 +2514,23 @@
     categoryOrdersBtn.classList.toggle("active", category === "orders");
     categoryInventoryBtn.classList.toggle("active", category === "inventory");
     categoryStatsBtn.classList.toggle("active", category === "stats");
-    // Stays visible (and clickable) throughout its category even while
-    // it's the page Ryan's already on — same solid-fill .active treatment
-    // the category buttons above use — rather than vanishing from the
-    // row, which with several sub-pages per category made the row jump
-    // around depending on which one happened to be current.
+    orderListBtn.style.display = (category === "orders") ? "" : "none";
+    orderListBtn.classList.toggle("active", currentView === "orders");
     orderLookupBtn.style.display = (category === "orders") ? "" : "none";
     orderLookupBtn.classList.toggle("active", currentView === "order-lookup");
+    labelPrepBtn.style.display = (category === "orders") ? "" : "none";
+    labelPrepBtn.classList.toggle("active", currentView === "label-prep");
+    manageInventoryBtn.style.display = (category === "inventory") ? "" : "none";
+    manageInventoryBtn.classList.toggle("active", currentView === "manage-inventory");
     setFigLookupBtn.style.display = (category === "inventory") ? "" : "none";
     setFigLookupBtn.classList.toggle("active", currentView === "set-fig-lookup");
     wantedListBtn.style.display = (category === "inventory") ? "" : "none";
     wantedListBtn.classList.toggle("active", currentView === "wanted-list");
-    if (subLabel) {
-      topbarSubNavRow.style.display = "";
-      subNavBtn.textContent = subLabel;
-      subNavBtn.onclick = subHandler;
-    } else {
-      topbarSubNavRow.style.display = "none";
-    }
+    addInventoryBtn.style.display = (category === "inventory") ? "" : "none";
+    addInventoryBtn.classList.toggle("active", currentView === "inventory");
+    // Stats has no sibling pages to jump to, so the whole row stays
+    // hidden for that category instead of showing nothing clickable.
+    topbarSubNavRow.style.display = (category === "orders" || category === "inventory") ? "" : "none";
   }
 
   var appEl = document.getElementById("app");
@@ -7222,7 +7227,7 @@
     wantedListView.classList.add("hidden");
     ordersView.classList.remove("hidden");
     backBtn.style.display = "none";
-    setTopbarNav("orders", "Label Prep", goToLabelPrep);
+    setTopbarNav("orders");
     refreshBtn.style.display = "";
     refreshBtn.setAttribute("aria-label", "Refresh orders");
     brandSub.textContent = "Open BrickLink orders";
@@ -7241,7 +7246,7 @@
     wantedListView.classList.add("hidden");
     inventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
-    setTopbarNav("inventory", "Manage Inventory", goToManageInventory);
+    setTopbarNav("inventory");
     // Refresh only ever reloads Orders data (orders list, order items,
     // pick-state) — nothing on this screen, so hide it here rather than
     // leave a button that looks live but silently does nothing visible.
@@ -7262,7 +7267,7 @@
     wantedListView.classList.add("hidden");
     labelPrepView.classList.remove("hidden");
     backBtn.style.display = "none";
-    setTopbarNav("orders", "Order List", goToOrders);
+    setTopbarNav("orders");
     refreshBtn.style.display = "none";
     brandSub.textContent = "Label Prep";
     renderLabelPrepView();
@@ -7280,7 +7285,7 @@
     wantedListView.classList.add("hidden");
     manageInventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
-    setTopbarNav("inventory", "+ Add Inventory", goToInventory);
+    setTopbarNav("inventory");
     refreshBtn.style.display = "";
     refreshBtn.setAttribute("aria-label", "Refresh inventory");
     brandSub.textContent = "Manage Inventory";
@@ -7318,7 +7323,7 @@
     wantedListView.classList.add("hidden");
     orderLookupView.classList.remove("hidden");
     backBtn.style.display = "none";
-    setTopbarNav("orders", "Order List", goToOrders);
+    setTopbarNav("orders");
     refreshBtn.style.display = "none";
     brandSub.textContent = "Order Lookup";
     renderOrderLookupView();
@@ -7340,7 +7345,7 @@
     wantedListView.classList.add("hidden");
     setFigLookupView.classList.remove("hidden");
     backBtn.style.display = "none";
-    setTopbarNav("inventory", "Manage Inventory", goToManageInventory);
+    setTopbarNav("inventory");
     refreshBtn.style.display = "none";
     brandSub.textContent = "Set/Fig Lookup";
     renderSetFigLookupView();
@@ -7358,7 +7363,7 @@
     setFigLookupView.classList.add("hidden");
     wantedListView.classList.remove("hidden");
     backBtn.style.display = "none";
-    setTopbarNav("inventory", "Manage Inventory", goToManageInventory);
+    setTopbarNav("inventory");
     refreshBtn.style.display = "none";
     brandSub.textContent = "Wanted List";
     renderWantedListView();
@@ -7367,9 +7372,13 @@
   backBtn.addEventListener("click", function () {
     if (currentView === "order" && orderDetailReadOnly) goToOrderLookup(); else goToOrders();
   });
+  orderListBtn.addEventListener("click", goToOrders);
   orderLookupBtn.addEventListener("click", goToOrderLookup);
+  labelPrepBtn.addEventListener("click", goToLabelPrep);
+  manageInventoryBtn.addEventListener("click", goToManageInventory);
   setFigLookupBtn.addEventListener("click", goToSetFigLookup);
   wantedListBtn.addEventListener("click", goToWantedList);
+  addInventoryBtn.addEventListener("click", goToInventory);
   // Wired once here rather than per-render like the in-page submit
   // buttons — these topbar mirrors are static DOM nodes that live inside
   // <header>, never rebuilt by innerHTML, so a listener attached once
@@ -7422,10 +7431,10 @@
       resumeCurrentView();
     } else {
       appStarted = true;
-      // The topbar's category/sub-nav state is dynamic (subNavBtn starts
-      // with no label at all) — needs an explicit call here, not just
-      // from the goTo* functions, to be correct on this first load.
-      setTopbarNav("orders", "Label Prep", goToLabelPrep);
+      // The topbar's category/sub-nav state is dynamic — needs an
+      // explicit call here, not just from the goTo* functions, to be
+      // correct on this first load.
+      setTopbarNav("orders");
     }
     loadState();
     loadOrders();
