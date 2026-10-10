@@ -6814,6 +6814,12 @@
   // of listing it twice.
   var wantedListBank = {}; // key -> { type, itemNo, colorId, name, quantity, sources: [label, ...] }
 
+  // Set on a failed import (bad file, nothing recognizable in it) so the
+  // Wanted List page can show why, cleared on the next render once the
+  // message has been shown — not persisted past that, same lifetime as
+  // every other transient error block in this file.
+  var wantedBankImportError = null;
+
   function wantedListBankKey(type, itemNo, colorId) {
     return type + ":" + itemNo + ":" + (colorId || 0);
   }
@@ -6873,6 +6879,104 @@
 
   function wantedListBankEntries() {
     return Object.keys(wantedListBank).map(function (k) { return { key: k, entry: wantedListBank[k] }; });
+  }
+
+  // Combining lists from elsewhere — a BrickScan CSV export (same
+  // ITEMTYPE/ITEMID/COLOR/ITEMNAME/QTY columns csvObjToInventoryRow
+  // already parses for Add Inventory, just read as "how many wanted"
+  // instead of "how many owned") or a wanted-list XML (the same shape
+  // buildWantedListBankXml below exports, so a file Ryan exported from
+  // here earlier, or from BrickScan/BrickStock's own wanted-list export,
+  // comes back in the same way). Both funnel into addToWantedListBank
+  // exactly like a Set/Fig Lookup "+ Add to wanted list" tap would,
+  // merging with whatever's already in the bank rather than replacing it.
+  function csvObjToWantedListEntry(obj) {
+    var itemNo = (obj.ITEMID || "").trim();
+    if (!itemNo) return null;
+    return {
+      type: inventoryTypeWord(obj.ITEMTYPE),
+      itemNo: itemNo,
+      colorId: parseInt(obj.COLOR, 10) || 0,
+      name: decodeHtmlEntities(obj.ITEMNAME || ""),
+      quantity: parseInt(obj.QTY, 10) || 1,
+    };
+  }
+
+  function parseWantedListCsv(text) {
+    return csvTextToObjects(text)
+      .map(csvObjToWantedListEntry)
+      .filter(function (e) { return e !== null; });
+  }
+
+  // MINQTY is the wanted-list field (what buildWantedListBankXml writes);
+  // QTY is tolerated too in case a plain inventory-style XML gets dropped
+  // in here instead. No ITEMNAME in this format, so imported rows start
+  // with a blank name — same as any row would until BrickLink enriches it;
+  // item number/color/thumbnail still identify it fine on its own.
+  function parseWantedListXml(text) {
+    var doc = new DOMParser().parseFromString(text, "text/xml");
+    if (doc.querySelector("parsererror")) return [];
+    var entries = [];
+    doc.querySelectorAll("ITEM").forEach(function (item) {
+      var itemIdEl = item.querySelector("ITEMID");
+      var itemNo = itemIdEl ? itemIdEl.textContent.trim() : "";
+      if (!itemNo) return;
+      var typeEl = item.querySelector("ITEMTYPE");
+      var colorEl = item.querySelector("COLOR");
+      var qtyEl = item.querySelector("MINQTY") || item.querySelector("QTY");
+      entries.push({
+        type: inventoryTypeWord(typeEl ? typeEl.textContent : ""),
+        itemNo: itemNo,
+        colorId: colorEl ? (parseInt(colorEl.textContent, 10) || 0) : 0,
+        name: "",
+        quantity: qtyEl ? (parseInt(qtyEl.textContent, 10) || 1) : 1,
+      });
+    });
+    return entries;
+  }
+
+  // Sniffs by extension first, content second (a renamed or extension-
+  // less file still parses as whichever it actually is) — same forgiving
+  // approach as csvTextToObjects not caring what the file was called.
+  function handleWantedBankImportFile(file, colorsMap) {
+    file.text().then(function (text) {
+      var isXml = /\.xml$/i.test(file.name) || /^\s*</.test(text);
+      var entries = isXml ? parseWantedListXml(text) : parseWantedListCsv(text);
+      if (!entries.length) {
+        wantedBankImportError = "Couldn’t find any items in “" + file.name + "” — check it’s a BrickScan CSV export or a wanted-list XML file.";
+        renderWantedListResults(colorsMap);
+        return;
+      }
+      var sourceLabel = "Imported: " + file.name;
+      entries.forEach(function (e) { addToWantedListBank(e, sourceLabel); });
+      wantedBankImportError = null;
+      renderWantedListResults(colorsMap);
+    }).catch(function (err) {
+      wantedBankImportError = "Couldn’t read “" + file.name + "”: " + err.message;
+      renderWantedListResults(colorsMap);
+    });
+  }
+
+  // Shared by both the empty and populated Wanted List states — importing
+  // is how a list can start in the first place, not just something to do
+  // once it already has Set/Fig Lookup entries in it.
+  function wantedBankImportHtml() {
+    return '<div class="inventory-upload wanted-bank-import">'
+      + '<div class="inventory-intro" style="padding-top:0;">Combine another list in: import a BrickScan CSV export or a wanted-list XML file and it merges into the list below.</div>'
+      + '<input type="file" accept=".csv,.xml,text/csv,text/xml" class="inventory-file-input" id="wantedBankImportInput">'
+      + '</div>'
+      + (wantedBankImportError ? '<div class="state-block error">' + escapeHtml(wantedBankImportError) + '</div>' : '');
+  }
+
+  function wireWantedBankImport(colorsMap) {
+    var importInput = document.getElementById("wantedBankImportInput");
+    if (!importInput) return;
+    importInput.addEventListener("change", function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      handleWantedBankImportFile(file, colorsMap);
+      e.target.value = ""; // lets the same filename be picked again later
+    });
   }
 
   // BrickLink's classic Wanted List XML import format — same ITEMTYPE
@@ -6951,12 +7055,15 @@
   function renderWantedListResults(colorsMap) {
     var rows = wantedListBankEntries();
     if (!rows.length) {
-      wantedListView.innerHTML = '<div class="set-fig-lookup-intro">Nothing in your wanted list yet. From Set/Fig Lookup, tap “+ Add to wanted list” on anything not in stock — it collects here across as many lookups as you need, so you can place one combined BrickLink order instead of one per set or minifig.</div>';
+      wantedListView.innerHTML = '<div class="set-fig-lookup-intro">Nothing in your wanted list yet. From Set/Fig Lookup, tap “+ Add to wanted list” on anything not in stock — it collects here across as many lookups as you need, so you can place one combined BrickLink order instead of one per set or minifig.</div>'
+        + wantedBankImportHtml();
+      wireWantedBankImport(colorsMap);
       return;
     }
     var totalQty = rows.reduce(function (sum, r) { return sum + r.entry.quantity; }, 0);
     wantedListView.innerHTML = ''
-      + '<div class="set-fig-lookup-intro">Everything added from Set/Fig Lookup, across every lot gone through so far. Adjust quantities here if needed, then export or email the combined list to place one order.</div>'
+      + '<div class="set-fig-lookup-intro">Everything added from Set/Fig Lookup — or imported below — across every lot gone through so far. Adjust quantities here if needed, then export or email the combined list to place one order.</div>'
+      + wantedBankImportHtml()
       + '<div class="inventory-summary-row"><span>' + rows.length + ' part' + (rows.length === 1 ? '' : 's') + '/figs · ' + totalQty + ' total pieces</span></div>'
       + '<div class="wanted-bank-actions">'
       + '<button type="button" class="reset-btn" id="wantedBankExportBtn">Export wanted list XML</button>'
@@ -6965,6 +7072,7 @@
       + '</div>'
       + rows.map(function (r) { return wantedListBankRowHtml(r.key, r.entry, colorsMap); }).join("");
 
+    wireWantedBankImport(colorsMap);
     document.getElementById("wantedBankExportBtn").addEventListener("click", downloadWantedListBankXml);
     document.getElementById("wantedBankClearBtn").addEventListener("click", function () {
       if (!window.confirm("Clear all " + rows.length + " item" + (rows.length === 1 ? "" : "s") + " from your wanted list?")) return;
