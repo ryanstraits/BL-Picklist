@@ -194,11 +194,15 @@
   }
   .topbar-row-subnav .nav-tab-btn:active { background: var(--surface-alt); }
   /* The page you're actually on stays in this row rather than vanishing
-     — same solid-fill .active look the two primary category buttons use,
-     just with the border swapped to transparent (its own base border is
-     plain gray, not accent, so left alone it'd show as a mismatched ring
-     around the now-accent fill). */
-  .topbar-row-subnav .nav-tab-btn.active { border-color: transparent; }
+     — same solid-fill .active look the two primary category buttons use.
+     Both background and border-color need restating here, not just
+     border: the plain .nav-tab-btn.active rule above sets them, but
+     .topbar-row-subnav .nav-tab-btn (same specificity, declared after it)
+     sets background:none/border:1px solid var(--border) too — without
+     this override, that later same-specificity rule wins the cascade and
+     the "active" button would render with no fill and no border, nearly
+     invisible text floating with nothing around it. */
+  .topbar-row-subnav .nav-tab-btn.active { background: var(--accent); border-color: transparent; }
   .wanted-list-badge {
     display: inline-block;
     margin-left: 5px;
