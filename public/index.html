@@ -193,6 +193,12 @@
     border-radius: 6px;
   }
   .topbar-row-subnav .nav-tab-btn:active { background: var(--surface-alt); }
+  /* The page you're actually on stays in this row rather than vanishing
+     — same solid-fill .active look the two primary category buttons use,
+     just with the border swapped to transparent (its own base border is
+     plain gray, not accent, so left alone it'd show as a mismatched ring
+     around the now-accent fill). */
+  .topbar-row-subnav .nav-tab-btn.active { border-color: transparent; }
   .wanted-list-badge {
     display: inline-block;
     margin-left: 5px;
@@ -205,6 +211,10 @@
     font-weight: 700;
     line-height: 15px;
   }
+  /* Otherwise the badge (accent bg/contrast text) disappears into the
+     button's own now-accent fill once Wanted List is the active page —
+     flip it so it still reads as a badge sitting on top of the button. */
+  .nav-tab-btn.active .wanted-list-badge { background: var(--accent-contrast); color: var(--accent); }
 
   main { flex: 1; padding: 4px 16px 32px; }
 
@@ -2481,7 +2491,7 @@
   // swap mechanism — Order Lookup is reachable from both Orders-category
   // pages (the main list and Label Prep), not just one of them the way
   // subNavBtn's single target always is — shown throughout the Orders
-  // category and hidden only while already on Order Lookup itself.
+  // category.
   // subLabel/subHandler are optional — Stats has no sibling page to jump
   // to the way Orders (↔ Label Prep) and Inventory (↔ Add Inventory) do,
   // so subNavBtn's row just stays hidden for that category instead of
@@ -2494,9 +2504,17 @@
     categoryOrdersBtn.classList.toggle("active", category === "orders");
     categoryInventoryBtn.classList.toggle("active", category === "inventory");
     categoryStatsBtn.classList.toggle("active", category === "stats");
-    orderLookupBtn.style.display = (category === "orders" && currentView !== "order-lookup") ? "" : "none";
-    setFigLookupBtn.style.display = (category === "inventory" && currentView !== "set-fig-lookup") ? "" : "none";
-    wantedListBtn.style.display = (category === "inventory" && currentView !== "wanted-list") ? "" : "none";
+    // Stays visible (and clickable) throughout its category even while
+    // it's the page Ryan's already on — same solid-fill .active treatment
+    // the category buttons above use — rather than vanishing from the
+    // row, which with several sub-pages per category made the row jump
+    // around depending on which one happened to be current.
+    orderLookupBtn.style.display = (category === "orders") ? "" : "none";
+    orderLookupBtn.classList.toggle("active", currentView === "order-lookup");
+    setFigLookupBtn.style.display = (category === "inventory") ? "" : "none";
+    setFigLookupBtn.classList.toggle("active", currentView === "set-fig-lookup");
+    wantedListBtn.style.display = (category === "inventory") ? "" : "none";
+    wantedListBtn.classList.toggle("active", currentView === "wanted-list");
     if (subLabel) {
       topbarSubNavRow.style.display = "";
       subNavBtn.textContent = subLabel;
