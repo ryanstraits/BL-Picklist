@@ -738,6 +738,13 @@
     text-align: center;
   }
   .inventory-file-input { font-size: 13.5px; font-family: inherit; }
+  /* Unlike Add Inventory's own upload box (just a centered file input,
+     no text), this one carries an explanatory line above the input —
+     centered multi-line text reads oddly, so left-align it and give the
+     input row its own breathing room below it rather than sitting flush
+     under the last line of text. */
+  .wanted-bank-import { text-align: left; }
+  .wanted-bank-import .inventory-intro { padding-top: 0; margin-bottom: 14px; }
   .label-prep-canvas {
     display: block;
     width: 100%;
@@ -6962,7 +6969,7 @@
   // once it already has Set/Fig Lookup entries in it.
   function wantedBankImportHtml() {
     return '<div class="inventory-upload wanted-bank-import">'
-      + '<div class="inventory-intro" style="padding-top:0;">Combine another list in: import a BrickScan CSV export or a wanted-list XML file and it merges into the list below.</div>'
+      + '<div class="inventory-intro">Combine another list in: import a BrickScan CSV export or a wanted-list XML file and it merges into the list below.</div>'
       + '<input type="file" accept=".csv,.xml,text/csv,text/xml" class="inventory-file-input" id="wantedBankImportInput">'
       + '</div>'
       + (wantedBankImportError ? '<div class="state-block error">' + escapeHtml(wantedBankImportError) + '</div>' : '');
