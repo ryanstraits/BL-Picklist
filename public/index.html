@@ -4334,10 +4334,12 @@
   var inventoryRowCounter = 0;
 
   // Default condition write-up text, seeded into Description below only
-  // when BrickScan's own column comes through blank — never overwrites
-  // text Ryan (or BrickScan) already set. Still editable afterward on the
-  // review card. Remarks gets no such default (see csvObjToInventoryRow) —
-  // it stays blank unless the CSV actually has something in it.
+  // when BrickScan's REMARKS column comes through blank — never overwrites
+  // a condition note Ryan (or BrickScan) already wrote. Still editable
+  // afterward on the review card. Remarks itself always ends up blank on
+  // import (see csvObjToInventoryRow) — BrickScan's condition notes come
+  // through in REMARKS, not DESCRIPTION, so that's where this app reads
+  // them from, moving the cleaned-up text into Description instead.
   var DEFAULT_DESCRIPTION_USED = "Typical light playwear, otherwise excellent condition. Fast shipping!";
   var DEFAULT_DESCRIPTION_NEW = "Taken straight out of packaging. Fast shipping!";
 
@@ -4365,16 +4367,17 @@
   // against a real BrickScan export — plus BrickScan's own extra columns
   // (ITEMNAME/COLORNAME/...) used here only for display, never sent to
   // BrickLink. type/itemNo/colorId/newOrUsed are named to match thumbHtml's
-  // and catalogImageUrl's existing field expectations directly.
+  // and catalogImageUrl's existing field expectations directly. BrickScan
+  // puts Ryan's condition notes in REMARKS, so those (not DESCRIPTION) are
+  // what get cleaned up and moved into Description; Remarks is left blank
+  // either way.
   function csvObjToInventoryRow(obj) {
     var newOrUsed = (obj.CONDITION || "").trim().toUpperCase() === "U" ? "U" : "N";
-    var rawDescription = (obj.DESCRIPTION || "").trim();
-    var description = rawDescription
-      ? normalizeImportedDescription(rawDescription)
+    var rawConditionNote = (obj.REMARKS || "").trim();
+    var description = rawConditionNote
+      ? normalizeImportedDescription(rawConditionNote)
       : (newOrUsed === "U" ? DEFAULT_DESCRIPTION_USED : DEFAULT_DESCRIPTION_NEW);
-    // No default fallback here — unlike Description, Remarks stays blank
-    // unless the CSV actually carried something in that column.
-    var remarks = (obj.REMARKS || "").trim();
+    var remarks = "";
     return {
       key: "inv-" + (inventoryRowCounter++),
       include: true,
