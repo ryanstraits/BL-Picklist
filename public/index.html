@@ -6659,7 +6659,10 @@
   // The set/fig being looked up, not one of its parts — same card shell as
   // a match row minus the owned/needed stock line, same shared price-guide
   // helpers (item doubles as the "row" they expect, same as a subset entry
-  // does in setFigLookupRowHtml).
+  // does in setFigLookupRowHtml). Also gets the same "~avg · cheapest N US
+  // listings" line the part/fig rows below it already show — previously
+  // missing here, so the set itself was the only card in this list with a
+  // price panel but no rolled-up average once it'd been opened.
   function setFigLookupHeaderCardHtml(item) {
     var pseudoItem = { type: item.type, itemNo: item.itemNo, colorId: 0, newOrUsed: "N" };
     return '<div class="item-row set-fig-header-card">'
@@ -6670,6 +6673,7 @@
       + '<span class="item-line1-right"><span class="item-type-tag">' + escapeHtml(item.type) + '</span></span>'
       + '</div>'
       + '<div class="item-name">' + escapeHtml(decodeHtmlEntities(item.name) || "(name unknown)") + '</div>'
+      + setFigLookupAvgCostHtml(item)
       + '</div>'
       + '<div class="inventory-price-guide-block">'
       + '<div class="price-guide-header-row">'
