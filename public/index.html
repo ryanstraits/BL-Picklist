@@ -7117,13 +7117,31 @@
     ["ORIGINAL_BOX", "Original Box"], ["UNSORTED_LOT", "Unsorted Lot"],
   ];
 
+  // Color names, not IDs, in the manual add-by-number form below — Ryan
+  // doesn't have BrickLink's numeric color IDs memorized, but he does know
+  // "Dark Bluish Gray" when he sees it. "No color" (id 0) always leads the
+  // list for parts/sets that aren't colored; real colors are sorted
+  // alphabetically after it. isRealColorName filters out colorsMap's own
+  // placeholder entry (id 0, "Not Applicable") so it isn't listed twice.
+  function wantedManualColorOptionsHtml(colorsMap, selectedColorId) {
+    var entries = Object.keys(colorsMap || {})
+      .map(function (id) { return { id: parseInt(id, 10), name: colorsMap[id] }; })
+      .filter(function (c) { return isRealColorName(c.name); })
+      .sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var options = '<option value="0"' + (!selectedColorId ? ' selected' : '') + '>No color</option>';
+    options += entries.map(function (c) {
+      return '<option value="' + c.id + '"' + (c.id === selectedColorId ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>';
+    }).join("");
+    return options;
+  }
+
   // Quick add-by-number, for a part Ryan already knows he needs rather
   // than one surfaced by a Set/Fig Lookup — just an item-number field and
   // an Add button until that's filled in, then expands (via
   // wantedManualDraft) to ask for type/color/qty before it actually lands
   // in the bank, since a bare item number alone isn't enough to place a
   // real BrickLink order with.
-  function wantedManualAddHtml() {
+  function wantedManualAddHtml(colorsMap) {
     var draft = wantedManualDraft;
     var html = '<div class="wanted-manual-add">'
       + '<div class="wanted-manual-itemno-row">'
@@ -7137,7 +7155,7 @@
             return '<option value="' + opt[0] + '"' + (draft.type === opt[0] ? ' selected' : '') + '>' + opt[1] + '</option>';
           }).join("")
         + '</select></div>'
-        + '<div class="inventory-field"><label>Color ID</label><input type="number" min="0" id="wantedManualColorInput" value="' + draft.colorId + '"></div>'
+        + '<div class="inventory-field"><label>Color</label><select id="wantedManualColorInput">' + wantedManualColorOptionsHtml(colorsMap, draft.colorId) + '</select></div>'
         + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" id="wantedManualQtyInput" value="' + draft.quantity + '"></div>'
         + '</div>'
         + '<div class="wanted-manual-actions">'
@@ -7152,13 +7170,13 @@
   // (and now the manual add-by-number form below it) is how a list can
   // start in the first place, not just something to do once it already
   // has Set/Fig Lookup entries in it.
-  function wantedBankImportHtml() {
+  function wantedBankImportHtml(colorsMap) {
     return '<div class="inventory-upload wanted-bank-import">'
       + '<div class="inventory-intro">Combine another list in: import a BrickScan CSV export or a wanted-list XML file and it merges into the list below.</div>'
       + '<input type="file" accept=".csv,.xml,text/csv,text/xml" class="inventory-file-input" id="wantedBankImportInput">'
       + '</div>'
       + (wantedBankImportError ? '<div class="state-block error">' + escapeHtml(wantedBankImportError) + '</div>' : '')
-      + wantedManualAddHtml();
+      + wantedManualAddHtml(colorsMap);
   }
 
   function wireWantedBankImport(colorsMap) {
@@ -7307,14 +7325,14 @@
     var rows = wantedListBankEntries();
     if (!rows.length) {
       wantedListView.innerHTML = '<div class="set-fig-lookup-intro">Nothing in your wanted list yet. From Set/Fig Lookup, tap “+ Add to wanted list” on anything not in stock — it collects here across as many lookups as you need, so you can place one combined BrickLink order instead of one per set or minifig.</div>'
-        + wantedBankImportHtml();
+        + wantedBankImportHtml(colorsMap);
       wireWantedBankImport(colorsMap);
       return;
     }
     var totalQty = rows.reduce(function (sum, r) { return sum + r.entry.quantity; }, 0);
     wantedListView.innerHTML = ''
       + '<div class="set-fig-lookup-intro">Everything added from Set/Fig Lookup — or imported below — across every lot gone through so far. Adjust quantities here if needed, then export or email the combined list to place one order.</div>'
-      + wantedBankImportHtml()
+      + wantedBankImportHtml(colorsMap)
       + '<div class="inventory-summary-row"><span>' + rows.length + ' part' + (rows.length === 1 ? '' : 's') + '/figs · ' + totalQty + ' total pieces</span></div>'
       + '<div class="wanted-bank-actions">'
       + '<button type="button" class="reset-btn" id="wantedBankExportBtn">Export wanted list XML</button>'
