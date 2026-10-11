@@ -774,7 +774,7 @@
     color: var(--text);
   }
   .wanted-manual-fields { margin-top: 10px; }
-  .wanted-manual-name-field { grid-column: 1 / -1; }
+  .wanted-manual-name-preview { margin-top: 10px; }
   .wanted-manual-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .label-prep-canvas {
     display: block;
@@ -7157,6 +7157,12 @@
       + '<button type="button" class="reset-btn" id="wantedManualAddBtn">Add</button>'
       + '</div>';
     if (draft) {
+      // Read-only — not a field Ryan fills in, just the looked-up catalog
+      // name shown back so he can see what's about to be added (same text
+      // that'll appear as the row's own .item-name once confirmed). While
+      // it's resolving, Confirm is disabled rather than letting the add go
+      // through with a name that hasn't loaded yet.
+      var namePreviewText = draft.nameLoading ? "Looking up name…" : (draft.name || "Name not found — will add without one");
       html += '<div class="inventory-fields wanted-manual-fields">'
         + '<div class="inventory-field"><label>Type</label><select id="wantedManualTypeSelect">'
         + WANTED_MANUAL_TYPE_OPTIONS.map(function (opt) {
@@ -7165,10 +7171,10 @@
         + '</select></div>'
         + '<div class="inventory-field"><label>Color</label><select id="wantedManualColorInput">' + wantedManualColorOptionsHtml(colorsMap, draft.colorId) + '</select></div>'
         + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" id="wantedManualQtyInput" value="' + draft.quantity + '"></div>'
-        + '<div class="inventory-field wanted-manual-name-field"><label>Name</label><input type="text" id="wantedManualNameInput" placeholder="' + (draft.nameLoading ? 'Looking up…' : 'Name (not found — type it in)') + '" value="' + escapeHtml(draft.name || "") + '"' + (draft.nameLoading ? ' disabled' : '') + '></div>'
         + '</div>'
+        + '<div class="item-name wanted-manual-name-preview">' + escapeHtml(namePreviewText) + '</div>'
         + '<div class="wanted-manual-actions">'
-        + '<button type="button" class="reset-btn" id="wantedManualConfirmBtn">+ Add to wanted list</button>'
+        + '<button type="button" class="reset-btn" id="wantedManualConfirmBtn"' + (draft.nameLoading ? ' disabled' : '') + '>+ Add to wanted list</button>'
         + '<button type="button" class="reset-btn" id="wantedManualCancelBtn">Cancel</button>'
         + '</div>';
     }
@@ -7205,8 +7211,10 @@
     // of sitting there with a blank name. Guarded by wantedManualLookupSeq
     // so a slow response for an item number Ryan's since changed or typed
     // over doesn't clobber what's current. A miss (typo, or a real
-    // BrickLink 404) just leaves the Name field blank and editable — it's
-    // never a reason the item can't still be added.
+    // BrickLink 404) just leaves the name blank — it's never a reason the
+    // item can't still be added. Confirm is disabled while this is in
+    // flight (see wantedManualAddHtml), so the entry's name is always
+    // whatever's settled here, never a half-loaded value.
     function lookupManualItemName(itemNo, type) {
       var requestId = ++wantedManualLookupSeq;
       if (wantedManualDraft) {
@@ -7242,7 +7250,6 @@
         var typeSelect = document.getElementById("wantedManualTypeSelect");
         var colorInput = document.getElementById("wantedManualColorInput");
         var qtyInput = document.getElementById("wantedManualQtyInput");
-        var nameInput = document.getElementById("wantedManualNameInput");
         var prevItemNo = wantedManualDraft && wantedManualDraft.itemNo;
         var prevType = wantedManualDraft && wantedManualDraft.type;
         var type = typeSelect ? typeSelect.value : (prevType || "PART");
@@ -7251,7 +7258,7 @@
           type: type,
           colorId: colorInput ? (parseInt(colorInput.value, 10) || 0) : ((wantedManualDraft && wantedManualDraft.colorId) || 0),
           quantity: qtyInput ? Math.max(1, parseInt(qtyInput.value, 10) || 1) : ((wantedManualDraft && wantedManualDraft.quantity) || 1),
-          name: nameInput ? nameInput.value : ((wantedManualDraft && wantedManualDraft.name) || ""),
+          name: (wantedManualDraft && wantedManualDraft.name) || "",
         };
         renderWantedListResults(colorsMap);
         if (itemNo !== prevItemNo || type !== prevType) lookupManualItemName(itemNo, type);
@@ -7278,19 +7285,23 @@
     var manualConfirmBtn = document.getElementById("wantedManualConfirmBtn");
     if (manualConfirmBtn) {
       manualConfirmBtn.addEventListener("click", function () {
+        // Belt-and-suspenders against the button's own disabled state —
+        // never add with a name lookup still in flight, since that's
+        // exactly the half-loaded value this button being disabled while
+        // loading is meant to prevent.
+        if (!wantedManualDraft || wantedManualDraft.nameLoading) return;
         var itemNo = document.getElementById("wantedManualItemNoInput").value.trim();
         if (!itemNo) return;
         var typeSelect = document.getElementById("wantedManualTypeSelect");
         var colorInput = document.getElementById("wantedManualColorInput");
         var qtyInput = document.getElementById("wantedManualQtyInput");
-        var nameInput = document.getElementById("wantedManualNameInput");
         // No sourceLabel — a manual add has no "lot" it came from, same
         // reasoning as dropping the imported-file label above.
         addToWantedListBank({
           type: typeSelect.value,
           itemNo: itemNo,
           colorId: parseInt(colorInput.value, 10) || 0,
-          name: nameInput ? nameInput.value.trim() : "",
+          name: wantedManualDraft.name || "",
           quantity: Math.max(1, parseInt(qtyInput.value, 10) || 1),
         });
         wantedManualDraft = null;
