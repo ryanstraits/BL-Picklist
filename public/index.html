@@ -760,6 +760,21 @@
      under the last line of text. */
   .wanted-bank-import { text-align: left; }
   .wanted-bank-import .inventory-intro { padding-top: 0; margin-bottom: 14px; }
+  .wanted-manual-add { margin-top: 16px; }
+  .wanted-manual-itemno-row { display: flex; gap: 8px; }
+  .wanted-manual-itemno-input {
+    flex: 1;
+    min-width: 0;
+    font-family: inherit;
+    font-size: 13px;
+    padding: 7px 9px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .wanted-manual-fields { margin-top: 10px; }
+  .wanted-manual-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .label-prep-canvas {
     display: block;
     width: 100%;
@@ -6877,6 +6892,13 @@
   // every other transient error block in this file.
   var wantedBankImportError = null;
 
+  // Non-null while the quick "add a single item by number" form is mid-
+  // entry — set once an item number's been typed and "Add" tapped, which
+  // expands the form to also ask for type/color/qty before the item
+  // actually lands in the bank. Cleared back to null on confirm or cancel,
+  // same transient-UI-state lifetime as wantedBankImportError above.
+  var wantedManualDraft = null;
+
   function wantedListBankKey(type, itemNo, colorId) {
     return type + ":" + itemNo + ":" + (colorId || 0);
   }
@@ -7073,8 +7095,10 @@
         renderWantedListResults(colorsMap);
         return;
       }
-      var sourceLabel = "Imported: " + file.name;
-      entries.forEach(function (e) { addToWantedListBank(e, sourceLabel); });
+      // No sourceLabel here (unlike a Set/Fig Lookup add) — every BrickScan
+      // export shares the same file name, so "Imported: <name>" told
+      // nothing a plain list of items didn't already say.
+      entries.forEach(function (e) { addToWantedListBank(e); });
       wantedBankImportError = null;
       renderWantedListResults(colorsMap);
     }).catch(function (err) {
@@ -7083,26 +7107,127 @@
     });
   }
 
+  // Friendly labels for the manual quick-add's Type select — same words
+  // INVENTORY_TYPE_CODE_TO_WORD already maps BrickScan's single-letter
+  // codes to, just Title Cased for display; Part/Minifig/Set first since
+  // those are what Ryan's actually typing in here day to day.
+  var WANTED_MANUAL_TYPE_OPTIONS = [
+    ["PART", "Part"], ["MINIFIG", "Minifig"], ["SET", "Set"], ["BOOK", "Book"],
+    ["GEAR", "Gear"], ["CATALOG", "Catalog"], ["INSTRUCTION", "Instructions"],
+    ["ORIGINAL_BOX", "Original Box"], ["UNSORTED_LOT", "Unsorted Lot"],
+  ];
+
+  // Quick add-by-number, for a part Ryan already knows he needs rather
+  // than one surfaced by a Set/Fig Lookup — just an item-number field and
+  // an Add button until that's filled in, then expands (via
+  // wantedManualDraft) to ask for type/color/qty before it actually lands
+  // in the bank, since a bare item number alone isn't enough to place a
+  // real BrickLink order with.
+  function wantedManualAddHtml() {
+    var draft = wantedManualDraft;
+    var html = '<div class="wanted-manual-add">'
+      + '<div class="wanted-manual-itemno-row">'
+      + '<input type="text" class="wanted-manual-itemno-input" id="wantedManualItemNoInput" placeholder="Add a part/set/fig by number" value="' + escapeHtml(draft ? draft.itemNo : "") + '">'
+      + '<button type="button" class="reset-btn" id="wantedManualAddBtn">Add</button>'
+      + '</div>';
+    if (draft) {
+      html += '<div class="inventory-fields wanted-manual-fields">'
+        + '<div class="inventory-field"><label>Type</label><select id="wantedManualTypeSelect">'
+        + WANTED_MANUAL_TYPE_OPTIONS.map(function (opt) {
+            return '<option value="' + opt[0] + '"' + (draft.type === opt[0] ? ' selected' : '') + '>' + opt[1] + '</option>';
+          }).join("")
+        + '</select></div>'
+        + '<div class="inventory-field"><label>Color ID</label><input type="number" min="0" id="wantedManualColorInput" value="' + draft.colorId + '"></div>'
+        + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" id="wantedManualQtyInput" value="' + draft.quantity + '"></div>'
+        + '</div>'
+        + '<div class="wanted-manual-actions">'
+        + '<button type="button" class="reset-btn" id="wantedManualConfirmBtn">+ Add to wanted list</button>'
+        + '<button type="button" class="reset-btn" id="wantedManualCancelBtn">Cancel</button>'
+        + '</div>';
+    }
+    return html + '</div>';
+  }
+
   // Shared by both the empty and populated Wanted List states — importing
-  // is how a list can start in the first place, not just something to do
-  // once it already has Set/Fig Lookup entries in it.
+  // (and now the manual add-by-number form below it) is how a list can
+  // start in the first place, not just something to do once it already
+  // has Set/Fig Lookup entries in it.
   function wantedBankImportHtml() {
     return '<div class="inventory-upload wanted-bank-import">'
       + '<div class="inventory-intro">Combine another list in: import a BrickScan CSV export or a wanted-list XML file and it merges into the list below.</div>'
       + '<input type="file" accept=".csv,.xml,text/csv,text/xml" class="inventory-file-input" id="wantedBankImportInput">'
       + '</div>'
-      + (wantedBankImportError ? '<div class="state-block error">' + escapeHtml(wantedBankImportError) + '</div>' : '');
+      + (wantedBankImportError ? '<div class="state-block error">' + escapeHtml(wantedBankImportError) + '</div>' : '')
+      + wantedManualAddHtml();
   }
 
   function wireWantedBankImport(colorsMap) {
     var importInput = document.getElementById("wantedBankImportInput");
-    if (!importInput) return;
-    importInput.addEventListener("change", function (e) {
-      var file = e.target.files && e.target.files[0];
-      if (!file) return;
-      handleWantedBankImportFile(file, colorsMap);
-      e.target.value = ""; // lets the same filename be picked again later
-    });
+    if (importInput) {
+      importInput.addEventListener("change", function (e) {
+        var file = e.target.files && e.target.files[0];
+        if (!file) return;
+        handleWantedBankImportFile(file, colorsMap);
+        e.target.value = ""; // lets the same filename be picked again later
+      });
+    }
+
+    var manualItemNoInput = document.getElementById("wantedManualItemNoInput");
+    var manualAddBtn = document.getElementById("wantedManualAddBtn");
+    if (manualItemNoInput && manualAddBtn) {
+      // Reads whatever's currently in the expanded fields (if they're
+      // showing) rather than always resetting to defaults, so re-tapping
+      // Add to fix a typo in the item number doesn't also wipe out a
+      // color/qty already filled in.
+      var startOrSyncManualDraft = function () {
+        var itemNo = manualItemNoInput.value.trim();
+        if (!itemNo) return;
+        var typeSelect = document.getElementById("wantedManualTypeSelect");
+        var colorInput = document.getElementById("wantedManualColorInput");
+        var qtyInput = document.getElementById("wantedManualQtyInput");
+        wantedManualDraft = {
+          itemNo: itemNo,
+          type: typeSelect ? typeSelect.value : ((wantedManualDraft && wantedManualDraft.type) || "PART"),
+          colorId: colorInput ? (parseInt(colorInput.value, 10) || 0) : ((wantedManualDraft && wantedManualDraft.colorId) || 0),
+          quantity: qtyInput ? Math.max(1, parseInt(qtyInput.value, 10) || 1) : ((wantedManualDraft && wantedManualDraft.quantity) || 1),
+        };
+        renderWantedListResults(colorsMap);
+      };
+      manualAddBtn.addEventListener("click", startOrSyncManualDraft);
+      manualItemNoInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); startOrSyncManualDraft(); }
+      });
+    }
+
+    var manualConfirmBtn = document.getElementById("wantedManualConfirmBtn");
+    if (manualConfirmBtn) {
+      manualConfirmBtn.addEventListener("click", function () {
+        var itemNo = document.getElementById("wantedManualItemNoInput").value.trim();
+        if (!itemNo) return;
+        var typeSelect = document.getElementById("wantedManualTypeSelect");
+        var colorInput = document.getElementById("wantedManualColorInput");
+        var qtyInput = document.getElementById("wantedManualQtyInput");
+        // No sourceLabel — a manual add has no "lot" it came from, same
+        // reasoning as dropping the imported-file label above.
+        addToWantedListBank({
+          type: typeSelect.value,
+          itemNo: itemNo,
+          colorId: parseInt(colorInput.value, 10) || 0,
+          name: "",
+          quantity: Math.max(1, parseInt(qtyInput.value, 10) || 1),
+        });
+        wantedManualDraft = null;
+        renderWantedListResults(colorsMap);
+      });
+    }
+
+    var manualCancelBtn = document.getElementById("wantedManualCancelBtn");
+    if (manualCancelBtn) {
+      manualCancelBtn.addEventListener("click", function () {
+        wantedManualDraft = null;
+        renderWantedListResults(colorsMap);
+      });
+    }
   }
 
   // BrickLink's classic Wanted List XML import format — same ITEMTYPE
