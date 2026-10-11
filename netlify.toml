@@ -141,3 +141,8 @@
   to = "/.netlify/functions/item-subsets"
   status = 200
 
+[[redirects]]
+  from = "/api/item-lookup"
+  to = "/.netlify/functions/item-lookup"
+  status = 200
+

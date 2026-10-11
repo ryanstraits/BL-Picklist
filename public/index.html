@@ -774,6 +774,7 @@
     color: var(--text);
   }
   .wanted-manual-fields { margin-top: 10px; }
+  .wanted-manual-name-field { grid-column: 1 / -1; }
   .wanted-manual-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .label-prep-canvas {
     display: block;
@@ -6894,10 +6895,17 @@
 
   // Non-null while the quick "add a single item by number" form is mid-
   // entry — set once an item number's been typed and "Add" tapped, which
-  // expands the form to also ask for type/color/qty before the item
-  // actually lands in the bank. Cleared back to null on confirm or cancel,
-  // same transient-UI-state lifetime as wantedBankImportError above.
+  // expands the form to also ask for type/color/qty (plus name, looked up
+  // automatically — see lookupManualItemName) before the item actually
+  // lands in the bank. Cleared back to null on confirm or cancel, same
+  // transient-UI-state lifetime as wantedBankImportError above.
   var wantedManualDraft = null;
+
+  // Bumped on every name lookup kicked off for the manual add form, so a
+  // slow/late response for an item number Ryan's since changed or typed
+  // over doesn't land on top of whatever's current — only the response
+  // matching the latest-issued id is applied.
+  var wantedManualLookupSeq = 0;
 
   function wantedListBankKey(type, itemNo, colorId) {
     return type + ":" + itemNo + ":" + (colorId || 0);
@@ -7157,6 +7165,7 @@
         + '</select></div>'
         + '<div class="inventory-field"><label>Color</label><select id="wantedManualColorInput">' + wantedManualColorOptionsHtml(colorsMap, draft.colorId) + '</select></div>'
         + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" id="wantedManualQtyInput" value="' + draft.quantity + '"></div>'
+        + '<div class="inventory-field wanted-manual-name-field"><label>Name</label><input type="text" id="wantedManualNameInput" placeholder="' + (draft.nameLoading ? 'Looking up…' : 'Name (not found — type it in)') + '" value="' + escapeHtml(draft.name || "") + '"' + (draft.nameLoading ? ' disabled' : '') + '></div>'
         + '</div>'
         + '<div class="wanted-manual-actions">'
         + '<button type="button" class="reset-btn" id="wantedManualConfirmBtn">+ Add to wanted list</button>'
@@ -7190,30 +7199,79 @@
       });
     }
 
+    // Looks up a typed-in item's catalog name (same Get Item BrickLink
+    // call item-subsets.js already makes for a set/fig's own header card)
+    // so a manually-added row ends up looking like any other row instead
+    // of sitting there with a blank name. Guarded by wantedManualLookupSeq
+    // so a slow response for an item number Ryan's since changed or typed
+    // over doesn't clobber what's current. A miss (typo, or a real
+    // BrickLink 404) just leaves the Name field blank and editable — it's
+    // never a reason the item can't still be added.
+    function lookupManualItemName(itemNo, type) {
+      var requestId = ++wantedManualLookupSeq;
+      if (wantedManualDraft) {
+        wantedManualDraft.nameLoading = true;
+        renderWantedListResults(colorsMap);
+      }
+      fetchJSON("/api/item-lookup?type=" + encodeURIComponent(type) + "&no=" + encodeURIComponent(itemNo))
+        .then(function (data) {
+          if (requestId !== wantedManualLookupSeq || !wantedManualDraft) return;
+          wantedManualDraft.name = (data && data.item && data.item.name) || "";
+          wantedManualDraft.nameLoading = false;
+          renderWantedListResults(colorsMap);
+        })
+        .catch(function () {
+          if (requestId !== wantedManualLookupSeq || !wantedManualDraft) return;
+          wantedManualDraft.nameLoading = false;
+          renderWantedListResults(colorsMap);
+        });
+    }
+
     var manualItemNoInput = document.getElementById("wantedManualItemNoInput");
     var manualAddBtn = document.getElementById("wantedManualAddBtn");
     if (manualItemNoInput && manualAddBtn) {
       // Reads whatever's currently in the expanded fields (if they're
       // showing) rather than always resetting to defaults, so re-tapping
       // Add to fix a typo in the item number doesn't also wipe out a
-      // color/qty already filled in.
+      // color/qty already filled in. Only re-triggers the name lookup when
+      // the item number or type actually changed, so fixing a qty typo
+      // doesn't re-fire it pointlessly.
       var startOrSyncManualDraft = function () {
         var itemNo = manualItemNoInput.value.trim();
         if (!itemNo) return;
         var typeSelect = document.getElementById("wantedManualTypeSelect");
         var colorInput = document.getElementById("wantedManualColorInput");
         var qtyInput = document.getElementById("wantedManualQtyInput");
+        var nameInput = document.getElementById("wantedManualNameInput");
+        var prevItemNo = wantedManualDraft && wantedManualDraft.itemNo;
+        var prevType = wantedManualDraft && wantedManualDraft.type;
+        var type = typeSelect ? typeSelect.value : (prevType || "PART");
         wantedManualDraft = {
           itemNo: itemNo,
-          type: typeSelect ? typeSelect.value : ((wantedManualDraft && wantedManualDraft.type) || "PART"),
+          type: type,
           colorId: colorInput ? (parseInt(colorInput.value, 10) || 0) : ((wantedManualDraft && wantedManualDraft.colorId) || 0),
           quantity: qtyInput ? Math.max(1, parseInt(qtyInput.value, 10) || 1) : ((wantedManualDraft && wantedManualDraft.quantity) || 1),
+          name: nameInput ? nameInput.value : ((wantedManualDraft && wantedManualDraft.name) || ""),
         };
         renderWantedListResults(colorsMap);
+        if (itemNo !== prevItemNo || type !== prevType) lookupManualItemName(itemNo, type);
       };
       manualAddBtn.addEventListener("click", startOrSyncManualDraft);
       manualItemNoInput.addEventListener("keydown", function (e) {
         if (e.key === "Enter") { e.preventDefault(); startOrSyncManualDraft(); }
+      });
+    }
+
+    var manualTypeSelect = document.getElementById("wantedManualTypeSelect");
+    if (manualTypeSelect) {
+      // Re-looks-up on a type change too (same item number can be a PART
+      // in one type and genuinely not exist as a SET, or vice versa) —
+      // without this, picking the right type after Add already fired the
+      // first lookup would leave a stale or blank name sitting there.
+      manualTypeSelect.addEventListener("change", function () {
+        if (!wantedManualDraft) return;
+        wantedManualDraft.type = manualTypeSelect.value;
+        lookupManualItemName(wantedManualDraft.itemNo, wantedManualDraft.type);
       });
     }
 
@@ -7225,13 +7283,14 @@
         var typeSelect = document.getElementById("wantedManualTypeSelect");
         var colorInput = document.getElementById("wantedManualColorInput");
         var qtyInput = document.getElementById("wantedManualQtyInput");
+        var nameInput = document.getElementById("wantedManualNameInput");
         // No sourceLabel — a manual add has no "lot" it came from, same
         // reasoning as dropping the imported-file label above.
         addToWantedListBank({
           type: typeSelect.value,
           itemNo: itemNo,
           colorId: parseInt(colorInput.value, 10) || 0,
-          name: "",
+          name: nameInput ? nameInput.value.trim() : "",
           quantity: Math.max(1, parseInt(qtyInput.value, 10) || 1),
         });
         wantedManualDraft = null;
@@ -7248,6 +7307,21 @@
     }
   }
 
+  // A source label logged before CSV/XML imports (and manual adds) stopped
+  // attaching one — see handleWantedBankImportFile and the manual add
+  // confirm handler above, both of which used to stamp "Imported:
+  // <filename>" on every row (every BrickScan export shares the same file
+  // name, so it was pure noise). Entries added back then can still carry
+  // that label in their stored sources array; filtering it out here at
+  // display/export time (rather than needing a one-time migration of
+  // whatever's already saved) keeps both the Wanted List page and the
+  // exported/emailed XML's REMARKS free of it, while still showing a real
+  // Set/Fig Lookup source label (a set/minifig name — genuinely useful)
+  // exactly as before.
+  function realSources(entry) {
+    return (entry.sources || []).filter(function (s) { return !/^Imported:/.test(s); });
+  }
+
   // BrickLink's classic Wanted List XML import format — same ITEMTYPE
   // single-letter codes as the BrickScan inventory-upload format already
   // parsed elsewhere in this file (INVENTORY_TYPE_WORD_TO_CODE). REMARKS
@@ -7257,7 +7331,7 @@
     var items = wantedListBankEntries().map(function (r) {
       var e = r.entry;
       var typeCode = INVENTORY_TYPE_WORD_TO_CODE[e.type] || "P";
-      var remarks = e.sources.join(", ");
+      var remarks = realSources(e).join(", ");
       return '<ITEM>'
         + '<ITEMTYPE>' + typeCode + '</ITEMTYPE>'
         + '<ITEMID>' + escapeHtml(e.itemNo) + '</ITEMID>'
@@ -7303,6 +7377,7 @@
   function wantedListBankRowHtml(key, entry, colorsMap) {
     var pseudoItem = { type: entry.type, itemNo: entry.itemNo, colorId: entry.colorId, newOrUsed: "N" };
     var colorName = entry.colorId ? (colorsMap[entry.colorId] || null) : null;
+    var sources = realSources(entry);
     return '<div class="item-row wanted-bank-row">'
       + '<div class="item-thumb">' + thumbHtml(pseudoItem) + '<span class="qty-chip">' + entry.quantity + '</span></div>'
       + '<div class="item-body">'
@@ -7312,7 +7387,7 @@
       + '</div>'
       + '<div class="item-name">' + escapeHtml(entry.name || "") + '</div>'
       + (isRealColorName(colorName) ? '<div class="item-color">' + escapeHtml(colorName) + '</div>' : '')
-      + (entry.sources.length ? '<div class="item-color">From: ' + escapeHtml(entry.sources.join(", ")) + '</div>' : '')
+      + (sources.length ? '<div class="item-color">From: ' + escapeHtml(sources.join(", ")) + '</div>' : '')
       + '<label class="wanted-bank-qty-field"><span>Qty</span><input type="number" class="wanted-bank-qty-input" data-key="' + escapeHtml(key) + '" min="1" value="' + entry.quantity + '"></label>'
       + '</div>'
       + '<div class="inventory-row-actions">'
