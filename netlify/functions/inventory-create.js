@@ -46,6 +46,10 @@ async function createOne(item) {
   if (item.description) payload.description = item.description;
   if (item.remarks) payload.remarks = item.remarks;
   if (item.stockRoomId) payload.stock_room_id = item.stockRoomId;
+  // completeness ("C"/"B"/"S") is BrickLink's Set-only field — sending it
+  // for a non-SET item triggers its own rejection, so this only ever goes
+  // out when the frontend's row is actually a SET.
+  if (item.type === 'SET' && item.completeness) payload.completeness = item.completeness;
 
   const data = await blPost('/inventories', payload);
   return { key: item.key, success: true, inventoryId: (data && data.inventory_id) || null };

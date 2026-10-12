@@ -4453,6 +4453,11 @@
       description: description,
       remarks: remarks,
       stockRoomId: "",
+      // BrickLink's completeness field — only meaningful for SET rows.
+      // Default newly-imported sets to Complete; Ryan can change it in
+      // the per-row card before submitting if a set's actually missing
+      // pieces or still sealed.
+      completeness: inventoryTypeWord(obj.ITEMTYPE) === "SET" ? "C" : "",
       result: null,
       priceExpanded: false,
       // Set once Ryan's actually touched this row's Price field (see the
@@ -4696,6 +4701,21 @@
         + '</select></div>'
         + '<div class="inventory-field"><label>Color</label><select id="inventoryManualColorInput">' + manualAddColorOptionsHtml(colorsMap, draft.colorId) + '</select></div>'
         + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" id="inventoryManualQtyInput" value="' + draft.quantity + '"></div>'
+        // Picked here (rather than left at csvObjToInventoryRow's "N"
+        // default) so the row's auto-filled Description text — New vs.
+        // Used wording — is right from the moment it lands in the review
+        // list, not something Ryan has to notice and fix per-row after.
+        + '<div class="inventory-field"><label>Condition</label><select id="inventoryManualConditionSelect">'
+        + '<option value="N"' + (draft.condition === "N" ? ' selected' : '') + '>New</option>'
+        + '<option value="U"' + (draft.condition === "U" ? ' selected' : '') + '>Used</option>'
+        + '</select></div>'
+        + (draft.type === "SET"
+          ? '<div class="inventory-field"><label>Sub-Condition</label><select id="inventoryManualCompletenessSelect">'
+            + '<option value="C"' + (draft.completeness === "C" ? ' selected' : '') + '>Complete</option>'
+            + '<option value="B"' + (draft.completeness === "B" ? ' selected' : '') + '>Incomplete</option>'
+            + '<option value="S"' + (draft.completeness === "S" ? ' selected' : '') + '>Sealed</option>'
+            + '</select></div>'
+          : '')
         + '</div>'
         + '<div class="item-name wanted-manual-name-preview">' + escapeHtml(namePreviewText) + '</div>'
         + '<div class="wanted-manual-actions">'
@@ -4743,6 +4763,8 @@
         var typeSelect = document.getElementById("inventoryManualTypeSelect");
         var colorInput = document.getElementById("inventoryManualColorInput");
         var qtyInput = document.getElementById("inventoryManualQtyInput");
+        var conditionSelect = document.getElementById("inventoryManualConditionSelect");
+        var completenessSelect = document.getElementById("inventoryManualCompletenessSelect");
         var prevItemNo = inventoryManualDraft && inventoryManualDraft.itemNo;
         var prevType = inventoryManualDraft && inventoryManualDraft.type;
         var type = typeSelect ? typeSelect.value : (prevType || guessManualAddType(itemNo, "PART"));
@@ -4752,6 +4774,8 @@
           colorId: colorInput ? (parseInt(colorInput.value, 10) || 0) : ((inventoryManualDraft && inventoryManualDraft.colorId) || 0),
           quantity: qtyInput ? Math.max(1, parseInt(qtyInput.value, 10) || 1) : ((inventoryManualDraft && inventoryManualDraft.quantity) || 1),
           name: (inventoryManualDraft && inventoryManualDraft.name) || "",
+          condition: conditionSelect ? conditionSelect.value : ((inventoryManualDraft && inventoryManualDraft.condition) || "N"),
+          completeness: completenessSelect ? completenessSelect.value : ((inventoryManualDraft && inventoryManualDraft.completeness) || "C"),
         };
         renderInventoryView();
         if (itemNo !== prevItemNo || type !== prevType) lookupInventoryManualItemName(itemNo, type);
@@ -4789,6 +4813,8 @@
         var typeSelect2 = document.getElementById("inventoryManualTypeSelect");
         var colorInput = document.getElementById("inventoryManualColorInput");
         var qtyInput = document.getElementById("inventoryManualQtyInput");
+        var conditionSelect2 = document.getElementById("inventoryManualConditionSelect");
+        var completenessSelect2 = document.getElementById("inventoryManualCompletenessSelect");
         var colorId = parseInt(colorInput.value, 10) || 0;
         // Builds the exact same shape a CSV row would (same function, same
         // defaults) — a blank REMARKS/DESCRIPTION/PRICE so the Condition-
@@ -4802,11 +4828,15 @@
           COLORNAME: (colorsMap && colorsMap[colorId]) || "",
           ITEMNAME: inventoryManualDraft.name || "",
           QTY: qtyInput.value,
-          CONDITION: "N",
+          CONDITION: conditionSelect2 ? conditionSelect2.value : "N",
           PRICE: "",
           REMARKS: "",
           DESCRIPTION: "",
         });
+        // csvObjToInventoryRow defaults a SET row's completeness to "C" —
+        // override it here with whatever Ryan actually picked in the
+        // Sub-Condition field.
+        if (typeSelect2.value === "SET" && completenessSelect2) row.completeness = completenessSelect2.value;
         if (!inventoryRows) inventoryRows = [];
         inventoryRows.unshift(row);
         inventoryManualDraft = null;
@@ -4961,6 +4991,16 @@
   }
 
   function renderInventoryReview() {
+    // Every row's Color field is now a name dropdown (see below), not just
+    // the manual-add draft's — so this view needs colorsMap warmed too,
+    // not only the draft form. Lazy: don't block the page on it, just
+    // re-render once real names land (rows render fine off "No color"
+    // in the meantime).
+    if (!colorsMap) {
+      getColors().then(function () {
+        if (currentView === "inventory" && inventoryRows) renderInventoryReview();
+      }).catch(function () { /* dropdowns just stay "No color" only — not fatal */ });
+    }
     var includedCount = inventoryRows.filter(function (r) { return r.include; }).length;
     var pendingCount = inventoryRows.filter(function (r) { return r.include && !(r.result && r.result.success); }).length;
 
@@ -4996,7 +5036,23 @@
         + '<option value="N"' + (row.newOrUsed === "N" ? ' selected' : '') + '>New</option>'
         + '<option value="U"' + (row.newOrUsed === "U" ? ' selected' : '') + '>Used</option>'
         + '</select></div>'
-        + '<div class="inventory-field"><label>Color ID</label><input type="number" min="0" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="colorId" value="' + escapeHtml(row.colorId) + '"' + (locked ? ' disabled' : '') + '></div>'
+        // Name dropdown, not a bare numeric ID — same reasoning and same
+        // helper (manualAddColorOptionsHtml) as the manual add-by-number
+        // form's own Color field: Ryan doesn't have BrickLink's color IDs
+        // memorized, and a CSV-imported row's COLOR column is just as
+        // opaque a number as one typed in by hand.
+        + '<div class="inventory-field"><label>Color</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="colorId"' + (locked ? ' disabled' : '') + '>' + manualAddColorOptionsHtml(colorsMap, row.colorId) + '</select></div>'
+        // BrickLink's own Set-only "completeness" field (Complete/
+        // Incomplete/Sealed) — separate from the New/Used Condition above,
+        // and only meaningful (BrickLink rejects it otherwise) when the
+        // row's actually a SET.
+        + (row.type === "SET"
+          ? '<div class="inventory-field"><label>Sub-Condition</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="completeness"' + (locked ? ' disabled' : '') + '>'
+            + '<option value="C"' + (row.completeness === "C" ? ' selected' : '') + '>Complete</option>'
+            + '<option value="B"' + (row.completeness === "B" ? ' selected' : '') + '>Incomplete</option>'
+            + '<option value="S"' + (row.completeness === "S" ? ' selected' : '') + '>Sealed</option>'
+            + '</select></div>'
+          : '')
         + '<div class="inventory-field"><label>Stock Room</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="stockRoomId"' + (locked ? ' disabled' : '') + '>'
         + '<option value=""' + (row.stockRoomId === "" ? ' selected' : '') + '>No</option>'
         + '<option value="A"' + (row.stockRoomId === "A" ? ' selected' : '') + '>A</option>'
@@ -5193,6 +5249,7 @@
           key: r.key, type: r.type, itemNo: r.itemNo, colorId: r.colorId,
           quantity: r.quantity, newOrUsed: r.newOrUsed, unitPrice: r.unitPrice,
           description: r.description, remarks: r.remarks, stockRoomId: r.stockRoomId,
+          completeness: r.completeness,
         };
       }),
     }).then(function (res) {
