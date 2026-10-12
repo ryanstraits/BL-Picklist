@@ -4655,11 +4655,175 @@
   var inventoryRows = null;
   var inventorySubmitting = false;
 
+  // Manual add-by-number state — same shape/lifetime as the Wanted List's
+  // own inventoryManualDraft (wantedManualDraft), down to the lookup-
+  // sequence guard; see wireInventoryManualAdd below for why the two
+  // aren't just one shared implementation despite the overlap.
+  var inventoryManualDraft = null;
+  var inventoryManualLookupSeq = 0;
+
   function renderInventoryView() {
     if (!inventoryRows) {
       renderInventoryUpload(null);
     } else {
       renderInventoryReview();
+    }
+  }
+
+  // Read-only name preview + Type/Color/Qty fields, same shape and the
+  // same "Confirm disabled while nameLoading" guard as the Wanted List's
+  // wantedManualAddHtml — but a kept-separate implementation rather than a
+  // shared one: confirming here builds a full inventory row via
+  // csvObjToInventoryRow (Condition/Description/Remarks/Stock Room and
+  // all), not a wanted-list bank entry, and reads the page's global
+  // colorsMap directly (warmed lazily on first use below) rather than
+  // taking it as a parameter the way the already-colors-gated Wanted List
+  // page does.
+  function inventoryManualAddHtml() {
+    var draft = inventoryManualDraft;
+    var html = '<div class="wanted-manual-add">'
+      + '<div class="wanted-manual-itemno-row">'
+      + '<input type="text" class="wanted-manual-itemno-input" id="inventoryManualItemNoInput" placeholder="Add a part/set/fig by number" value="' + escapeHtml(draft ? draft.itemNo : "") + '">'
+      + '<button type="button" class="reset-btn" id="inventoryManualAddBtn">Add</button>'
+      + '</div>';
+    if (draft) {
+      var namePreviewText = draft.nameLoading ? "Looking up name…" : (draft.name || "Name not found — will add without one");
+      html += '<div class="inventory-fields wanted-manual-fields">'
+        + '<div class="inventory-field"><label>Type</label><select id="inventoryManualTypeSelect">'
+        + MANUAL_ADD_TYPE_OPTIONS.map(function (opt) {
+            return '<option value="' + opt[0] + '"' + (draft.type === opt[0] ? ' selected' : '') + '>' + opt[1] + '</option>';
+          }).join("")
+        + '</select></div>'
+        + '<div class="inventory-field"><label>Color</label><select id="inventoryManualColorInput">' + manualAddColorOptionsHtml(colorsMap, draft.colorId) + '</select></div>'
+        + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" id="inventoryManualQtyInput" value="' + draft.quantity + '"></div>'
+        + '</div>'
+        + '<div class="item-name wanted-manual-name-preview">' + escapeHtml(namePreviewText) + '</div>'
+        + '<div class="wanted-manual-actions">'
+        + '<button type="button" class="reset-btn" id="inventoryManualConfirmBtn"' + (draft.nameLoading ? ' disabled' : '') + '>+ Add to review list</button>'
+        + '<button type="button" class="reset-btn" id="inventoryManualCancelBtn">Cancel</button>'
+        + '</div>';
+    }
+    return html + '</div>';
+  }
+
+  // Mirrors lookupManualItemName (Wanted List) exactly, including the
+  // sequence-id guard against a slow/stale response landing after Ryan's
+  // changed or typed over the item number — see that function's own
+  // comment for the full reasoning.
+  function lookupInventoryManualItemName(itemNo, type) {
+    var requestId = ++inventoryManualLookupSeq;
+    if (inventoryManualDraft) {
+      inventoryManualDraft.nameLoading = true;
+      renderInventoryView();
+    }
+    fetchJSON("/api/item-lookup?type=" + encodeURIComponent(type) + "&no=" + encodeURIComponent(itemNo))
+      .then(function (data) {
+        if (requestId !== inventoryManualLookupSeq || !inventoryManualDraft) return;
+        inventoryManualDraft.name = (data && data.item && data.item.name) || "";
+        inventoryManualDraft.nameLoading = false;
+        renderInventoryView();
+      })
+      .catch(function () {
+        if (requestId !== inventoryManualLookupSeq || !inventoryManualDraft) return;
+        inventoryManualDraft.nameLoading = false;
+        renderInventoryView();
+      });
+  }
+
+  // Wired after every render of either Add Inventory screen (upload or
+  // review — both show the manual-add form) since the form's own DOM gets
+  // rebuilt each time, same pattern as wireWantedBankImport.
+  function wireInventoryManualAdd() {
+    var itemNoInput = document.getElementById("inventoryManualItemNoInput");
+    var addBtn = document.getElementById("inventoryManualAddBtn");
+    if (itemNoInput && addBtn) {
+      var startOrSyncDraft = function () {
+        var itemNo = itemNoInput.value.trim();
+        if (!itemNo) return;
+        var typeSelect = document.getElementById("inventoryManualTypeSelect");
+        var colorInput = document.getElementById("inventoryManualColorInput");
+        var qtyInput = document.getElementById("inventoryManualQtyInput");
+        var prevItemNo = inventoryManualDraft && inventoryManualDraft.itemNo;
+        var prevType = inventoryManualDraft && inventoryManualDraft.type;
+        var type = typeSelect ? typeSelect.value : (prevType || "PART");
+        inventoryManualDraft = {
+          itemNo: itemNo,
+          type: type,
+          colorId: colorInput ? (parseInt(colorInput.value, 10) || 0) : ((inventoryManualDraft && inventoryManualDraft.colorId) || 0),
+          quantity: qtyInput ? Math.max(1, parseInt(qtyInput.value, 10) || 1) : ((inventoryManualDraft && inventoryManualDraft.quantity) || 1),
+          name: (inventoryManualDraft && inventoryManualDraft.name) || "",
+        };
+        renderInventoryView();
+        if (itemNo !== prevItemNo || type !== prevType) lookupInventoryManualItemName(itemNo, type);
+        // Colors are only ever needed once this form actually expands, so
+        // they're warmed here rather than blocking the whole Add Inventory
+        // page (which doesn't otherwise need them — a CSV import already
+        // carries its own COLORNAME column) on every visit.
+        if (!colorsMap) {
+          getColors().then(function () {
+            if (inventoryManualDraft) renderInventoryView();
+          }).catch(function () { /* color dropdown just stays "No color" only — not fatal */ });
+        }
+      };
+      addBtn.addEventListener("click", startOrSyncDraft);
+      itemNoInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); startOrSyncDraft(); }
+      });
+    }
+
+    var typeSelect = document.getElementById("inventoryManualTypeSelect");
+    if (typeSelect) {
+      typeSelect.addEventListener("change", function () {
+        if (!inventoryManualDraft) return;
+        inventoryManualDraft.type = typeSelect.value;
+        lookupInventoryManualItemName(inventoryManualDraft.itemNo, inventoryManualDraft.type);
+      });
+    }
+
+    var confirmBtn = document.getElementById("inventoryManualConfirmBtn");
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", function () {
+        if (!inventoryManualDraft || inventoryManualDraft.nameLoading) return;
+        var itemNo = document.getElementById("inventoryManualItemNoInput").value.trim();
+        if (!itemNo) return;
+        var typeSelect2 = document.getElementById("inventoryManualTypeSelect");
+        var colorInput = document.getElementById("inventoryManualColorInput");
+        var qtyInput = document.getElementById("inventoryManualQtyInput");
+        var colorId = parseInt(colorInput.value, 10) || 0;
+        // Builds the exact same shape a CSV row would (same function, same
+        // defaults) — a blank REMARKS/DESCRIPTION/PRICE so the Condition-
+        // based default description and blank price/remarks apply exactly
+        // as they would for a CSV row that came in with those columns
+        // empty, rather than re-deriving a second copy of that logic here.
+        var row = csvObjToInventoryRow({
+          ITEMTYPE: INVENTORY_TYPE_WORD_TO_CODE[typeSelect2.value] || "P",
+          ITEMID: itemNo,
+          COLOR: String(colorId),
+          COLORNAME: (colorsMap && colorsMap[colorId]) || "",
+          ITEMNAME: inventoryManualDraft.name || "",
+          QTY: qtyInput.value,
+          CONDITION: "N",
+          PRICE: "",
+          REMARKS: "",
+          DESCRIPTION: "",
+        });
+        if (!inventoryRows) inventoryRows = [];
+        inventoryRows.unshift(row);
+        inventoryManualDraft = null;
+        renderInventoryView();
+        // Same best-effort stock-count warm-up a CSV import triggers.
+        ensureManageInventoryLoaded().then(function () {
+          if (currentView === "inventory") patchItemStockCounts(inventoryView);
+        }).catch(function () { /* ignore — lines just stay blank */ });
+      });
+    }
+
+    var cancelBtn = document.getElementById("inventoryManualCancelBtn");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", function () {
+        inventoryManualDraft = null;
+        renderInventoryView();
+      });
     }
   }
 
@@ -4674,8 +4838,10 @@
       + '<div class="inventory-upload">'
       + '<input type="file" accept=".csv,text/csv" class="inventory-file-input" id="inventoryFileInput">'
       + '</div>'
-      + (errorMessage ? '<div class="state-block error">' + escapeHtml(errorMessage) + '</div>' : '');
+      + (errorMessage ? '<div class="state-block error">' + escapeHtml(errorMessage) + '</div>' : '')
+      + inventoryManualAddHtml();
     document.getElementById("inventoryFileInput").addEventListener("change", handleInventoryFileChange);
+    wireInventoryManualAdd();
   }
 
   function handleInventoryFileChange(e) {
@@ -4856,6 +5022,7 @@
 
     inventoryView.innerHTML = ""
       + '<div class="inventory-intro">Review each item before it goes live on BrickLink. Uncheck anything you don’t want to add yet, edit price/qty/condition as needed, then submit.</div>'
+      + inventoryManualAddHtml()
       + '<div class="inventory-total-row"><span class="inventory-total-label">Total</span><span class="inventory-total-value mono" id="inventoryTotalValue">' + escapeHtml(inventoryTotalText()) + '</span></div>'
       + '<div class="inventory-summary-row">'
       + '<span id="inventorySummaryText">' + escapeHtml(inventorySummaryText()) + '</span>'
@@ -4884,6 +5051,7 @@
 
     wireThumbLinks(inventoryView);
     sizeThumbsToRows(inventoryView);
+    wireInventoryManualAdd();
 
     inventoryView.querySelectorAll(".inventory-row-check").forEach(function (el) {
       el.addEventListener("change", function () {
@@ -7347,23 +7515,25 @@
     });
   }
 
-  // Friendly labels for the manual quick-add's Type select — same words
+  // Friendly labels for a manual quick-add's Type select — shared by the
+  // Wanted List's and Add Inventory's own add-by-number forms (same words
   // INVENTORY_TYPE_CODE_TO_WORD already maps BrickScan's single-letter
   // codes to, just Title Cased for display; Part/Minifig/Set first since
-  // those are what Ryan's actually typing in here day to day.
-  var WANTED_MANUAL_TYPE_OPTIONS = [
+  // those are what Ryan's actually typing in here day to day).
+  var MANUAL_ADD_TYPE_OPTIONS = [
     ["PART", "Part"], ["MINIFIG", "Minifig"], ["SET", "Set"], ["BOOK", "Book"],
     ["GEAR", "Gear"], ["CATALOG", "Catalog"], ["INSTRUCTION", "Instructions"],
     ["ORIGINAL_BOX", "Original Box"], ["UNSORTED_LOT", "Unsorted Lot"],
   ];
 
-  // Color names, not IDs, in the manual add-by-number form below — Ryan
-  // doesn't have BrickLink's numeric color IDs memorized, but he does know
-  // "Dark Bluish Gray" when he sees it. "No color" (id 0) always leads the
-  // list for parts/sets that aren't colored; real colors are sorted
+  // Color names, not IDs, in a manual add-by-number form — Ryan doesn't
+  // have BrickLink's numeric color IDs memorized, but he does know "Dark
+  // Bluish Gray" when he sees it. "No color" (id 0) always leads the list
+  // for parts/sets that aren't colored; real colors are sorted
   // alphabetically after it. isRealColorName filters out colorsMap's own
   // placeholder entry (id 0, "Not Applicable") so it isn't listed twice.
-  function wantedManualColorOptionsHtml(colorsMap, selectedColorId) {
+  // Shared by the Wanted List's and Add Inventory's own add-by-number forms.
+  function manualAddColorOptionsHtml(colorsMap, selectedColorId) {
     var entries = Object.keys(colorsMap || {})
       .map(function (id) { return { id: parseInt(id, 10), name: colorsMap[id] }; })
       .filter(function (c) { return isRealColorName(c.name); })
@@ -7397,11 +7567,11 @@
       var namePreviewText = draft.nameLoading ? "Looking up name…" : (draft.name || "Name not found — will add without one");
       html += '<div class="inventory-fields wanted-manual-fields">'
         + '<div class="inventory-field"><label>Type</label><select id="wantedManualTypeSelect">'
-        + WANTED_MANUAL_TYPE_OPTIONS.map(function (opt) {
+        + MANUAL_ADD_TYPE_OPTIONS.map(function (opt) {
             return '<option value="' + opt[0] + '"' + (draft.type === opt[0] ? ' selected' : '') + '>' + opt[1] + '</option>';
           }).join("")
         + '</select></div>'
-        + '<div class="inventory-field"><label>Color</label><select id="wantedManualColorInput">' + wantedManualColorOptionsHtml(colorsMap, draft.colorId) + '</select></div>'
+        + '<div class="inventory-field"><label>Color</label><select id="wantedManualColorInput">' + manualAddColorOptionsHtml(colorsMap, draft.colorId) + '</select></div>'
         + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" id="wantedManualQtyInput" value="' + draft.quantity + '"></div>'
         + '</div>'
         + '<div class="item-name wanted-manual-name-preview">' + escapeHtml(namePreviewText) + '</div>'
