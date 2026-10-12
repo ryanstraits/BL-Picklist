@@ -970,6 +970,26 @@
     cursor: pointer;
   }
   .set-fig-wanted-bank-btn.added, .set-fig-manual-owned-btn.added { border-style: solid; background: var(--accent); color: var(--accent-contrast); }
+  /* A navigational link, not a state-toggle like the two buttons above —
+     plain underlined text (same treatment as "View on BrickLink") rather
+     than a bordered button, so it doesn't visually compete with "Temp add
+     to stock"/"Add to wanted list" as if it were another action on this
+     row's own in-stock status. */
+  .set-fig-drill-btn {
+    display: block;
+    margin-top: 6px;
+    border: none;
+    background: none;
+    padding: 0;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--info);
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+    cursor: pointer;
+  }
+  .set-fig-back-btn { margin-top: 10px; }
   /* Same reason Manage Inventory's .item-row.inventory-row needs this —
      the price-guide block is a third flex child (sibling of .item-thumb/
      .item-body) meant to drop to its own full-width line below them. */
@@ -6406,6 +6426,15 @@
   var setFigLookupQuery = "";
   var setFigLookupCache = {};
   var setFigLookupActiveKey = null;
+  // Drill-in trail — pushed to when Ryan taps "View this minifig's parts"
+  // on one of a SET's own minifig rows, so "← Back" can return to the set
+  // without retyping it: each entry is just enough ({type, no, query}) to
+  // restore the lookup form and re-run runSetFigLookup, which is a free
+  // cache hit (same key as before) rather than a new fetch. A plain stack
+  // rather than a single "parent" slot so drilling in twice still unwinds
+  // correctly, even though nothing here currently drills more than one
+  // level deep (a minifig's own parts are PART-type, never MINIFIG).
+  var setFigLookupNavStack = [];
   // Which half of a SET's results is showing when it has both ordinary
   // parts and loose minifigs ("FIGS" | "PARTS") — reset to minifigs-first
   // on every new submit, same lifetime as setFigLookupActiveKey. Unused
@@ -6469,7 +6498,40 @@
     renderSetFigLookupResults();
   }
 
+  // Drills from a SET's own results into one of its minifigs' parts
+  // breakdown — same lookup machinery a typed-in submit uses (runSetFigLookup
+  // caches per type+no, so backing out and drilling into the same minifig
+  // again later is still a free cache hit), just triggered by a tap instead
+  // of typing the number in. Pushes where Ryan drilled in FROM onto the nav
+  // stack first, so "← Back" can return to it without a re-fetch.
+  function drillIntoSetFigEntry(entry) {
+    setFigLookupNavStack.push({
+      type: setFigLookupType,
+      no: normalizeSetFigNo(setFigLookupType, setFigLookupQuery),
+      query: setFigLookupQuery,
+    });
+    setFigLookupType = "MINIFIG";
+    setFigLookupQuery = entry.itemNo;
+    runSetFigLookup();
+    renderSetFigLookupView();
+  }
+
+  // Label for the "← Back to ___" button — the parent's number plus its
+  // cached name if the lookup that pushed it onto the stack already
+  // resolved (it always will have, since drilling in is only reachable
+  // from an already-loaded set). Falls back to the bare number otherwise.
+  function setFigLookupBackLabel() {
+    if (!setFigLookupNavStack.length) return "";
+    var top = setFigLookupNavStack[setFigLookupNavStack.length - 1];
+    var state = setFigLookupCache[setFigLookupKey(top.type, top.no)];
+    var name = state && state.item ? decodeHtmlEntities(state.item.name || "") : "";
+    return top.no + (name ? " " + name : "");
+  }
+
   function renderSetFigLookupView() {
+    var backHtml = setFigLookupNavStack.length
+      ? '<button type="button" class="reset-btn set-fig-back-btn" id="setFigBackBtn">← Back to ' + escapeHtml(setFigLookupBackLabel()) + '</button>'
+      : '';
     setFigLookupView.innerHTML = ""
       + '<div class="set-fig-lookup-intro">Enter a BrickLink set or minifig number to see which of its parts/figs you already have in inventory.</div>'
       + '<div class="set-fig-lookup-type-row">'
@@ -6480,17 +6542,31 @@
       + '<input type="text" class="set-fig-lookup-search" id="setFigLookupInput" placeholder="' + (setFigLookupType === "SET" ? "e.g. 75192 or 75192-1" : "e.g. sw0359") + '" value="' + escapeHtml(setFigLookupQuery) + '" autocomplete="off">'
       + '<button type="submit" class="set-fig-lookup-btn' + (setFigLookupActiveKey ? ' clear' : '') + '">' + (setFigLookupActiveKey ? "Clear" : "Look up") + '</button>'
       + '</form>'
+      + backHtml
       + '<div id="setFigLookupResults"></div>';
+
+    var backBtn = document.getElementById("setFigBackBtn");
+    if (backBtn) {
+      backBtn.addEventListener("click", function () {
+        var prev = setFigLookupNavStack.pop();
+        setFigLookupType = prev.type;
+        setFigLookupQuery = prev.query;
+        runSetFigLookup(); // same key as before drilling in — a cache hit, no re-fetch
+        renderSetFigLookupView();
+      });
+    }
 
     setFigLookupView.querySelectorAll(".set-fig-type-btn").forEach(function (el) {
       el.addEventListener("click", function () {
         setFigLookupType = el.getAttribute("data-type");
-        // Switching Set/Minifig also resets the query/results — otherwise
-        // the box would keep showing the other type's number (and the
-        // button "Clear" from its still-active lookup) instead of a fresh
+        // Switching Set/Minifig also resets the query/results/nav stack —
+        // otherwise the box would keep showing the other type's number
+        // (and the button "Clear" from its still-active lookup, and a
+        // "← Back" to a set that no longer applies) instead of a fresh
         // field ready for a number of the newly-selected type.
         setFigLookupQuery = "";
         setFigLookupActiveKey = null;
+        setFigLookupNavStack = [];
         renderSetFigLookupView();
       });
     });
@@ -6528,6 +6604,7 @@
   function clearSetFigLookup() {
     setFigLookupQuery = "";
     setFigLookupActiveKey = null;
+    setFigLookupNavStack = [];
     renderSetFigLookupView();
   }
 
@@ -6618,6 +6695,13 @@
     var wantedBankBtnHtml = showWantedBankBtn
       ? '<button type="button" class="set-fig-wanted-bank-btn' + (inWantedBank ? ' added' : '') + '" data-key="' + escapeHtml(e.key) + '">' + (inWantedBank ? '✓ In wanted list — tap to remove' : '+ Add to wanted list') + '</button>'
       : '';
+    // Only on a minifig — BrickLink doesn't return nested MINIFIG entries
+    // inside a minifig's own parts breakdown, so there's never a second
+    // level of these to drill into. Lets Ryan jump straight to, say, just
+    // the torso a minifig is missing rather than buying the whole figure.
+    var drillBtnHtml = e.type === "MINIFIG"
+      ? '<button type="button" class="set-fig-drill-btn" data-key="' + escapeHtml(e.key) + '">View this minifig’s parts →</button>'
+      : '';
     return '<div class="item-row set-fig-match-row' + ((reallyOwned || manuallyOwned) ? ' owned' : '') + (manuallyOwned ? ' manual-owned' : '') + '">'
       + '<div class="item-thumb">' + thumbHtml(pseudoItem) + '<span class="qty-chip">' + e.quantity + '</span></div>'
       + '<div class="item-body">'
@@ -6629,6 +6713,7 @@
       + (isRealColorName(colorName) ? '<div class="item-color">' + escapeHtml(colorName) + '</div>' : '')
       + '<div class="item-stock-count">Needs ' + e.quantity + stockLine + '</div>'
       + setFigLookupAvgCostHtml(e)
+      + drillBtnHtml
       + manualFieldHtml
       + wantedBankBtnHtml
       + '</div>'
@@ -6817,6 +6902,13 @@
         }
         entry.wantedBankAdded = !entry.wantedBankAdded;
         renderSetFigLookupResults();
+      });
+    });
+    container.querySelectorAll(".set-fig-drill-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
+        if (!entry) return;
+        drillIntoSetFigEntry(entry);
       });
     });
 
