@@ -4745,7 +4745,7 @@
         var qtyInput = document.getElementById("inventoryManualQtyInput");
         var prevItemNo = inventoryManualDraft && inventoryManualDraft.itemNo;
         var prevType = inventoryManualDraft && inventoryManualDraft.type;
-        var type = typeSelect ? typeSelect.value : (prevType || "PART");
+        var type = typeSelect ? typeSelect.value : (prevType || guessManualAddType(itemNo, "PART"));
         inventoryManualDraft = {
           itemNo: itemNo,
           type: type,
@@ -6886,7 +6886,16 @@
         clearSetFigLookup();
       } else {
         setFigLookupQuery = document.getElementById("setFigLookupInput").value;
+        // Auto-corrects the Set/Minifig toggle to match what was actually
+        // typed rather than requiring Ryan to click it first — a letter-
+        // led number (sw0359, col001, ...) is never a BrickLink set number,
+        // so this is safe to apply even if the other toggle was already
+        // active (see guessManualAddType). Re-renders the whole shell
+        // (not just the results) so the toggle's own active state reflects
+        // the correction too.
+        setFigLookupType = guessManualAddType(setFigLookupQuery, "SET");
         runSetFigLookup();
+        renderSetFigLookupView();
       }
     });
 
@@ -7526,6 +7535,23 @@
     ["ORIGINAL_BOX", "Original Box"], ["UNSORTED_LOT", "Unsorted Lot"],
   ];
 
+  // A letter-led item number is reliably a minifig on BrickLink (sw0359,
+  // col001, njo123, ...) — confirmed against every minifig number seen in
+  // this codebase's real fixtures, none of them bare digits. A purely
+  // numeric number is ambiguous on its own (a Part and a Set both look
+  // like "3001"/"75192" — and Ryan doesn't bother typing BrickLink's own
+  // "-1" set-number suffix, so that can't be used as a tiebreaker either),
+  // so callers supply fallbackType for that case based on what's actually
+  // likely in their own context (Add Inventory/Wanted List default to
+  // "PART", Set/Fig Lookup — which only ever deals in Sets and Minifigs,
+  // no Parts — defaults to "SET"). Shared by all three forms' add-by-
+  // number flows so a fig number doesn't quietly get searched as a part
+  // (or a set searched as a minifig) just because nobody told it which
+  // type it was.
+  function guessManualAddType(no, fallbackType) {
+    return /^[A-Za-z]/.test((no || "").trim()) ? "MINIFIG" : fallbackType;
+  }
+
   // Color names, not IDs, in a manual add-by-number form — Ryan doesn't
   // have BrickLink's numeric color IDs memorized, but he does know "Dark
   // Bluish Gray" when he sees it. "No color" (id 0) always leads the list
@@ -7654,7 +7680,7 @@
         var qtyInput = document.getElementById("wantedManualQtyInput");
         var prevItemNo = wantedManualDraft && wantedManualDraft.itemNo;
         var prevType = wantedManualDraft && wantedManualDraft.type;
-        var type = typeSelect ? typeSelect.value : (prevType || "PART");
+        var type = typeSelect ? typeSelect.value : (prevType || guessManualAddType(itemNo, "PART"));
         wantedManualDraft = {
           itemNo: itemNo,
           type: type,
