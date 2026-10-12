@@ -4684,6 +4684,53 @@
     return formatCurrency(computeInventoryTotal(), "USD");
   }
 
+  // BrickLink's own distinction: each row here is one "lot" (one inventory
+  // listing), which can itself hold more than one physical piece via its
+  // Qty field — a batch of 18 lots where one is Qty 2 is 19 pieces, not 18.
+  // Calling that "18 items" was wrong, not just imprecise — Ryan's actually
+  // counting individual pieces when he thinks "items," and the two numbers
+  // silently diverging is exactly the kind of thing that gets a multi-piece
+  // lot under-logged. Pulled out as its own function (rather than inline in
+  // renderInventoryReview) so the quantity-field "change" handler below can
+  // recompute just the label text after an inline edit, the same way it
+  // already recomputes the running total, without a full re-render that'd
+  // drop focus mid-edit.
+  function computeInventorySubmitLabel() {
+    var includedCount = inventoryRows.filter(function (r) { return r.include; }).length;
+    var pendingRows = inventoryRows.filter(function (r) { return r.include && !(r.result && r.result.success); });
+    var pendingCount = pendingRows.length;
+    var pendingPieceCount = pendingRows.reduce(function (sum, r) { return sum + (parseInt(r.quantity, 10) || 0); }, 0);
+    var label;
+    if (inventorySubmitting) {
+      label = "Submitting…";
+    } else if (includedCount === 0) {
+      label = "Nothing selected";
+    } else if (pendingCount === 0) {
+      label = "All items added";
+    } else if (pendingPieceCount === pendingCount) {
+      // Every pending lot is Qty 1 — lots and pieces are the same number,
+      // so the simple phrasing says exactly as much as it ever did.
+      label = "Submit " + pendingCount + " item" + (pendingCount === 1 ? "" : "s") + " to BrickLink";
+    } else {
+      label = "Submit " + pendingCount + " lot" + (pendingCount === 1 ? "" : "s")
+        + " (" + pendingPieceCount + " item" + (pendingPieceCount === 1 ? "" : "s") + ") to BrickLink";
+    }
+    return { label: label, pendingCount: pendingCount };
+  }
+
+  // Re-reads the submit label/disabled-state into the submit button and its
+  // sticky-topbar mirror without rebuilding the row list — used after an
+  // inline Qty edit (see the .inv-input "change" handler), same reasoning
+  // the running-total patch right below it already has.
+  function patchInventorySubmitChrome() {
+    var result = computeInventorySubmitLabel();
+    var btn = document.getElementById("inventorySubmitBtn");
+    var disabled = result.pendingCount === 0 || inventorySubmitting;
+    if (btn) { btn.textContent = result.label; btn.disabled = disabled; }
+    topbarInventorySubmitBtn.textContent = result.label;
+    topbarInventorySubmitBtn.disabled = disabled;
+  }
+
   function renderInventoryReview() {
     var includedCount = inventoryRows.filter(function (r) { return r.include; }).length;
     var pendingCount = inventoryRows.filter(function (r) { return r.include && !(r.result && r.result.success); }).length;
@@ -4696,10 +4743,14 @@
           ? '<div class="inventory-row-result success">Added to inventory (ID ' + escapeHtml(row.result.inventoryId) + ')</div>'
           : '<div class="inventory-row-result error">' + escapeHtml(row.result.error) + '</div>';
       }
+      // Same "poka-yoke" bigger/bolder badge the Order pick-list already
+      // gives a >1-qty lot (see .qty-chip.multi) — here so a 2-or-more lot
+      // doesn't quietly scroll by and end up only partly logged.
+      var isMulti = parseInt(row.quantity, 10) > 1;
       return ""
         + '<div class="item-row inventory-row' + (!row.include ? ' skipped' : '') + (locked ? ' result-success' : '') + '" data-key="' + escapeHtml(row.key) + '">'
         + '<input type="checkbox" class="inventory-row-check" data-key="' + escapeHtml(row.key) + '"' + (row.include ? ' checked' : '') + (locked ? ' disabled' : '') + '>'
-        + '<div class="item-thumb">' + thumbHtml(row) + '<span class="qty-chip">' + row.quantity + '</span></div>'
+        + '<div class="item-thumb">' + thumbHtml(row) + '<span class="qty-chip' + (isMulti ? ' multi' : '') + '">' + row.quantity + '</span></div>'
         + '<div class="item-body">'
         + '<div class="item-line1">'
         + '<span class="item-no mono">' + escapeHtml(row.itemNo) + '</span>'
@@ -4737,16 +4788,7 @@
         + '</div>';
     }).join("");
 
-    var submitLabel;
-    if (inventorySubmitting) {
-      submitLabel = "Submitting…";
-    } else if (includedCount === 0) {
-      submitLabel = "Nothing selected";
-    } else if (pendingCount === 0) {
-      submitLabel = "All items added";
-    } else {
-      submitLabel = "Submit " + pendingCount + " item" + (pendingCount === 1 ? "" : "s") + " to BrickLink";
-    }
+    var submitLabel = computeInventorySubmitLabel().label;
 
     inventoryView.innerHTML = ""
       + '<div class="inventory-intro">Review each item before it goes live on BrickLink. Uncheck anything you don’t want to add yet, edit price/qty/condition as needed, then submit.</div>'
@@ -4802,7 +4844,7 @@
         // fetched), so it needs no re-fetch or re-render. Other fields
         // don't need a re-render either; doing one on every
         // keystroke-triggering "change" would drop focus mid-edit for no
-        // benefit, since qty/price/remarks don't affect anything else shown.
+        // benefit, since price/remarks don't affect anything else shown.
         if (field === "colorId") {
           if (row.priceExpanded) fetchPriceGuide(row, renderInventoryReview); else renderInventoryReview();
         } else if (field === "quantity" || field === "unitPrice") {
@@ -4811,6 +4853,19 @@
           var totalEl = document.getElementById("inventoryTotalValue");
           if (totalEl) totalEl.textContent = inventoryTotalText();
           topbarInventoryTotalValue.textContent = inventoryTotalText();
+          if (field === "quantity") {
+            // Qty also drives the submit button's lots-vs-items wording and
+            // this row's own >1 badge — both need the same live patch, not
+            // just the total, or they'd silently go stale until some other
+            // action happened to trigger a full re-render.
+            patchInventorySubmitChrome();
+            var rowEl = el.closest(".item-row");
+            var chip = rowEl ? rowEl.querySelector(".qty-chip") : null;
+            if (chip) {
+              chip.textContent = row.quantity;
+              chip.classList.toggle("multi", row.quantity > 1);
+            }
+          }
         }
       });
     });
