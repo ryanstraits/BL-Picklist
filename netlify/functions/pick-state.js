@@ -6,11 +6,13 @@ const STORE_NAME = 'pick-state';
 const DEFAULT_KEY = 'state';
 // Which blob key to read/write — 'state' (picks, the default, for
 // backward compatibility with existing callers), 'actions'
-// (driveThruSent/feedbackSent), or 'wantedListBank' (the Wanted List
-// bank's own cross-lookup items map). Same store, same GET/POST shape,
-// just a different named slot, so this one small function covers all of
-// them instead of duplicating the whole Blobs-wiring dance per feature.
-const ALLOWED_KEYS = new Set(['state', 'actions', 'wantedListBank']);
+// (driveThruSent/feedbackSent), 'wantedListBank' (the Wanted List
+// bank's own cross-lookup items map), or 'activeSale' (the Manage
+// Inventory bulk-sale feature's single active-sale record). Same store,
+// same GET/POST shape, just a different named slot, so this one small
+// function covers all of them instead of duplicating the whole
+// Blobs-wiring dance per feature.
+const ALLOWED_KEYS = new Set(['state', 'actions', 'wantedListBank', 'activeSale']);
 
 // This project's functions use the classic AWS Lambda-compatible handler
 // signature (exports.handler = async (event) => {...}), not the newer

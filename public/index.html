@@ -915,6 +915,31 @@
     margin-top: 4px;
   }
   .manage-inventory-hint { color: var(--text-secondary); font-size: 13px; margin-top: 14px; }
+  .sale-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    background: var(--warning-bg);
+    border: 1px solid var(--warning);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+  }
+  .sale-banner-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text); }
+  .sale-banner-text span { color: var(--text-secondary); font-size: 12px; }
+  /* Same warning-tinted shell either way — "a sale is running" and "a
+     sale ran past its end date" are both states Ryan should notice, not
+     a neutral/good vs. bad distinction, so there's nothing more to flip
+     here once the date's passed; the text itself says which one it is. */
+  .sale-draft-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 14px;
+  }
+  .sale-draft-title { font-weight: 600; font-size: 14px; }
   .set-fig-lookup-intro { color: var(--text-secondary); font-size: 13.5px; }
   .set-fig-lookup-type-row { display: flex; gap: 8px; margin-top: 10px; }
   /* The Set/Minifig lookup-type toggle and the Minifigs/Parts results
@@ -5558,6 +5583,24 @@
   // rather than offering a feature that can't work.
   var manageInventoryHasDates = false;
 
+  // ---- Bulk Sale ----
+  // null = not fetched yet from the Blobs store; { active: false } once
+  // fetched with nothing running; { active: true, label, discountPct,
+  // startedAt, endsAt, items: { [row.key]: { originalUnitPrice, itemNo,
+  // colorId, name } } } while a sale is live. Only one sale at a time —
+  // starting a new one while one's active is refused rather than letting
+  // discounts stack, since BrickLink has no native concept of a sale at
+  // all (just one current unit_price), so this app owns the whole
+  // lifecycle including knowing what price to revert to.
+  var activeSale = null;
+  var activeSaleLoadPromise = null;
+  // The in-progress "Start Sale" form: { rows, pct, endsAt, label } once
+  // Ryan's picked a segment (a theme/category list or a search result
+  // list) to put on sale, else null.
+  var saleDraft = null;
+  var saleSubmitting = false;
+  var saleEnding = false;
+
   // Raw fetch-and-cache, pulled out of fetchManageInventory() so a
   // read-only consumer that has nothing to do with Manage Inventory's own
   // page (the order detail stock count below) can trigger and reuse the
@@ -5838,6 +5881,18 @@
     return '<div class="browse-breadcrumb">' + parts.join('<span class="browse-crumb-sep">›</span>') + '</div>';
   }
 
+  // Pulled out of manageInventoryBrowseHtml's own theme/category list so
+  // the "Put on sale" trigger (wired separately, after the button it sits
+  // next to is rendered) can re-derive the exact same row set that list
+  // is currently showing, without duplicating the filter logic.
+  function manageInventoryCategoryRows(type, catId) {
+    return (manageInventoryRows || []).filter(function (r) {
+      if (r.type !== type) return false;
+      var topId = r.categoryId ? topCategoryId(r.categoryId, categoriesById) : 0;
+      return String(topId || 0) === catId;
+    });
+  }
+
   // The navigation screen shown when the search box is empty: item type
   // breakdown → theme/category breakdown within that type → flat item
   // list within that theme. Reuses manageInventoryCardHtml for the final
@@ -5920,16 +5975,14 @@
     }
 
     var catId = manageInventoryBrowseCategory;
-    var filtered = manageInventorySortRows((manageInventoryRows || []).filter(function (r) {
-      if (r.type !== manageInventoryBrowseType) return false;
-      var topId = r.categoryId ? topCategoryId(r.categoryId, categoriesById) : 0;
-      return String(topId || 0) === catId;
-    }));
+    var filtered = manageInventorySortRows(manageInventoryCategoryRows(manageInventoryBrowseType, catId));
     var capped = filtered.slice(0, MANAGE_INVENTORY_RESULT_CAP);
     return hint
       + manageInventoryBreadcrumb()
       + manageInventoryStatsHtml(manageInventoryStats(filtered))
-      + '<div class="manage-inventory-sort-row">' + manageInventorySortSelectHtml() + '</div>'
+      + '<div class="manage-inventory-sort-row">' + manageInventorySortSelectHtml()
+      + (filtered.length ? '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
+      + '</div>'
       + capped.map(manageInventoryCardHtml).join("")
       + (filtered.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + filtered.length + ' items — search above to find a specific one.</div>' : '');
   }
@@ -6043,13 +6096,17 @@
     } else if (!manageInventoryRows) {
       body = "";
     } else if (!query) {
-      body = manageInventoryBrowseHtml(dirtyCount);
+      body = activeSaleBannerHtml() + saleDraftHtml() + manageInventoryBrowseHtml(dirtyCount);
     } else {
       var matches = manageInventoryMatches(query);
       var capped = matches.slice(0, MANAGE_INVENTORY_RESULT_CAP);
-      body = '<div class="inventory-summary-row">'
+      body = activeSaleBannerHtml() + saleDraftHtml()
+        + '<div class="inventory-summary-row">'
         + '<span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span>'
-        + '<div class="inventory-bulk-actions"><button type="button" id="manageInventoryRefreshBtn">Refresh</button></div>'
+        + '<div class="inventory-bulk-actions">'
+        + (matches.length ? '<button type="button" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
+        + '<button type="button" id="manageInventoryRefreshBtn">Refresh</button>'
+        + '</div>'
         + '</div>'
         + manageInventoryStatsHtml(manageInventoryStats(matches))
         + capped.map(manageInventoryCardHtml).join("")
@@ -6194,9 +6251,38 @@
     if (submitBtnEl) submitBtnEl.addEventListener("click", handleManageInventorySubmit);
     var cancelBtnEl = document.getElementById("manageInventoryCancelBtn");
     if (cancelBtnEl) cancelBtnEl.addEventListener("click", handleManageInventoryCancel);
+
+    // One shared id/handler for the trigger — only one of the browse
+    // (theme-filtered) or search-results bodies is ever rendered at a
+    // time, so re-deriving "whichever row list is currently on screen"
+    // here (rather than threading the exact list through as a DOM
+    // attribute) stays correct even as Ryan sorts/re-browses before
+    // clicking it.
+    var startSaleBtnEl = document.getElementById("manageInventoryStartSaleBtn");
+    if (startSaleBtnEl) {
+      startSaleBtnEl.addEventListener("click", function () {
+        var q = manageInventorySearchQuery.trim();
+        var rows = q ? manageInventoryMatches(q)
+          : (manageInventoryBrowseType && manageInventoryBrowseCategory !== null)
+            ? manageInventoryCategoryRows(manageInventoryBrowseType, manageInventoryBrowseCategory)
+            : [];
+        startSaleDraft(rows);
+      });
+    }
+    var saleDraftConfirmBtnEl = document.getElementById("saleDraftConfirmBtn");
+    if (saleDraftConfirmBtnEl) saleDraftConfirmBtnEl.addEventListener("click", handleStartSaleConfirm);
+    var saleDraftCancelBtnEl = document.getElementById("saleDraftCancelBtn");
+    if (saleDraftCancelBtnEl) saleDraftCancelBtnEl.addEventListener("click", cancelSaleDraft);
+    var endSaleBtnEl = document.getElementById("endSaleBtn");
+    if (endSaleBtnEl) endSaleBtnEl.addEventListener("click", handleEndSaleNow);
   }
 
   function renderManageInventoryView() {
+    // Lazy-warm, same pattern as colorsMap elsewhere — doesn't block this
+    // page's own load, just re-renders (picking up the banner) once it
+    // resolves.
+    if (!activeSale) ensureActiveSaleLoaded();
+
     manageInventoryView.innerHTML = ""
       + '<input type="search" class="manage-inventory-search" id="manageInventorySearchInput" placeholder="Search by item name or number…" value="' + escapeHtml(manageInventorySearchQuery) + '" autocomplete="off">'
       + '<div id="manageInventoryResults"></div>';
@@ -6300,6 +6386,257 @@
       row.markedForDelete = false;
     });
     renderManageInventoryResults();
+  }
+
+  // ---- Bulk Sale ----
+
+  // Lazy, cached, session-lifetime load — same "fetch once, reuse
+  // forever this session" pattern as colorsMap/manageInventoryRows.
+  // Explicit re-renders on landing so a page that opened before this
+  // resolved (the banner needs it) picks it up once it does.
+  function ensureActiveSaleLoaded() {
+    if (activeSale) return Promise.resolve(activeSale);
+    if (!activeSaleLoadPromise) {
+      activeSaleLoadPromise = fetchJSON("/api/pick-state?key=activeSale").then(function (remote) {
+        activeSale = (remote && remote.active) ? remote : { active: false };
+        if (currentView === "manage-inventory") renderManageInventoryView();
+        return activeSale;
+      }).catch(function () {
+        activeSale = { active: false }; // offline/first-run — try again next visit
+        return activeSale;
+      });
+    }
+    return activeSaleLoadPromise;
+  }
+
+  function pushActiveSale() {
+    postJSON("/api/pick-state?key=activeSale", activeSale).catch(function () { /* offline — ignore, same as other pick-state writes */ });
+  }
+
+  function roundSalePrice(unitPrice, pct) {
+    var discounted = (parseFloat(unitPrice) || 0) * (1 - pct / 100);
+    return formatPriceInput(Math.max(0.01, discounted));
+  }
+
+  // Same payload shape handleManageInventorySubmit sends for an update —
+  // shared here so starting/ending a sale goes through the exact same
+  // live-write path as a manual field edit, not a second one that could
+  // drift out of sync with it.
+  function postInventoryPriceUpdates(rows) {
+    return postJSON("/api/inventory-update", {
+      items: rows.map(function (r) {
+        return {
+          key: r.key, inventoryId: r.inventoryId, quantity: r.quantity, newOrUsed: r.newOrUsed,
+          unitPrice: r.unitPrice, description: r.description, remarks: r.remarks, stockRoomId: r.stockRoomId,
+        };
+      }),
+    });
+  }
+
+  // Rows with nothing to discount (no price yet, or already queued for
+  // delete) are silently dropped from the segment rather than surfaced as
+  // an error — a sale on "this theme" naturally only applies to listings
+  // that have a price to begin with.
+  function eligibleSaleRows(rows) {
+    return rows.filter(function (r) { return !r.markedForDelete && parseFloat(r.unitPrice) > 0; });
+  }
+
+  function startSaleDraft(rows) {
+    if (activeSale && activeSale.active) {
+      window.alert("A sale is already running (" + (activeSale.label || (activeSale.discountPct + "% off")) + "). End it first — this app only tracks one active sale's original prices at a time.");
+      return;
+    }
+    var eligible = eligibleSaleRows(rows);
+    if (!eligible.length) {
+      window.alert("None of these items have a price to discount.");
+      return;
+    }
+    saleDraft = { rows: eligible, pct: "20", endsAt: "", label: "" };
+    renderManageInventoryResults();
+  }
+
+  function cancelSaleDraft() {
+    saleDraft = null;
+    renderManageInventoryResults();
+  }
+
+  function saleDraftHtml() {
+    var d = saleDraft;
+    if (!d) return "";
+    return '<div class="sale-draft-panel">'
+      + '<div class="sale-draft-title">Put ' + d.rows.length + ' item' + (d.rows.length === 1 ? '' : 's') + ' on sale</div>'
+      + '<div class="inventory-fields wanted-manual-fields">'
+      + '<div class="inventory-field"><label>% off</label><input type="number" min="1" max="99" id="saleDraftPctInput" value="' + escapeHtml(d.pct) + '"></div>'
+      + '<div class="inventory-field"><label>Ends <span class="field-hint">(optional)</span></label><input type="date" id="saleDraftEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
+      + '<div class="inventory-field description-field"><label>Label <span class="field-hint">(optional, just for your reference)</span></label><input type="text" id="saleDraftLabelInput" value="' + escapeHtml(d.label) + '" placeholder="e.g. Star Wars 20% off"></div>'
+      + '</div>'
+      + '<div class="wanted-manual-actions">'
+      + '<button type="button" class="reset-btn" id="saleDraftConfirmBtn"' + (saleSubmitting ? ' disabled' : '') + '>' + (saleSubmitting ? "Starting…" : "Start Sale") + '</button>'
+      + '<button type="button" class="reset-btn" id="saleDraftCancelBtn"' + (saleSubmitting ? ' disabled' : '') + '>Cancel</button>'
+      + '</div>'
+      + '</div>';
+  }
+
+  function handleStartSaleConfirm() {
+    if (!saleDraft || saleSubmitting) return;
+    var pctInput = document.getElementById("saleDraftPctInput");
+    var endsInput = document.getElementById("saleDraftEndsInput");
+    var labelInput = document.getElementById("saleDraftLabelInput");
+    var pct = parseFloat(pctInput.value);
+    if (!(pct > 0 && pct < 100)) {
+      window.alert("Enter a percentage off between 1 and 99.");
+      return;
+    }
+    var rows = saleDraft.rows;
+    if (!window.confirm("Discount " + rows.length + " item" + (rows.length === 1 ? "" : "s") + " by " + pct + "% on BrickLink now?")) return;
+
+    // The only copy of the pre-sale price — row.orig gets overwritten to
+    // the new (discounted) price the moment this update succeeds, same
+    // as any other field edit here, so it can't be read back from there
+    // later when it's time to revert.
+    var originals = {};
+    rows.forEach(function (r) {
+      originals[r.key] = { originalUnitPrice: r.unitPrice, itemNo: r.itemNo, colorId: r.colorId, name: r.name };
+      r.unitPrice = roundSalePrice(r.unitPrice, pct);
+      r.result = null;
+    });
+
+    saleSubmitting = true;
+    renderManageInventoryResults();
+
+    postInventoryPriceUpdates(rows).then(function (res) {
+      var results = (res && res.results) || [];
+      var items = {};
+      results.forEach(function (result) {
+        var row = findManageInventoryRow(result.key);
+        if (!row) return;
+        if (result.success) {
+          row.orig = {
+            quantity: row.quantity, newOrUsed: row.newOrUsed, unitPrice: row.unitPrice,
+            description: row.description, remarks: row.remarks, stockRoomId: row.stockRoomId,
+          };
+          row.result = { success: true };
+          items[row.key] = originals[row.key];
+        } else {
+          // Never actually went live — undo the local price change so
+          // this row isn't left showing a discount it doesn't really have.
+          row.unitPrice = originals[row.key].originalUnitPrice;
+          row.result = { success: false, error: result.error };
+        }
+      });
+
+      var itemCount = Object.keys(items).length;
+      saleDraft = null;
+      if (!itemCount) {
+        window.alert("BrickLink rejected every item — sale not started. See the error on each row below.");
+        return;
+      }
+
+      activeSale = {
+        active: true,
+        label: (labelInput.value || "").trim(),
+        discountPct: pct,
+        startedAt: new Date().toISOString(),
+        endsAt: endsInput.value || "",
+        items: items,
+      };
+      pushActiveSale();
+
+      if (itemCount < rows.length) {
+        var failedCount = rows.length - itemCount;
+        window.alert(failedCount + " item" + (failedCount === 1 ? "" : "s") + " couldn't be discounted — see the error on those rows. The sale is active for the other " + itemCount + ".");
+      }
+    }).catch(function (err) {
+      // Nothing reached BrickLink — undo every local mutation.
+      rows.forEach(function (r) { r.unitPrice = originals[r.key].originalUnitPrice; });
+      window.alert("Couldn't reach the server to start the sale: " + err.message);
+    }).finally(function () {
+      saleSubmitting = false;
+      renderManageInventoryResults();
+    });
+  }
+
+  function activeSaleBannerHtml() {
+    if (!activeSale || !activeSale.active) return "";
+    var itemCount = Object.keys(activeSale.items || {}).length;
+    var ended = activeSale.endsAt && new Date(activeSale.endsAt + "T23:59:59").getTime() < Date.now();
+    var title = activeSale.label || (activeSale.discountPct + "% off");
+    var detail = itemCount + " item" + (itemCount === 1 ? "" : "s") + " · started " + escapeHtml(formatDate(activeSale.startedAt))
+      + (activeSale.endsAt ? " · " + (ended ? "sale period ended " : "ends ") + escapeHtml(formatDate(activeSale.endsAt)) : "");
+    return '<div class="sale-banner' + (ended ? ' sale-banner-ended' : '') + '">'
+      + '<div class="sale-banner-text"><strong>' + escapeHtml(title) + '</strong><span>' + detail + '</span></div>'
+      + '<button type="button" class="reset-btn" id="endSaleBtn"' + (saleEnding ? ' disabled' : '') + '>' + (saleEnding ? "Ending…" : "End Sale Now") + '</button>'
+      + '</div>';
+  }
+
+  function handleEndSaleNow() {
+    if (!activeSale || !activeSale.active || saleEnding) return;
+    var itemKeys = Object.keys(activeSale.items || {});
+    if (!window.confirm("End the sale and revert " + itemKeys.length + " item" + (itemKeys.length === 1 ? "" : "s") + " to their original price on BrickLink now?")) return;
+
+    saleEnding = true;
+    renderManageInventoryResults();
+
+    ensureManageInventoryLoaded().then(function () {
+      var toRevert = [];
+      var missingKeys = [];
+      itemKeys.forEach(function (key) {
+        var row = findManageInventoryRow(key);
+        if (!row) { missingKeys.push(key); return; } // listing's gone (deleted/sold out) — nothing left to revert on BrickLink
+        row.unitPrice = activeSale.items[key].originalUnitPrice;
+        row.result = null;
+        toRevert.push(row);
+      });
+
+      if (!toRevert.length) {
+        activeSale = { active: false };
+        pushActiveSale();
+        return;
+      }
+
+      return postInventoryPriceUpdates(toRevert).then(function (res) {
+        var results = (res && res.results) || [];
+        // Anything BrickLink didn't confirm stays in the sale record
+        // rather than being dropped — a failed revert is still visible
+        // and retryable via End Sale Now again, instead of quietly
+        // vanishing while the listing is still discounted on BrickLink.
+        var remainingItems = {};
+        Object.keys(activeSale.items).forEach(function (key) { remainingItems[key] = activeSale.items[key]; });
+        missingKeys.forEach(function (key) { delete remainingItems[key]; });
+        results.forEach(function (result) {
+          var row = findManageInventoryRow(result.key);
+          if (result.success) {
+            if (row) {
+              row.orig = {
+                quantity: row.quantity, newOrUsed: row.newOrUsed, unitPrice: row.unitPrice,
+                description: row.description, remarks: row.remarks, stockRoomId: row.stockRoomId,
+              };
+              row.result = { success: true };
+            }
+            delete remainingItems[result.key];
+          } else if (row) {
+            row.result = { success: false, error: result.error };
+          }
+        });
+
+        var remainingCount = Object.keys(remainingItems).length;
+        if (remainingCount) {
+          activeSale = {
+            active: true, label: activeSale.label, discountPct: activeSale.discountPct,
+            startedAt: activeSale.startedAt, endsAt: activeSale.endsAt, items: remainingItems,
+          };
+          window.alert(remainingCount + " item" + (remainingCount === 1 ? "" : "s") + " couldn't be reverted — see the error on those rows. The sale stays active for just those; try End Sale Now again once fixed.");
+        } else {
+          activeSale = { active: false };
+        }
+        pushActiveSale();
+      });
+    }).catch(function (err) {
+      window.alert("Couldn't reach the server to end the sale: " + err.message);
+    }).finally(function () {
+      saleEnding = false;
+      renderManageInventoryResults();
+    });
   }
 
   // ---- Sales Stats ----
