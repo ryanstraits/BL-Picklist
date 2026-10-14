@@ -940,6 +940,52 @@
     margin-bottom: 14px;
   }
   .sale-draft-title { font-weight: 600; font-size: 14px; }
+  .sale-select-toolbar {
+    background: var(--surface);
+    border: 1px solid var(--info);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+  }
+  .sale-select-toolbar-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text); }
+  .sale-select-toolbar-text span { color: var(--text-secondary); font-size: 12px; }
+  /* A tile in multi-select mode becomes two separate tap targets — the
+     checkbox (include everything here, no drill-in needed) and the nav
+     button beside it (go look at what's inside instead) — rather than
+     one tap doing both, which is what the plain .browse-tile button
+     above does outside select mode. */
+  .browse-tile.browse-tile-select { display: flex; align-items: center; gap: 8px; cursor: default; }
+  .browse-tile-checkbox { display: flex; align-items: center; flex: 0 0 auto; padding: 4px 2px; }
+  .browse-tile-checkbox input { width: 19px; height: 19px; }
+  .browse-tile-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex: 1 1 auto;
+    min-width: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+    font-family: inherit;
+    font-size: 14px;
+    color: inherit;
+    cursor: pointer;
+  }
+  .sale-select-whole-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .sale-select-whole-row input { width: 19px; height: 19px; }
   .set-fig-lookup-intro { color: var(--text-secondary); font-size: 13.5px; }
   .set-fig-lookup-type-row { display: flex; gap: 8px; margin-top: 10px; }
   /* The Set/Minifig lookup-type toggle and the Minifigs/Parts results
@@ -5600,6 +5646,18 @@
   var saleDraft = null;
   var saleSubmitting = false;
   var saleEnding = false;
+  // Multi-select mode for staging a sale across several types/themes at
+  // once before committing to any of them — see toggleSaleSelectScope
+  // below. Off by default; toggled on by its own entry button rather
+  // than being how Browse always works, so the common single-theme case
+  // (startSaleDraft, unaffected by any of this) stays a one-tap action.
+  var saleSelectMode = false;
+  // scopeKey -> { type, catId (null = the whole type), label }. Explicit
+  // picks only — checking a type doesn't auto-check/uncheck its themes
+  // or vice versa; saleSelectedScopeRows() below dedupes by row key at
+  // resolution time, so picking both "all PART" and "PART > Bricks"
+  // doesn't double an item into the sale twice.
+  var saleSelectedScopes = {};
 
   // Raw fetch-and-cache, pulled out of fetchManageInventory() so a
   // read-only consumer that has nothing to do with Manage Inventory's own
@@ -5901,6 +5959,102 @@
     return (manageInventoryRows || []).filter(function (r) { return r.type === type; });
   }
 
+  function saleScopeKey(type, catId) {
+    return (catId === null || catId === undefined) ? "T:" + type : "C:" + type + ":" + catId;
+  }
+
+  function toggleSaleSelectScope(type, catId, label) {
+    var key = saleScopeKey(type, catId);
+    if (saleSelectedScopes[key]) {
+      delete saleSelectedScopes[key];
+    } else {
+      saleSelectedScopes[key] = { type: type, catId: (catId === undefined ? null : catId), label: label };
+    }
+    renderManageInventoryResults();
+  }
+
+  // Union of every checked scope's rows, deduped by row key (see the
+  // saleSelectedScopes comment above for why that dedup matters).
+  function saleSelectedScopeRows() {
+    var seen = {};
+    var rows = [];
+    Object.keys(saleSelectedScopes).forEach(function (key) {
+      var scope = saleSelectedScopes[key];
+      var scopeRows = scope.catId === null ? manageInventoryTypeRows(scope.type) : manageInventoryCategoryRows(scope.type, scope.catId);
+      scopeRows.forEach(function (r) {
+        if (seen[r.key]) return;
+        seen[r.key] = true;
+        rows.push(r);
+      });
+    });
+    return rows;
+  }
+
+  function startSaleSelectMode() {
+    if (activeSale && activeSale.active) {
+      window.alert("A sale is already running (" + (activeSale.label || (activeSale.discountPct + "% off")) + "). End it first — this app only tracks one active sale's original prices at a time.");
+      return;
+    }
+    saleSelectMode = true;
+    saleSelectedScopes = {};
+    renderManageInventoryResults();
+  }
+
+  function cancelSaleSelectMode() {
+    saleSelectMode = false;
+    saleSelectedScopes = {};
+    renderManageInventoryResults();
+  }
+
+  function confirmSaleSelectMode() {
+    var rows = saleSelectedScopeRows();
+    if (!rows.length) {
+      window.alert("Check at least one type or theme first.");
+      return;
+    }
+    saleSelectMode = false;
+    saleSelectedScopes = {};
+    startSaleDraft(rows);
+  }
+
+  function saleSelectToolbarHtml() {
+    if (!saleSelectMode) return "";
+    var labels = Object.keys(saleSelectedScopes).map(function (key) { return saleSelectedScopes[key].label; });
+    return '<div class="sale-select-toolbar">'
+      + '<div class="sale-select-toolbar-text">'
+      + (labels.length
+        ? '<strong>' + labels.length + ' selected</strong><span>' + escapeHtml(labels.join(", ")) + '</span>'
+        : '<strong>Check off the types/themes to include below</strong>')
+      + '</div>'
+      + '<div class="wanted-manual-actions">'
+      + '<button type="button" class="reset-btn" id="saleSelectConfirmBtn"' + (labels.length ? '' : ' disabled') + '>Put on sale</button>'
+      + '<button type="button" class="reset-btn" id="saleSelectCancelBtn">Cancel</button>'
+      + '</div>'
+      + '</div>';
+  }
+
+  // One browse tile — a plain single-button tile when Ryan isn't
+  // multi-selecting (click navigates, same as always), or a checkbox
+  // alongside a separate nav button once saleSelectMode is on, so
+  // checking "include everything here" and drilling in to refine further
+  // are two different taps instead of one tap doing both.
+  function browseTileHtml(navAttr, navValue, name, statsHtml, selType, selCat, selLabel) {
+    if (!saleSelectMode) {
+      return '<button type="button" class="browse-tile" ' + navAttr + '="' + escapeHtml(navValue) + '">'
+        + '<span class="browse-tile-name">' + escapeHtml(name) + '</span>'
+        + statsHtml
+        + '</button>';
+    }
+    var checked = !!saleSelectedScopes[saleScopeKey(selType, selCat)];
+    return '<div class="browse-tile browse-tile-select">'
+      + '<label class="browse-tile-checkbox"><input type="checkbox" data-select-type="' + escapeHtml(selType) + '" data-select-cat="' + escapeHtml(selCat === null ? "" : selCat) + '" data-select-label="' + escapeHtml(selLabel) + '"' + (checked ? ' checked' : '') + '></label>'
+      + '<button type="button" class="browse-tile-nav" ' + navAttr + '="' + escapeHtml(navValue) + '">'
+      + '<span class="browse-tile-name">' + escapeHtml(name) + '</span>'
+      + statsHtml
+      + '</button>'
+      + '</div>';
+  }
+
   // The navigation screen shown when the search box is empty: item type
   // breakdown → theme/category breakdown within that type → flat item
   // list within that theme. Reuses manageInventoryCardHtml for the final
@@ -5909,6 +6063,10 @@
     var hint = dirtyCount
       ? '<div class="manage-inventory-hint">You have ' + dirtyCount + ' unsaved change' + (dirtyCount === 1 ? '' : 's') + ' — browsing won’t lose them.</div>'
       : '';
+    // Visible at every depth while active, not just the screen it was
+    // opened from — Ryan can drill anywhere to refine the pick and the
+    // running selection (and the way back out) stays on screen.
+    hint += saleSelectToolbarHtml();
 
     if (manageInventoryBrowseRecent) {
       var recentRows = manageInventorySortRows(manageInventoryRecentRows(manageInventoryRecentDays));
@@ -5931,11 +6089,10 @@
       var typeCounts = manageInventoryTypeCounts();
       var types = Object.keys(typeCounts).sort(function (a, b) { return typeCounts[b].lots - typeCounts[a].lots; });
       var typeTiles = types.map(function (t) {
-        return '<button type="button" class="browse-tile" data-browse-type="' + escapeHtml(t) + '">'
-          + '<span class="browse-tile-name">' + escapeHtml(t) + '</span>'
-          + browseTileStatsHtml(typeCounts[t])
-          + '</button>';
+        return browseTileHtml('data-browse-type', t, t, browseTileStatsHtml(typeCounts[t]), t, null, t);
       }).join("");
+      // Recently Added is a date grouping, not a type/theme — it has no
+      // scope of its own, so it stays a plain nav tile even in select mode.
       var recentTile = manageInventoryHasDates
         ? '<button type="button" class="browse-tile browse-tile-recent" data-browse-recent="1">'
           + '<span class="browse-tile-name">Recently Added</span>'
@@ -5945,6 +6102,7 @@
       return hint
         + manageInventoryStatsHtml(manageInventoryStats(manageInventoryRows || []))
         + '<div class="manage-inventory-hint">Browse by item type, or search above by name or item number.</div>'
+        + (saleSelectMode ? '' : '<div class="manage-inventory-sort-row"><button type="button" class="inv-start-over-btn" id="manageInventorySelectModeBtn">Select categories/themes…</button></div>')
         + '<div class="browse-tile-list">' + recentTile + typeTiles + '</div>';
     }
 
@@ -5967,19 +6125,25 @@
       var themeIds = Object.keys(themeCounts).sort(function (a, b) { return themeCounts[b].lots - themeCounts[a].lots; });
       var themeTiles = themeIds.map(function (id) {
         var t = themeCounts[id];
-        return '<button type="button" class="browse-tile" data-browse-category="' + escapeHtml(id) + '">'
-          + '<span class="browse-tile-name">' + escapeHtml(t.name) + '</span>'
-          + browseTileStatsHtml(t)
-          + '</button>';
+        return browseTileHtml('data-browse-category', id, t.name, browseTileStatsHtml(t), manageInventoryBrowseType, id, manageInventoryBrowseType + ' › ' + t.name);
       }).join("");
       var typeRows = manageInventoryTypeRows(manageInventoryBrowseType);
+      var wholeTypeKey = saleScopeKey(manageInventoryBrowseType, null);
+      var wholeTypeRow = typeRows.length
+        ? (saleSelectMode
+            ? '<label class="sale-select-whole-row"><input type="checkbox" data-select-type="' + escapeHtml(manageInventoryBrowseType) + '" data-select-cat="" data-select-label="' + escapeHtml(manageInventoryBrowseType) + '"' + (saleSelectedScopes[wholeTypeKey] ? ' checked' : '') + '> All of ' + escapeHtml(manageInventoryBrowseType) + ' (' + typeRows.length + ' lots)</label>'
+            : '<div class="manage-inventory-sort-row">'
+              + '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put all ' + escapeHtml(manageInventoryBrowseType) + ' on sale</button>'
+              + '<button type="button" class="inv-start-over-btn" id="manageInventorySelectModeBtn">Select themes…</button>'
+              + '</div>')
+        : '';
       return hint
         + manageInventoryBreadcrumb()
         + manageInventoryStatsHtml(manageInventoryStats(typeRows))
         + '<div class="manage-inventory-hint">Browse ' + escapeHtml(manageInventoryBrowseType) + ' by theme/category.'
         + (manageInventoryBrowseType === 'PART' ? ' (Parts mostly don’t have a real theme — this is BrickLink’s physical category tree instead, e.g. Bricks, Plates.)' : '')
         + '</div>'
-        + (typeRows.length ? '<div class="manage-inventory-sort-row"><button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put all ' + escapeHtml(manageInventoryBrowseType) + ' on sale</button></div>' : '')
+        + wholeTypeRow
         + '<div class="browse-tile-list">' + themeTiles + '</div>';
     }
 
@@ -5990,7 +6154,7 @@
       + manageInventoryBreadcrumb()
       + manageInventoryStatsHtml(manageInventoryStats(filtered))
       + '<div class="manage-inventory-sort-row">' + manageInventorySortSelectHtml()
-      + (filtered.length ? '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
+      + (filtered.length && !saleSelectMode ? '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
       + '</div>'
       + capped.map(manageInventoryCardHtml).join("")
       + (filtered.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + filtered.length + ' items — search above to find a specific one.</div>' : '');
@@ -6109,11 +6273,11 @@
     } else {
       var matches = manageInventoryMatches(query);
       var capped = matches.slice(0, MANAGE_INVENTORY_RESULT_CAP);
-      body = activeSaleBannerHtml() + saleDraftHtml()
+      body = activeSaleBannerHtml() + saleDraftHtml() + saleSelectToolbarHtml()
         + '<div class="inventory-summary-row">'
         + '<span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span>'
         + '<div class="inventory-bulk-actions">'
-        + (matches.length ? '<button type="button" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
+        + (matches.length && !saleSelectMode ? '<button type="button" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
         + '<button type="button" id="manageInventoryRefreshBtn">Refresh</button>'
         + '</div>'
         + '</div>'
@@ -6291,6 +6455,22 @@
     if (saleDraftCancelBtnEl) saleDraftCancelBtnEl.addEventListener("click", cancelSaleDraft);
     var endSaleBtnEl = document.getElementById("endSaleBtn");
     if (endSaleBtnEl) endSaleBtnEl.addEventListener("click", handleEndSaleNow);
+
+    var selectModeBtnEl = document.getElementById("manageInventorySelectModeBtn");
+    if (selectModeBtnEl) selectModeBtnEl.addEventListener("click", startSaleSelectMode);
+    var saleSelectConfirmBtnEl = document.getElementById("saleSelectConfirmBtn");
+    if (saleSelectConfirmBtnEl) saleSelectConfirmBtnEl.addEventListener("click", confirmSaleSelectMode);
+    var saleSelectCancelBtnEl = document.getElementById("saleSelectCancelBtn");
+    if (saleSelectCancelBtnEl) saleSelectCancelBtnEl.addEventListener("click", cancelSaleSelectMode);
+    container.querySelectorAll("[data-select-type]").forEach(function (el) {
+      el.addEventListener("change", function () {
+        var type = el.getAttribute("data-select-type");
+        var catAttr = el.getAttribute("data-select-cat");
+        var catId = catAttr === "" ? null : catAttr;
+        var label = el.getAttribute("data-select-label") || type;
+        toggleSaleSelectScope(type, catId, label);
+      });
+    });
   }
 
   function renderManageInventoryView() {
