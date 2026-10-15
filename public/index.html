@@ -5094,10 +5094,10 @@
     if (!rows.length) return "";
     var dateStr = new Date().toLocaleDateString();
     var lines = rows.map(function (r) {
-      return r.itemNo + " | " + (r.name || "(name unknown)") + " | $" + r.unitPrice + " | qty " + r.quantity;
+      return r.itemNo + " | " + (r.name || "(name unknown)") + " | $" + r.unitPrice + " | qty " + r.quantity + " | " + (r.description || "");
     });
     var subject = "Fig inventory log - " + dateStr + " (" + rows.length + ")";
-    var body = "Item # | Name | Price | Qty\n" + lines.join("\n") + "\n\nDate entered: " + dateStr;
+    var body = "Item # | Name | Price | Qty | Description\n" + lines.join("\n") + "\n\nDate entered: " + dateStr;
     return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
   }
 
