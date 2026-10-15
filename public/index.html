@@ -5093,11 +5093,20 @@
     var rows = addInventoryFigLogRows();
     if (!rows.length) return "";
     var dateStr = new Date().toLocaleDateString();
+    // A real table needs an HTML email (a whole different send path — no
+    // mailto: body is ever more than plain text), and plain-text column
+    // alignment isn't reliable either, since most mail apps render a
+    // mailto: body in a proportional font, not monospace. A bulleted,
+    // one-item-per-block layout is the readable ceiling for mailto: —
+    // each bullet gets its own blank-line-separated block instead of
+    // being crammed onto one line.
     var lines = rows.map(function (r) {
-      return r.itemNo + " | " + (r.name || "(name unknown)") + " | $" + r.unitPrice + " | qty " + r.quantity + " | " + (r.description || "");
+      return "• " + r.itemNo + " — " + (r.name || "(name unknown)")
+        + "\n  Price: $" + r.unitPrice + "   Qty: " + r.quantity
+        + "\n  Description: " + (r.description || "(none)");
     });
     var subject = "Fig inventory log - " + dateStr + " (" + rows.length + ")";
-    var body = "Item # | Name | Price | Qty | Description\n" + lines.join("\n") + "\n\nDate entered: " + dateStr;
+    var body = lines.join("\n\n") + "\n\nDate entered: " + dateStr;
     return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
   }
 
