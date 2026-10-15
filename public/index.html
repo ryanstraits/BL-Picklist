@@ -4527,19 +4527,22 @@
 
   // Best-effort read of the buyer-facing description Ryan writes (or
   // imports from his own BrickScan remarks) for a minifig, guessing which
-  // of his designation codes it describes. He only ever logs his top two
-  // defects, in the order he considers them most important — so this
-  // takes the first two distinct defect keywords in reading order, not
-  // just whichever two happen to match, then reassembles them into his
-  // fixed C/D/F/J/M/Y order to produce an actual code from his list (e.g.
-  // "scratched and cracked" hits D then C by reading order, but the real
-  // designation is "CD", not "DC"). LN never combines with a defect code
-  // — a "mint/like new" mention wins outright. With no defect keywords at
-  // all, the fallback mirrors his own stated default: TLP for a Used row
-  // (his literal default blurb), LN for a New one (nothing to log wear
-  // against). This is a one-time guess at row-creation time, not a live
-  // re-suggestion as the Description field is edited afterward.
-  function guessFigDesignation(description, newOrUsed) {
+  // of his designation codes it describes. Only ever called for a Used
+  // row — these designations describe wear, so they don't apply to a New
+  // fig at all (that just gets the standard "straight out of packaging"
+  // description, no code). He only ever logs his top two defects, in the
+  // order he considers them most important — so this takes the first two
+  // distinct defect keywords in reading order, not just whichever two
+  // happen to match, then reassembles them into his fixed C/D/F/J/M/Y
+  // order to produce an actual code from his list (e.g. "scratched and
+  // cracked" hits D then C by reading order, but the real designation is
+  // "CD", not "DC"). LN and TLP never combine with a defect code or with
+  // each other — LN (a Used fig that nonetheless looks like new) wins
+  // outright on a "mint/like new" mention; with no defect keywords at
+  // all, it falls back to TLP, his own stated default for Used. This is
+  // a one-time guess at row-creation time, not a live re-suggestion as
+  // the Description field is edited afterward.
+  function guessFigDesignation(description) {
     var text = (description || "").toLowerCase();
     if (/\bmint\b|like new|pristine|no (visible )?(wear|issues|defects)/.test(text)) return "LN";
 
@@ -4556,7 +4559,7 @@
       var idx = text.search(pair[1]);
       if (idx !== -1) found.push({ code: pair[0], idx: idx });
     });
-    if (!found.length) return newOrUsed === "N" ? "LN" : "TLP";
+    if (!found.length) return "TLP";
 
     found.sort(function (a, b) { return a.idx - b.idx; });
     var codeOrder = ["C", "D", "F", "J", "M", "Y"];
@@ -4592,9 +4595,11 @@
       // pieces or still sealed.
       completeness: inventoryTypeWord(obj.ITEMTYPE) === "SET" ? "C" : "",
       // Ryan's own spreadsheet condition shorthand — minifigs only, and
-      // guessed once here from whatever description this row already has
-      // (see guessFigDesignation), not recomputed if he edits it after.
-      designation: inventoryTypeWord(obj.ITEMTYPE) === "MINIFIG" ? guessFigDesignation(description, newOrUsed) : "",
+      // Used only (a New fig just gets the standard description, no
+      // designation — see guessFigDesignation). Guessed once here from
+      // whatever description this row already has, not recomputed if he
+      // edits it after.
+      designation: (inventoryTypeWord(obj.ITEMTYPE) === "MINIFIG" && newOrUsed === "U") ? guessFigDesignation(description) : "",
       result: null,
       priceExpanded: false,
       // Set once Ryan's actually touched this row's Price field (see the
@@ -5154,8 +5159,12 @@
     // each bullet gets its own blank-line-separated block instead of
     // being crammed onto one line.
     var lines = rows.map(function (r) {
+      // Designation doesn't apply to a New fig at all (see
+      // guessFigDesignation) — leave it off that line entirely rather
+      // than printing a misleading TLP/blank.
+      var designationPart = r.newOrUsed === "U" ? ("   Designation: " + (r.designation || "TLP")) : "";
       return "• " + r.itemNo + " — " + (r.name || "(name unknown)")
-        + "\n  Price: $" + r.unitPrice + "   Qty: " + r.quantity + "   Designation: " + (r.designation || "TLP")
+        + "\n  Price: $" + r.unitPrice + "   Qty: " + r.quantity + designationPart
         + "\n  Description: " + (r.description || "(none)");
     });
     var subject = "Fig inventory log - " + dateStr + " (" + rows.length + ")";
@@ -5237,8 +5246,9 @@
           : '')
         // Ryan's own spreadsheet shorthand for a fig's condition — not a
         // BrickLink field at all, just carried along on the row so it can
-        // ride into the fig log email at submit time.
-        + (row.type === "MINIFIG"
+        // ride into the fig log email at submit time. Used figs only —
+        // a New one just gets the standard description, nothing to log.
+        + (row.type === "MINIFIG" && row.newOrUsed === "U"
           ? '<div class="inventory-field"><label>Designation</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="designation"' + (locked ? ' disabled' : '') + '>'
             + FIG_DESIGNATION_OPTIONS.map(function (code) {
                 return '<option value="' + code + '"' + (row.designation === code ? ' selected' : '') + '>' + code + '</option>';
@@ -5323,12 +5333,21 @@
         // colorId changes which item+color the price guide looks up (a
         // different cache key) — re-fetch if that panel is open. newOrUsed
         // no longer affects the panel at all (both conditions are always
-        // fetched), so it needs no re-fetch or re-render. Other fields
-        // don't need a re-render either; doing one on every
-        // keystroke-triggering "change" would drop focus mid-edit for no
-        // benefit, since price/remarks don't affect anything else shown.
+        // fetched), so it needs no re-fetch there. It does need a full
+        // re-render on a MINIFIG row, though: the Designation field (and
+        // its value) only makes sense for Used, so flipping Condition has
+        // to show/hide it and keep row.designation in step — cleared on
+        // New, freshly guessed on Used (the Description text alone won't
+        // have changed, but re-running the guess here is cheap and keeps
+        // this the one place that logic lives). Other fields don't need a
+        // re-render either; doing one on every keystroke-triggering
+        // "change" would drop focus mid-edit for no benefit, since
+        // price/remarks don't affect anything else shown.
         if (field === "colorId") {
           if (row.priceExpanded) fetchPriceGuide(row, renderInventoryReview); else renderInventoryReview();
+        } else if (field === "newOrUsed" && row.type === "MINIFIG") {
+          row.designation = row.newOrUsed === "U" ? guessFigDesignation(row.description) : "";
+          renderInventoryReview();
         } else if (field === "quantity" || field === "unitPrice") {
           // Keep the running total live without a full re-render, which
           // would otherwise drop focus mid-edit (see comment above).
