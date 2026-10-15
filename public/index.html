@@ -4516,6 +4516,55 @@
   // puts Ryan's condition notes in REMARKS, so those (not DESCRIPTION) are
   // what get cleaned up and moved into Description; Remarks is left blank
   // either way.
+  // Ryan's own shorthand for a minifig's condition in his spreadsheet log
+  // — up to two defect codes (in his fixed C/D/F/J/M/Y order), or LN/TLP
+  // standing alone. Order here matches how he listed them: singles first,
+  // then every two-letter combo he actually uses.
+  var FIG_DESIGNATION_OPTIONS = [
+    "LN", "TLP", "C", "D", "F", "J", "M", "Y",
+    "CD", "CF", "CJ", "CM", "CY", "DF", "DJ", "DM", "DY", "FJ", "FM", "FY", "JM", "JY", "MY",
+  ];
+
+  // Best-effort read of the buyer-facing description Ryan writes (or
+  // imports from his own BrickScan remarks) for a minifig, guessing which
+  // of his designation codes it describes. He only ever logs his top two
+  // defects, in the order he considers them most important — so this
+  // takes the first two distinct defect keywords in reading order, not
+  // just whichever two happen to match, then reassembles them into his
+  // fixed C/D/F/J/M/Y order to produce an actual code from his list (e.g.
+  // "scratched and cracked" hits D then C by reading order, but the real
+  // designation is "CD", not "DC"). LN never combines with a defect code
+  // — a "mint/like new" mention wins outright. With no defect keywords at
+  // all, the fallback mirrors his own stated default: TLP for a Used row
+  // (his literal default blurb), LN for a New one (nothing to log wear
+  // against). This is a one-time guess at row-creation time, not a live
+  // re-suggestion as the Description field is edited afterward.
+  function guessFigDesignation(description, newOrUsed) {
+    var text = (description || "").toLowerCase();
+    if (/\bmint\b|like new|pristine|no (visible )?(wear|issues|defects)/.test(text)) return "LN";
+
+    var DEFECT_PATTERNS = [
+      ["C", /crack/],
+      ["D", /dent|ding|scratch/],
+      ["F", /fray|torn/],
+      ["M", /\bmarks?\b|print issue|mold issue/],
+      ["J", /loose joint|swing wear/],
+      ["Y", /yellow|dirty|grime|grimy/],
+    ];
+    var found = [];
+    DEFECT_PATTERNS.forEach(function (pair) {
+      var idx = text.search(pair[1]);
+      if (idx !== -1) found.push({ code: pair[0], idx: idx });
+    });
+    if (!found.length) return newOrUsed === "N" ? "LN" : "TLP";
+
+    found.sort(function (a, b) { return a.idx - b.idx; });
+    var codeOrder = ["C", "D", "F", "J", "M", "Y"];
+    var top = found.slice(0, 2).map(function (f) { return f.code; });
+    top.sort(function (a, b) { return codeOrder.indexOf(a) - codeOrder.indexOf(b); });
+    return top.join("");
+  }
+
   function csvObjToInventoryRow(obj) {
     var newOrUsed = (obj.CONDITION || "").trim().toUpperCase() === "U" ? "U" : "N";
     var rawConditionNote = (obj.REMARKS || "").trim();
@@ -4542,6 +4591,10 @@
       // the per-row card before submitting if a set's actually missing
       // pieces or still sealed.
       completeness: inventoryTypeWord(obj.ITEMTYPE) === "SET" ? "C" : "",
+      // Ryan's own spreadsheet condition shorthand — minifigs only, and
+      // guessed once here from whatever description this row already has
+      // (see guessFigDesignation), not recomputed if he edits it after.
+      designation: inventoryTypeWord(obj.ITEMTYPE) === "MINIFIG" ? guessFigDesignation(description, newOrUsed) : "",
       result: null,
       priceExpanded: false,
       // Set once Ryan's actually touched this row's Price field (see the
@@ -5102,7 +5155,7 @@
     // being crammed onto one line.
     var lines = rows.map(function (r) {
       return "• " + r.itemNo + " — " + (r.name || "(name unknown)")
-        + "\n  Price: $" + r.unitPrice + "   Qty: " + r.quantity
+        + "\n  Price: $" + r.unitPrice + "   Qty: " + r.quantity + "   Designation: " + (r.designation || "TLP")
         + "\n  Description: " + (r.description || "(none)");
     });
     var subject = "Fig inventory log - " + dateStr + " (" + rows.length + ")";
@@ -5180,6 +5233,16 @@
             + '<option value="C"' + (row.completeness === "C" ? ' selected' : '') + '>Complete</option>'
             + '<option value="B"' + (row.completeness === "B" ? ' selected' : '') + '>Incomplete</option>'
             + '<option value="S"' + (row.completeness === "S" ? ' selected' : '') + '>Sealed</option>'
+            + '</select></div>'
+          : '')
+        // Ryan's own spreadsheet shorthand for a fig's condition — not a
+        // BrickLink field at all, just carried along on the row so it can
+        // ride into the fig log email at submit time.
+        + (row.type === "MINIFIG"
+          ? '<div class="inventory-field"><label>Designation</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="designation"' + (locked ? ' disabled' : '') + '>'
+            + FIG_DESIGNATION_OPTIONS.map(function (code) {
+                return '<option value="' + code + '"' + (row.designation === code ? ' selected' : '') + '>' + code + '</option>';
+              }).join("")
             + '</select></div>'
           : '')
         + '<div class="inventory-field"><label>Stock Room</label><select class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="stockRoomId"' + (locked ? ' disabled' : '') + '>'
