@@ -949,6 +949,19 @@
   }
   .sale-select-toolbar-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text); }
   .sale-select-toolbar-text span { color: var(--text-secondary); font-size: 12px; }
+  .fig-log-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--info);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--text);
+  }
   /* A tile in multi-select mode becomes two separate tap targets — the
      checkbox (include everything here, no drill-in needed) and the nav
      button beside it (go look at what's inside instead) — rather than
@@ -5061,6 +5074,42 @@
     topbarProgressLabel.textContent = progress.reviewed + "/" + progress.total + " priced";
   }
 
+  // ---- Fig inventory log email ----
+  // Adding from his phone, Ryan has no easy way to log what he just put
+  // into inventory in his own spreadsheet — and explicitly doesn't want
+  // a persistent "logged" checkbox like Orders has, just a quick way to
+  // get the data itself. Minifigs only, since that's the one type he's
+  // asked to track this way; a plain mailto: (same pattern as the Wanted
+  // List's own "Email list") rather than a real backend send, so there's
+  // no email API/secrets to wire up — the body's small enough to fit a
+  // mailto: link's practical length limit. Only rows that actually went
+  // live count (row.result.success) — a failed add was never really
+  // entered, so it has nothing to log yet.
+  function addInventoryFigLogRows() {
+    return (inventoryRows || []).filter(function (r) { return r.type === "MINIFIG" && r.result && r.result.success; });
+  }
+
+  function addInventoryFigLogEmailHref() {
+    var rows = addInventoryFigLogRows();
+    if (!rows.length) return "";
+    var dateStr = new Date().toLocaleDateString();
+    var lines = rows.map(function (r) {
+      return r.itemNo + " | " + (r.name || "(name unknown)") + " | $" + r.unitPrice + " | qty " + r.quantity;
+    });
+    var subject = "Fig inventory log - " + dateStr + " (" + rows.length + ")";
+    var body = "Item # | Name | Price | Qty\n" + lines.join("\n") + "\n\nDate entered: " + dateStr;
+    return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+  }
+
+  function figLogBannerHtml() {
+    var rows = addInventoryFigLogRows();
+    if (!rows.length) return "";
+    return '<div class="fig-log-banner">'
+      + '<span>' + rows.length + ' fig' + (rows.length === 1 ? '' : 's') + ' added this session</span>'
+      + '<a class="reset-btn wanted-bank-email-link" href="' + escapeHtml(addInventoryFigLogEmailHref()) + '">Email fig log</a>'
+      + '</div>';
+  }
+
   function renderInventoryReview() {
     // Every row's Color field is now a name dropdown (see below), not just
     // the manual-add draft's — so this view needs colorsMap warmed too,
@@ -5149,6 +5198,7 @@
 
     inventoryView.innerHTML = ""
       + '<div class="inventory-intro">Review each item before it goes live on BrickLink. Uncheck anything you don’t want to add yet, edit price/qty/condition as needed, then submit.</div>'
+      + figLogBannerHtml()
       + inventoryManualAddHtml()
       + '<div class="inventory-total-row"><span class="inventory-total-label">Total</span><span class="inventory-total-value mono" id="inventoryTotalValue">' + escapeHtml(inventoryTotalText()) + '</span></div>'
       + '<div class="inventory-summary-row">'
