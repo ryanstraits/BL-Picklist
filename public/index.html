@@ -940,6 +940,7 @@
     margin-bottom: 14px;
   }
   .sale-draft-title { font-weight: 600; font-size: 14px; }
+  .sale-age-quick-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .sale-select-toolbar {
     background: var(--surface);
     border: 1px solid var(--info);
@@ -5807,6 +5808,13 @@
   // resolution time, so picking both "all PART" and "PART > Bricks"
   // doesn't double an item into the sale twice.
   var saleSelectedScopes = {};
+  // The "Put aged inventory on sale" threshold picker: { type, beforeDate
+  // (YYYY-MM-DD) } once open, else null. A separate, inventory-wide scope
+  // alongside the theme/category ones above — picking it resolves to a
+  // row list the same way any other scope does, then hands off to the
+  // same startSaleDraft(rows)/saleDraft confirm panel every other sale
+  // entry point already uses.
+  var saleAgeDraft = null;
 
   // Raw fetch-and-cache, pulled out of fetchManageInventory() so a
   // read-only consumer that has nothing to do with Manage Inventory's own
@@ -5987,6 +5995,26 @@
       if (!r.dateCreated) return false;
       var t = new Date(r.dateCreated).getTime();
       return !isNaN(t) && t >= cutoff;
+    });
+  }
+
+  // The inverse of manageInventoryRecentRows — stale listings rather than
+  // fresh ones, for the aged-inventory sale picker. A row with no
+  // dateCreated (BrickLink doesn't always return one) can't be judged
+  // against a threshold, so it's left out rather than guessed at — same
+  // call manageInventoryRecentRows already makes the other direction.
+  // typeFilter is "" for all types, else an exact row.type match.
+  function isoDateDaysAgo(days) {
+    var d = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    return d.toISOString().slice(0, 10);
+  }
+  function manageInventoryAgedRows(beforeDate, typeFilter) {
+    var cutoff = new Date(beforeDate + "T23:59:59").getTime();
+    return (manageInventoryRows || []).filter(function (r) {
+      if (typeFilter && r.type !== typeFilter) return false;
+      if (!r.dateCreated) return false;
+      var t = new Date(r.dateCreated).getTime();
+      return !isNaN(t) && t <= cutoff;
     });
   }
 
@@ -6251,7 +6279,10 @@
       return hint
         + manageInventoryStatsHtml(manageInventoryStats(manageInventoryRows || []))
         + '<div class="manage-inventory-hint">Browse by item type, or search above by name or item number.</div>'
-        + (saleSelectMode ? '' : '<div class="manage-inventory-sort-row"><button type="button" class="inv-start-over-btn" id="manageInventorySelectModeBtn">Select categories/themes…</button></div>')
+        + (saleSelectMode ? '' : '<div class="manage-inventory-sort-row">'
+          + '<button type="button" class="inv-start-over-btn" id="manageInventorySelectModeBtn">Select categories/themes…</button>'
+          + (saleAgeDraft ? '' : '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleAgeBtn">Put aged inventory on sale…</button>')
+          + '</div>')
         + '<div class="browse-tile-list">' + recentTile + typeTiles + '</div>';
     }
 
@@ -6418,11 +6449,11 @@
     } else if (!manageInventoryRows) {
       body = "";
     } else if (!query) {
-      body = activeSaleBannerHtml() + saleDraftHtml() + manageInventoryBrowseHtml(dirtyCount);
+      body = activeSaleBannerHtml() + saleDraftHtml() + saleAgeDraftHtml() + manageInventoryBrowseHtml(dirtyCount);
     } else {
       var matches = manageInventoryMatches(query);
       var capped = matches.slice(0, MANAGE_INVENTORY_RESULT_CAP);
-      body = activeSaleBannerHtml() + saleDraftHtml() + saleSelectToolbarHtml()
+      body = activeSaleBannerHtml() + saleDraftHtml() + saleAgeDraftHtml() + saleSelectToolbarHtml()
         + '<div class="inventory-summary-row">'
         + '<span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span>'
         + '<div class="inventory-bulk-actions">'
@@ -6620,6 +6651,41 @@
         toggleSaleSelectScope(type, catId, label);
       });
     });
+
+    var startSaleAgeBtnEl = document.getElementById("manageInventoryStartSaleAgeBtn");
+    if (startSaleAgeBtnEl) startSaleAgeBtnEl.addEventListener("click", startSaleAgeDraft);
+    var saleAgeTypeSelectEl = document.getElementById("saleAgeTypeSelect");
+    if (saleAgeTypeSelectEl) {
+      saleAgeTypeSelectEl.addEventListener("change", function () {
+        saleAgeDraft.type = saleAgeTypeSelectEl.value;
+        renderManageInventoryResults();
+      });
+    }
+    var saleAgeDateInputEl = document.getElementById("saleAgeDateInput");
+    if (saleAgeDateInputEl) {
+      saleAgeDateInputEl.addEventListener("change", function () {
+        // A cleared/invalid date field falls back to today rather than
+        // feeding an empty string into the cutoff math below.
+        saleAgeDraft.beforeDate = saleAgeDateInputEl.value || isoDateDaysAgo(0);
+        renderManageInventoryResults();
+      });
+    }
+    container.querySelectorAll("[data-age-days]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        saleAgeDraft.beforeDate = isoDateDaysAgo(parseInt(el.getAttribute("data-age-days"), 10));
+        renderManageInventoryResults();
+      });
+    });
+    var saleAgePreviewBtnEl = document.getElementById("saleAgePreviewBtn");
+    if (saleAgePreviewBtnEl) {
+      saleAgePreviewBtnEl.addEventListener("click", function () {
+        var rows = manageInventoryAgedRows(saleAgeDraft.beforeDate, saleAgeDraft.type);
+        saleAgeDraft = null;
+        startSaleDraft(rows);
+      });
+    }
+    var saleAgeCancelBtnEl = document.getElementById("saleAgeCancelBtn");
+    if (saleAgeCancelBtnEl) saleAgeCancelBtnEl.addEventListener("click", cancelSaleAgeDraft);
   }
 
   function renderManageInventoryView() {
@@ -6784,6 +6850,46 @@
   // that have a price to begin with.
   function eligibleSaleRows(rows) {
     return rows.filter(function (r) { return !r.markedForDelete && parseFloat(r.unitPrice) > 0; });
+  }
+
+  function startSaleAgeDraft() {
+    saleAgeDraft = { type: "", beforeDate: isoDateDaysAgo(60) };
+    renderManageInventoryResults();
+  }
+
+  function cancelSaleAgeDraft() {
+    saleAgeDraft = null;
+    renderManageInventoryResults();
+  }
+
+  var SALE_AGE_QUICK_DAYS = [30, 60, 90, 180];
+
+  function saleAgeDraftHtml() {
+    var d = saleAgeDraft;
+    if (!d) return "";
+    var matchCount = eligibleSaleRows(manageInventoryAgedRows(d.beforeDate, d.type)).length;
+    var daysAgo = Math.round((Date.now() - new Date(d.beforeDate + "T23:59:59").getTime()) / (24 * 60 * 60 * 1000));
+    return '<div class="sale-draft-panel">'
+      + '<div class="sale-draft-title">Put aged inventory on sale</div>'
+      + '<div class="inventory-fields wanted-manual-fields">'
+      + '<div class="inventory-field"><label>Item type</label><select id="saleAgeTypeSelect">'
+      + '<option value=""' + (d.type === "" ? ' selected' : '') + '>All types</option>'
+      + '<option value="MINIFIG"' + (d.type === "MINIFIG" ? ' selected' : '') + '>Figs only</option>'
+      + '<option value="PART"' + (d.type === "PART" ? ' selected' : '') + '>Parts only</option>'
+      + '</select></div>'
+      + '<div class="inventory-field"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
+      + '</div>'
+      + '<div class="sale-age-quick-row">'
+      + SALE_AGE_QUICK_DAYS.map(function (n) {
+          return '<button type="button" class="inv-start-over-btn" data-age-days="' + n + '">' + n + '+ days</button>';
+        }).join("")
+      + '</div>'
+      + '<div class="manage-inventory-hint">' + matchCount + ' item' + (matchCount === 1 ? '' : 's') + (daysAgo > 0 ? ', listed ' + daysAgo + '+ days ago,' : '') + ' with a price to discount.</div>'
+      + '<div class="wanted-manual-actions">'
+      + '<button type="button" class="reset-btn" id="saleAgePreviewBtn"' + (matchCount ? '' : ' disabled') + '>Review Sale…</button>'
+      + '<button type="button" class="reset-btn" id="saleAgeCancelBtn">Cancel</button>'
+      + '</div>'
+      + '</div>';
   }
 
   function startSaleDraft(rows) {
