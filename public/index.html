@@ -1872,7 +1872,7 @@
     <div class="topbar-row">
       <button class="back-btn" id="backBtn" aria-label="Back to all orders">
         <svg viewBox="0 0 16 16" fill="none"><path d="M9.5 3L4.5 8L9.5 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        All orders
+        <span id="backBtnLabel">All orders</span>
       </button>
       <div class="brand" id="brandBlock">
         <img class="brand-logo" src="/logo.png" alt="" width="32" height="32">
@@ -2602,6 +2602,7 @@
   var setFigLookupView = document.getElementById("view-set-fig-lookup");
   var wantedListView = document.getElementById("view-wanted-list");
   var backBtn = document.getElementById("backBtn");
+  var backBtnLabel = document.getElementById("backBtnLabel");
   var brandSub = document.getElementById("brandSub");
   var refreshBtn = document.getElementById("refreshBtn");
   var topbarCategoryRow = document.getElementById("topbarCategoryRow");
@@ -4308,6 +4309,7 @@
     inventoryView.classList.add("hidden");
     orderLookupView.classList.add("hidden");
     backBtn.style.display = "inline-flex";
+    backBtnLabel.textContent = "All orders";
     topbarCategoryRow.style.display = "none";
     topbarSubNavRow.style.display = "none";
     if (orderDetailReadOnly) {
@@ -5748,6 +5750,12 @@
   var manageInventoryLoading = false;
   var manageInventoryError = "";
   var manageInventorySearchQuery = "";
+  // True only when Manage Inventory was opened via the "Manage in
+  // Inventory →" jump link from Set/Fig Lookup — shows the shared topbar
+  // back button so Ryan can return to exactly where he left the lookup
+  // (its own state — query, drill-in, tab — is never touched by this
+  // flag or by leaving the view, so there's nothing to restore by hand).
+  var manageInventoryCameFromSetFigLookup = false;
   var manageInventorySubmitting = false;
   var manageInventorySearchDebounceTimer = null;
   var MANAGE_INVENTORY_RESULT_CAP = 50;
@@ -7663,7 +7671,29 @@
     });
     var haveQty = rows.reduce(function (sum, r) { return sum + (parseInt(r.quantity, 10) || 0); }, 0);
     var totalValue = rows.reduce(function (sum, r) { return sum + (parseFloat(r.unitPrice) || 0) * (parseInt(r.quantity, 10) || 0); }, 0);
-    return { entry: entry, haveQty: haveQty, avgPrice: haveQty ? totalValue / haveQty : 0 };
+    // Qty per stock room (""  = not assigned to one) so the row can show
+    // where to physically go pull it, same breakdown Manage Inventory's
+    // own per-row Stock Room field already tracks.
+    var roomQtys = {};
+    rows.forEach(function (r) {
+      var room = r.stockRoomId || "";
+      roomQtys[room] = (roomQtys[room] || 0) + (parseInt(r.quantity, 10) || 0);
+    });
+    return { entry: entry, haveQty: haveQty, avgPrice: haveQty ? totalValue / haveQty : 0, roomQtys: roomQtys };
+  }
+
+  // "" (no stock room) isn't worth calling out — most listings don't use
+  // one, and the common case needs no extra words. Only renders anything
+  // once at least one matching row actually has a room set.
+  function setFigLookupStockRoomHtml(roomQtys) {
+    var rooms = Object.keys(roomQtys).filter(function (r) { return r !== ""; }).sort();
+    if (!rooms.length) return "";
+    if (rooms.length === 1 && !roomQtys[""]) {
+      return ' · Stock Room ' + rooms[0];
+    }
+    var parts = rooms.map(function (r) { return r + ' ×' + roomQtys[r]; });
+    if (roomQtys[""]) parts.push('unassigned ×' + roomQtys[""]);
+    return ' · Stock Room ' + parts.join(', ');
   }
 
   // A rough "is it worth buying vs. parting out" signal on the row itself
@@ -7700,7 +7730,7 @@
     var manuallyOwned = !reallyOwned && e.manualQty > 0;
     var stockLine;
     if (reallyOwned) {
-      stockLine = ' · Have ' + bucket.haveQty + ' (listed at ' + escapeHtml(formatCurrency(bucket.avgPrice, "USD")) + ')';
+      stockLine = ' · Have ' + bucket.haveQty + ' (listed at ' + escapeHtml(formatCurrency(bucket.avgPrice, "USD")) + ')' + setFigLookupStockRoomHtml(bucket.roomQtys);
     } else if (manuallyOwned) {
       stockLine = ' · Temp added ' + e.manualQty + ' (not in your listed inventory)';
     } else {
@@ -7969,6 +7999,7 @@
     container.querySelectorAll(".set-fig-manage-btn").forEach(function (el) {
       el.addEventListener("click", function () {
         manageInventorySearchQuery = el.getAttribute("data-itemno") || "";
+        manageInventoryCameFromSetFigLookup = true;
         goToManageInventory();
       });
     });
@@ -8712,7 +8743,12 @@
     setFigLookupView.classList.add("hidden");
     wantedListView.classList.add("hidden");
     manageInventoryView.classList.remove("hidden");
-    backBtn.style.display = "none";
+    if (manageInventoryCameFromSetFigLookup) {
+      backBtn.style.display = "inline-flex";
+      backBtnLabel.textContent = "Lookup";
+    } else {
+      backBtn.style.display = "none";
+    }
     setTopbarNav("inventory");
     refreshBtn.style.display = "";
     refreshBtn.setAttribute("aria-label", "Refresh inventory");
@@ -8798,12 +8834,22 @@
   }
 
   backBtn.addEventListener("click", function () {
-    if (currentView === "order" && orderDetailReadOnly) goToOrderLookup(); else goToOrders();
+    if (currentView === "order" && orderDetailReadOnly) goToOrderLookup();
+    else if (currentView === "manage-inventory" && manageInventoryCameFromSetFigLookup) {
+      manageInventoryCameFromSetFigLookup = false;
+      goToSetFigLookup();
+    } else goToOrders();
   });
   orderListBtn.addEventListener("click", goToOrders);
   orderLookupBtn.addEventListener("click", goToOrderLookup);
   labelPrepBtn.addEventListener("click", goToLabelPrep);
-  manageInventoryBtn.addEventListener("click", goToManageInventory);
+  // A direct tap on the Manage Inventory nav button (rather than the
+  // jump link from Set/Fig Lookup) means Ryan isn't mid-lookup — don't
+  // leave a stale back-to-lookup button showing from an earlier jump.
+  manageInventoryBtn.addEventListener("click", function () {
+    manageInventoryCameFromSetFigLookup = false;
+    goToManageInventory();
+  });
   setFigLookupBtn.addEventListener("click", goToSetFigLookup);
   wantedListBtn.addEventListener("click", goToWantedList);
   addInventoryBtn.addEventListener("click", goToInventory);
