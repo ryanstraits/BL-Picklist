@@ -1080,7 +1080,7 @@
      than a bordered button, so it doesn't visually compete with "Temp add
      to stock"/"Add to wanted list" as if it were another action on this
      row's own in-stock status. */
-  .set-fig-drill-btn {
+  .set-fig-drill-btn, .set-fig-manage-btn {
     display: block;
     margin-top: 6px;
     border: none;
@@ -7746,6 +7746,16 @@
     var drillBtnHtml = e.type === "MINIFIG"
       ? '<button type="button" class="set-fig-drill-btn" data-key="' + escapeHtml(e.key) + '">View this minifig’s parts →</button>'
       : '';
+    // A real inventory match (not just a temp-add) is an actual listing
+    // Ryan can edit or delete — e.g. pulling a part's stock down (or
+    // removing it outright) once it's gone into a set he's building, or
+    // deleting a fig he's parting out. Jumps to Manage Inventory with its
+    // item number already in the search box rather than duplicating any
+    // edit/delete UI here — color variants (if more than one) land
+    // together in that short a result list, easy to tell apart by eye.
+    var manageBtnHtml = reallyOwned
+      ? '<button type="button" class="set-fig-manage-btn" data-itemno="' + escapeHtml(e.itemNo) + '">Manage in Inventory →</button>'
+      : '';
     return '<div class="item-row set-fig-match-row' + ((reallyOwned || manuallyOwned) ? ' owned' : '') + (manuallyOwned ? ' manual-owned' : '') + '">'
       + '<div class="item-thumb">' + thumbHtml(pseudoItem) + '<span class="qty-chip">' + e.quantity + '</span></div>'
       + '<div class="item-body">'
@@ -7758,6 +7768,7 @@
       + '<div class="item-stock-count">Needs ' + e.quantity + stockLine + '</div>'
       + setFigLookupAvgCostHtml(e)
       + drillBtnHtml
+      + manageBtnHtml
       + manualFieldHtml
       + wantedBankBtnHtml
       + '</div>'
@@ -7953,6 +7964,12 @@
         var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
         if (!entry) return;
         drillIntoSetFigEntry(entry);
+      });
+    });
+    container.querySelectorAll(".set-fig-manage-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        manageInventorySearchQuery = el.getAttribute("data-itemno") || "";
+        goToManageInventory();
       });
     });
 
