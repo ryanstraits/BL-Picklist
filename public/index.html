@@ -858,11 +858,11 @@
   .inventory-row .item-thumb { cursor: pointer; }
   .inventory-fields {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 6px 8px;
     margin-top: 8px;
   }
-  .inventory-field { display: flex; flex-direction: column; gap: 2px; }
+  .inventory-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .inventory-field label {
     font-size: 10.5px;
     color: var(--text-secondary);
@@ -884,7 +884,14 @@
     background: var(--surface);
     color: var(--text);
     width: 100%;
+    min-width: 0;
   }
+  /* A date input's native picker control carries its own intrinsic
+     minimum width (locale-formatted, e.g. "Aug 18, 2026" plus the
+     calendar icon) that can exceed its grid cell — min-width:0 alone
+     doesn't stop that overflow for type="date" specifically, so it also
+     needs its own explicit clamp. */
+  .inventory-field input[type="date"] { max-width: 100%; }
   .inventory-field textarea {
     resize: vertical;
     min-height: 40px;
@@ -934,25 +941,27 @@
      here once the date's passed; the text itself says which one it is. */
   /* Shared visual identity for every "this is sale-related" container —
      the entry-point boxes, the draft/age-threshold panels, and the
-     multi-select toolbar all get the same info-tinted treatment so the
-     whole bulk-sale feature reads as one clearly-labeled area of the
-     page, distinct from ordinary browse/search chrome around it. Only
-     the active-sale banner stays on its own warning tint — that one's
-     an alert ("a sale is running right now"), not a tool. */
+     multi-select toolbar all get the same tinted treatment so the whole
+     bulk-sale feature reads as one clearly-labeled area of the page,
+     distinct from ordinary browse/search chrome around it and from the
+     blue "info" tint used elsewhere (the select toolbar's own family
+     here aside). Only the active-sale banner stays on its own warning
+     tint — that one's an alert ("a sale is running right now"), not a
+     tool. */
   .sale-tools-box, .sale-draft-panel {
-    background: var(--info-bg);
-    border: 1px solid var(--info);
+    background: var(--danger-soft);
+    border: 1px solid var(--danger);
     border-radius: 8px;
     padding: 12px;
     margin-bottom: 14px;
   }
-  .sale-tools-box-title, .sale-draft-title { font-weight: 600; font-size: 14px; color: var(--info); }
+  .sale-tools-box-title, .sale-draft-title { font-weight: 600; font-size: 14px; color: var(--danger); }
   .sale-tools-box-desc { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
   .sale-tools-box .manage-inventory-sort-row { margin-top: 10px; }
   .sale-age-quick-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .sale-select-toolbar {
-    background: var(--info-bg);
-    border: 1px solid var(--info);
+    background: var(--danger-soft);
+    border: 1px solid var(--danger);
     border-radius: 8px;
     padding: 10px 12px;
     margin-bottom: 14px;
@@ -980,7 +989,8 @@
   .sale-preview-name { color: var(--text-secondary); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sale-preview-qty { color: var(--text-secondary); flex: none; }
   .sale-preview-price { flex: none; white-space: nowrap; }
-  .sale-preview-price strong { color: var(--info); }
+  .sale-preview-price strong { color: var(--danger); }
+  .sale-draft-panel .price-guide-toggle-btn { color: var(--danger); }
   .fig-log-banner {
     display: flex;
     justify-content: space-between;
@@ -6708,6 +6718,13 @@
 
     var startSaleAgeBtnEl = document.getElementById("manageInventoryStartSaleAgeBtn");
     if (startSaleAgeBtnEl) startSaleAgeBtnEl.addEventListener("click", startSaleAgeDraft);
+    var saleAgeToggleBtnEl = document.getElementById("saleAgeToggleBtn");
+    if (saleAgeToggleBtnEl) {
+      saleAgeToggleBtnEl.addEventListener("click", function () {
+        saleAgeDraft.expanded = !saleAgeDraft.expanded;
+        renderManageInventoryResults();
+      });
+    }
     var saleAgeTypeSelectEl = document.getElementById("saleAgeTypeSelect");
     if (saleAgeTypeSelectEl) {
       saleAgeTypeSelectEl.addEventListener("change", function () {
@@ -6907,7 +6924,13 @@
   }
 
   function startSaleAgeDraft() {
-    saleAgeDraft = { type: "", beforeDate: isoDateDaysAgo(60) };
+    // Starts collapsed, same as a row's own "See active US listings"
+    // panel — the filter controls (type/date/quick-days) take real
+    // vertical space and the defaults (all types, 60+ days) are a
+    // reasonable starting point, so there's nothing Ryan needs to see or
+    // adjust most of the time. The match count below is still live off
+    // those defaults even while collapsed.
+    saleAgeDraft = { type: "", beforeDate: isoDateDaysAgo(60), expanded: false };
     renderManageInventoryResults();
   }
 
@@ -6918,27 +6941,33 @@
 
   var SALE_AGE_QUICK_DAYS = [30, 60, 90, 180];
 
+  var SALE_AGE_TYPE_LABELS = { "": "All types", MINIFIG: "Figs only", PART: "Parts only" };
+
   function saleAgeDraftHtml() {
     var d = saleAgeDraft;
     if (!d) return "";
     var matchCount = eligibleSaleRows(manageInventoryAgedRows(d.beforeDate, d.type)).length;
     var daysAgo = Math.round((Date.now() - new Date(d.beforeDate + "T23:59:59").getTime()) / (24 * 60 * 60 * 1000));
+    var filtersHtml = d.expanded
+      ? '<div class="inventory-fields wanted-manual-fields">'
+        + '<div class="inventory-field"><label>Item type</label><select id="saleAgeTypeSelect">'
+        + '<option value=""' + (d.type === "" ? ' selected' : '') + '>All types</option>'
+        + '<option value="MINIFIG"' + (d.type === "MINIFIG" ? ' selected' : '') + '>Figs only</option>'
+        + '<option value="PART"' + (d.type === "PART" ? ' selected' : '') + '>Parts only</option>'
+        + '</select></div>'
+        + '<div class="inventory-field"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
+        + '</div>'
+        + '<div class="sale-age-quick-row">'
+        + SALE_AGE_QUICK_DAYS.map(function (n) {
+            return '<button type="button" class="inv-start-over-btn" data-age-days="' + n + '">' + n + '+ days</button>';
+          }).join("")
+        + '</div>'
+      : '';
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put aged inventory on sale</div>'
-      + '<div class="inventory-fields wanted-manual-fields">'
-      + '<div class="inventory-field"><label>Item type</label><select id="saleAgeTypeSelect">'
-      + '<option value=""' + (d.type === "" ? ' selected' : '') + '>All types</option>'
-      + '<option value="MINIFIG"' + (d.type === "MINIFIG" ? ' selected' : '') + '>Figs only</option>'
-      + '<option value="PART"' + (d.type === "PART" ? ' selected' : '') + '>Parts only</option>'
-      + '</select></div>'
-      + '<div class="inventory-field"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
-      + '</div>'
-      + '<div class="sale-age-quick-row">'
-      + SALE_AGE_QUICK_DAYS.map(function (n) {
-          return '<button type="button" class="inv-start-over-btn" data-age-days="' + n + '">' + n + '+ days</button>';
-        }).join("")
-      + '</div>'
-      + '<div class="manage-inventory-hint">' + matchCount + ' item' + (matchCount === 1 ? '' : 's') + (daysAgo > 0 ? ', listed ' + daysAgo + '+ days ago,' : '') + ' with a price to discount.</div>'
+      + filtersHtml
+      + '<div class="manage-inventory-hint">' + matchCount + ' item' + (matchCount === 1 ? '' : 's') + (daysAgo > 0 ? ', listed ' + daysAgo + '+ days ago,' : '') + ' with a price to discount' + (d.expanded ? '' : ' (' + SALE_AGE_TYPE_LABELS[d.type] + ')') + '.</div>'
+      + '<button type="button" class="price-guide-toggle-btn" id="saleAgeToggleBtn">' + (d.expanded ? "▾ Hide filters" : "▸ Change type/date") + '</button>'
       + '<div class="wanted-manual-actions">'
       + '<button type="button" class="reset-btn" id="saleAgePreviewBtn"' + (matchCount ? '' : ' disabled') + '>Review Sale…</button>'
       + '<button type="button" class="reset-btn" id="saleAgeCancelBtn">Cancel</button>'
