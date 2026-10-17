@@ -1019,6 +1019,18 @@
   .sale-preview-qty { color: var(--text-secondary); flex: none; }
   .sale-preview-price { flex: none; white-space: nowrap; }
   .sale-preview-price strong { color: var(--danger); }
+  .sale-preview-remove-btn {
+    flex: none;
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1;
+    padding: 3px 4px;
+    cursor: pointer;
+  }
+  .sale-preview-remove-btn:active { color: var(--danger); }
   .sale-draft-panel .price-guide-toggle-btn { color: var(--danger); }
   .fig-log-banner {
     display: flex;
@@ -6763,6 +6775,11 @@
         updateSaleDraftPreview();
       });
     }
+    container.querySelectorAll(".sale-preview-remove-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        handleSaleDraftRemoveRow(el.getAttribute("data-key"));
+      });
+    });
     var endSaleBtnEl = document.getElementById("endSaleBtn");
     if (endSaleBtnEl) endSaleBtnEl.addEventListener("click", handleEndSaleNow);
 
@@ -7077,7 +7094,25 @@
       + '<span class="sale-preview-name">' + escapeHtml(row.name || "(name unknown)") + (isRealColorName(row.colorName) ? ' · ' + escapeHtml(row.colorName) : '') + '</span>'
       + '<span class="sale-preview-qty">×' + escapeHtml(row.quantity) + '</span>'
       + '<span class="sale-preview-price">' + escapeHtml(formatCurrency(row.unitPrice, "USD")) + newPriceHtml + '</span>'
+      + '<button type="button" class="sale-preview-remove-btn" data-key="' + escapeHtml(row.key) + '" aria-label="Remove ' + escapeHtml(row.itemNo) + ' from this sale" title="Remove from sale">✕</button>'
       + '</div>';
+  }
+
+  // Drops one row out of the draft before it ever reaches BrickLink —
+  // a plain button click, not a text-field blur, so there's no risk of
+  // the updateSaleDraftPreview-style mid-click re-render race; a full
+  // re-render is safe here and also picks up the title's item count and
+  // the "+N more" cap note, not just the list itself. Removing the last
+  // row closes the draft the same way Cancel would — there's nothing
+  // left to put on sale.
+  function handleSaleDraftRemoveRow(key) {
+    if (!saleDraft) return;
+    saleDraft.rows = saleDraft.rows.filter(function (r) { return r.key !== key; });
+    if (!saleDraft.rows.length) {
+      cancelSaleDraft();
+      return;
+    }
+    renderManageInventoryResults();
   }
 
   // Patches just the preview rows' prices in place when the % field
