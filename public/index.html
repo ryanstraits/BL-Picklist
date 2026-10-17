@@ -948,22 +948,41 @@
      here aside). Only the active-sale banner stays on its own warning
      tint — that one's an alert ("a sale is running right now"), not a
      tool. */
-  .sale-tools-box, .sale-draft-panel {
+  .sale-draft-panel {
     background: var(--danger-soft);
     border: 1px solid var(--danger);
     border-radius: 8px;
     padding: 12px;
+    margin-top: 14px;
     margin-bottom: 14px;
   }
-  .sale-tools-box-title, .sale-draft-title { font-weight: 600; font-size: 14px; color: var(--danger); }
+  .sale-draft-title { font-weight: 600; font-size: 14px; color: var(--danger); }
   .sale-tools-box-desc { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
-  .sale-tools-box .manage-inventory-sort-row { margin-top: 10px; }
+  .sale-draft-panel .manage-inventory-sort-row { margin-top: 10px; }
   .sale-age-quick-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  /* The one-line default state of the whole Bulk Sale area — plain text,
+     no box at all, so it stays out of the way until tapped. Its sibling,
+     the collapse button inside the expanded box above, shares the same
+     look so the two read as one toggle rather than two different
+     controls. */
+  .sale-area-collapsed-btn, .sale-area-collapse-btn {
+    display: block;
+    border: none;
+    background: none;
+    color: var(--danger);
+    font-family: inherit;
+    font-weight: 600;
+    padding: 0;
+    cursor: pointer;
+  }
+  .sale-area-collapsed-btn { font-size: 13px; margin-top: 14px; margin-bottom: 14px; }
+  .sale-area-collapse-btn { font-size: 14px; margin-bottom: 4px; }
   .sale-select-toolbar {
     background: var(--danger-soft);
     border: 1px solid var(--danger);
     border-radius: 8px;
     padding: 10px 12px;
+    margin-top: 14px;
     margin-bottom: 14px;
   }
   .sale-select-toolbar-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text); }
@@ -5856,6 +5875,13 @@
   // same startSaleDraft(rows)/saleDraft confirm panel every other sale
   // entry point already uses.
   var saleAgeDraft = null;
+  // Whether the idle "Bulk Sale" entry box is expanded to show its
+  // buttons, or collapsed to a single out-of-the-way line — the default
+  // everywhere, since most browsing has nothing to do with starting a
+  // sale. Reset to false (back to collapsed) whenever a sale flow
+  // actually ends, cancelled or completed — only "I tapped it open and
+  // haven't acted yet" keeps it expanded.
+  var saleAreaExpanded = false;
 
   // Raw fetch-and-cache, pulled out of fetchManageInventory() so a
   // read-only consumer that has nothing to do with Manage Inventory's own
@@ -6221,6 +6247,7 @@
   function cancelSaleSelectMode() {
     saleSelectMode = false;
     saleSelectedScopes = {};
+    saleAreaExpanded = false;
     renderManageInventoryResults();
   }
 
@@ -6251,16 +6278,29 @@
       + '</div>';
   }
 
-  // Shared shell for every "here's how to start a bulk sale from this
-  // screen" control — gives the entry-point buttons the same clearly-
-  // labeled box the draft/threshold panels already use, instead of
-  // leaving them as bare buttons floating among the ordinary browse/sort
-  // controls around them. descHtml is optional (pass "" to skip it).
-  function saleToolsBoxHtml(title, descHtml, bodyHtml) {
-    return '<div class="sale-tools-box">'
-      + '<div class="sale-tools-box-title">' + escapeHtml(title) + '</div>'
-      + (descHtml ? '<div class="sale-tools-box-desc">' + descHtml + '</div>' : '')
-      + bodyHtml
+  // The single "Bulk Sale" slot a screen gets, one call per screen,
+  // always in the same spot in the layout — never a second box stacked
+  // somewhere else on the page. Whatever's actually in progress (a
+  // chosen scope being confirmed, the age-threshold picker, multi-select
+  // mode) takes over this same slot; with nothing in progress it's
+  // either the bare "▸ Bulk Sale" line (the default — out of the way
+  // until tapped) or, once tapped, the idle box with this screen's own
+  // entry buttons (idleBodyHtml; idleDescHtml is optional context text,
+  // "" to skip it). A screen with nothing to offer here (idleBodyHtml
+  // "") renders nothing at all unless a flow started elsewhere is still
+  // in progress — e.g. drilling into a theme while multi-select is on.
+  function saleAreaHtml(idleDescHtml, idleBodyHtml) {
+    if (saleDraft) return saleDraftHtml();
+    if (saleAgeDraft) return saleAgeDraftHtml();
+    if (saleSelectMode) return saleSelectToolbarHtml();
+    if (!idleBodyHtml) return "";
+    if (!saleAreaExpanded) {
+      return '<button type="button" class="sale-area-collapsed-btn" id="saleAreaExpandBtn">▸ Bulk Sale</button>';
+    }
+    return '<div class="sale-draft-panel">'
+      + '<button type="button" class="sale-area-collapse-btn" id="saleAreaCollapseBtn">▾ Bulk Sale</button>'
+      + (idleDescHtml ? '<div class="sale-tools-box-desc">' + idleDescHtml + '</div>' : '')
+      + idleBodyHtml
       + '</div>';
   }
 
@@ -6294,10 +6334,6 @@
     var hint = dirtyCount
       ? '<div class="manage-inventory-hint">You have ' + dirtyCount + ' unsaved change' + (dirtyCount === 1 ? '' : 's') + ' — browsing won’t lose them.</div>'
       : '';
-    // Visible at every depth while active, not just the screen it was
-    // opened from — Ryan can drill anywhere to refine the pick and the
-    // running selection (and the way back out) stays on screen.
-    hint += saleSelectToolbarHtml();
 
     if (manageInventoryBrowseRecent) {
       var recentRows = manageInventorySortRows(manageInventoryRecentRows(manageInventoryRecentDays));
@@ -6305,6 +6341,10 @@
       return hint
         + manageInventoryBreadcrumb()
         + manageInventoryStatsHtml(manageInventoryStats(recentRows))
+        // No entry point of its own here (Recently Added is a date
+        // grouping, not a sale scope) — this only ever renders something
+        // if a flow started on another screen is still in progress.
+        + saleAreaHtml('', '')
         + '<div class="manage-inventory-sort-row">'
         + '<select class="manage-inventory-sort-select" id="manageInventoryRecentWindowSelect">'
         + '<option value="15"' + (manageInventoryRecentDays === 15 ? ' selected' : '') + '>Last 15 days</option>'
@@ -6332,12 +6372,12 @@
         : '';
       return hint
         + manageInventoryStatsHtml(manageInventoryStats(manageInventoryRows || []))
-        + '<div class="manage-inventory-hint">Browse by item type, or search above by name or item number.</div>'
-        + (saleSelectMode ? '' : saleToolsBoxHtml('Bulk Sale', 'Discount a theme or category, or inventory that has sat unsold too long.',
+        + saleAreaHtml('Discount a theme or category, or inventory that has sat unsold too long.',
           '<div class="manage-inventory-sort-row">'
           + '<button type="button" class="inv-start-over-btn" id="manageInventorySelectModeBtn">Select categories/themes…</button>'
-          + (saleAgeDraft ? '' : '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleAgeBtn">Put aged inventory on sale…</button>')
-          + '</div>'))
+          + '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleAgeBtn">Put aged inventory on sale…</button>'
+          + '</div>')
+        + '<div class="manage-inventory-hint">Browse by item type, or search above by name or item number.</div>'
         + '<div class="browse-tile-list">' + recentTile + typeTiles + '</div>';
     }
 
@@ -6364,22 +6404,26 @@
       }).join("");
       var typeRows = manageInventoryTypeRows(manageInventoryBrowseType);
       var wholeTypeKey = saleScopeKey(manageInventoryBrowseType, null);
-      var wholeTypeRow = typeRows.length
-        ? (saleSelectMode
-            ? '<label class="sale-select-whole-row"><input type="checkbox" data-select-type="' + escapeHtml(manageInventoryBrowseType) + '" data-select-cat="" data-select-label="' + escapeHtml(manageInventoryBrowseType) + '"' + (saleSelectedScopes[wholeTypeKey] ? ' checked' : '') + '> All of ' + escapeHtml(manageInventoryBrowseType) + ' (' + typeRows.length + ' lots)</label>'
-            : saleToolsBoxHtml('Bulk Sale', '',
-              '<div class="manage-inventory-sort-row">'
-              + '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put all ' + escapeHtml(manageInventoryBrowseType) + ' on sale</button>'
-              + '<button type="button" class="inv-start-over-btn" id="manageInventorySelectModeBtn">Select themes…</button>'
-              + '</div>'))
+      // Only the multi-select checkbox case lives inline with the tile
+      // list itself — the idle "Put all X on sale"/"Select themes…"
+      // buttons now live in the one saleAreaHtml slot below instead.
+      var wholeTypeCheckboxRow = (typeRows.length && saleSelectMode)
+        ? '<label class="sale-select-whole-row"><input type="checkbox" data-select-type="' + escapeHtml(manageInventoryBrowseType) + '" data-select-cat="" data-select-label="' + escapeHtml(manageInventoryBrowseType) + '"' + (saleSelectedScopes[wholeTypeKey] ? ' checked' : '') + '> All of ' + escapeHtml(manageInventoryBrowseType) + ' (' + typeRows.length + ' lots)</label>'
+        : '';
+      var typeIdleBody = typeRows.length
+        ? '<div class="manage-inventory-sort-row">'
+          + '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put all ' + escapeHtml(manageInventoryBrowseType) + ' on sale</button>'
+          + '<button type="button" class="inv-start-over-btn" id="manageInventorySelectModeBtn">Select themes…</button>'
+          + '</div>'
         : '';
       return hint
         + manageInventoryBreadcrumb()
         + manageInventoryStatsHtml(manageInventoryStats(typeRows))
+        + saleAreaHtml('', typeIdleBody)
         + '<div class="manage-inventory-hint">Browse ' + escapeHtml(manageInventoryBrowseType) + ' by theme/category.'
         + (manageInventoryBrowseType === 'PART' ? ' (Parts mostly don’t have a real theme — this is BrickLink’s physical category tree instead, e.g. Bricks, Plates.)' : '')
         + '</div>'
-        + wholeTypeRow
+        + wholeTypeCheckboxRow
         + '<div class="browse-tile-list">' + themeTiles + '</div>';
     }
 
@@ -6389,8 +6433,8 @@
     return hint
       + manageInventoryBreadcrumb()
       + manageInventoryStatsHtml(manageInventoryStats(filtered))
+      + saleAreaHtml('', filtered.length ? '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
       + '<div class="manage-inventory-sort-row">' + manageInventorySortSelectHtml() + '</div>'
-      + (filtered.length && !saleSelectMode ? saleToolsBoxHtml('Bulk Sale', '', '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>') : '')
       + capped.map(manageInventoryCardHtml).join("")
       + (filtered.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + filtered.length + ' items — search above to find a specific one.</div>' : '');
   }
@@ -6504,19 +6548,19 @@
     } else if (!manageInventoryRows) {
       body = "";
     } else if (!query) {
-      body = activeSaleBannerHtml() + saleDraftHtml() + saleAgeDraftHtml() + manageInventoryBrowseHtml(dirtyCount);
+      body = activeSaleBannerHtml() + manageInventoryBrowseHtml(dirtyCount);
     } else {
       var matches = manageInventoryMatches(query);
       var capped = matches.slice(0, MANAGE_INVENTORY_RESULT_CAP);
-      body = activeSaleBannerHtml() + saleDraftHtml() + saleAgeDraftHtml() + saleSelectToolbarHtml()
+      body = activeSaleBannerHtml()
         + '<div class="inventory-summary-row">'
         + '<span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span>'
         + '<div class="inventory-bulk-actions">'
         + '<button type="button" id="manageInventoryRefreshBtn">Refresh</button>'
         + '</div>'
         + '</div>'
-        + (matches.length && !saleSelectMode ? saleToolsBoxHtml('Bulk Sale', '', '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>') : '')
         + manageInventoryStatsHtml(manageInventoryStats(matches))
+        + saleAreaHtml('', matches.length ? '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
         + capped.map(manageInventoryCardHtml).join("")
         + (matches.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + matches.length + ' matches — refine your search to see the rest.</div>' : '');
     }
@@ -6594,23 +6638,34 @@
       });
     });
 
+    // Each of these navigates to a different screen, which also collapses
+    // the idle Bulk Sale box back down (saleAreaExpanded) — it was
+    // expanded for whatever buttons the PREVIOUS screen offered, which
+    // don't carry over, so showing it already-open here would just be
+    // the "barely want to see them" default silently broken by moving
+    // around. An in-progress flow (saleDraft/saleAgeDraft/saleSelectMode)
+    // takes priority over this regardless, so this never hides work
+    // Ryan's mid-way through.
     container.querySelectorAll("[data-browse-type]").forEach(function (el) {
       el.addEventListener("click", function () {
         manageInventoryBrowseType = el.getAttribute("data-browse-type");
         manageInventoryBrowseCategory = null;
         manageInventoryBrowseRecent = false;
+        saleAreaExpanded = false;
         renderManageInventoryResults();
       });
     });
     container.querySelectorAll("[data-browse-category]").forEach(function (el) {
       el.addEventListener("click", function () {
         manageInventoryBrowseCategory = el.getAttribute("data-browse-category");
+        saleAreaExpanded = false;
         renderManageInventoryResults();
       });
     });
     container.querySelectorAll("[data-browse-recent]").forEach(function (el) {
       el.addEventListener("click", function () {
         manageInventoryBrowseRecent = true;
+        saleAreaExpanded = false;
         renderManageInventoryResults();
       });
     });
@@ -6619,6 +6674,7 @@
         var level = el.getAttribute("data-browse-reset");
         if (level === "type") { manageInventoryBrowseType = null; manageInventoryBrowseRecent = false; }
         manageInventoryBrowseCategory = null;
+        saleAreaExpanded = false;
         renderManageInventoryResults();
       });
     });
@@ -6718,10 +6774,17 @@
 
     var startSaleAgeBtnEl = document.getElementById("manageInventoryStartSaleAgeBtn");
     if (startSaleAgeBtnEl) startSaleAgeBtnEl.addEventListener("click", startSaleAgeDraft);
-    var saleAgeToggleBtnEl = document.getElementById("saleAgeToggleBtn");
-    if (saleAgeToggleBtnEl) {
-      saleAgeToggleBtnEl.addEventListener("click", function () {
-        saleAgeDraft.expanded = !saleAgeDraft.expanded;
+    var saleAreaExpandBtnEl = document.getElementById("saleAreaExpandBtn");
+    if (saleAreaExpandBtnEl) {
+      saleAreaExpandBtnEl.addEventListener("click", function () {
+        saleAreaExpanded = true;
+        renderManageInventoryResults();
+      });
+    }
+    var saleAreaCollapseBtnEl = document.getElementById("saleAreaCollapseBtn");
+    if (saleAreaCollapseBtnEl) {
+      saleAreaCollapseBtnEl.addEventListener("click", function () {
+        saleAreaExpanded = false;
         renderManageInventoryResults();
       });
     }
@@ -6771,6 +6834,7 @@
 
     document.getElementById("manageInventorySearchInput").addEventListener("input", function (e) {
       manageInventorySearchQuery = e.target.value;
+      saleAreaExpanded = false;
       clearTimeout(manageInventorySearchDebounceTimer);
       manageInventorySearchDebounceTimer = setTimeout(renderManageInventoryResults, 150);
     });
@@ -6924,50 +6988,42 @@
   }
 
   function startSaleAgeDraft() {
-    // Starts collapsed, same as a row's own "See active US listings"
-    // panel — the filter controls (type/date/quick-days) take real
-    // vertical space and the defaults (all types, 60+ days) are a
-    // reasonable starting point, so there's nothing Ryan needs to see or
-    // adjust most of the time. The match count below is still live off
-    // those defaults even while collapsed.
-    saleAgeDraft = { type: "", beforeDate: isoDateDaysAgo(60), expanded: false };
+    // The outer "Bulk Sale" entry is already the thing Ryan deliberately
+    // tapped to get here — once open, this panel shows every control
+    // right away rather than nesting a second collapse/expand inside it.
+    saleAgeDraft = { type: "", beforeDate: isoDateDaysAgo(60) };
     renderManageInventoryResults();
   }
 
   function cancelSaleAgeDraft() {
     saleAgeDraft = null;
+    saleAreaExpanded = false;
     renderManageInventoryResults();
   }
 
   var SALE_AGE_QUICK_DAYS = [30, 60, 90, 180];
-
-  var SALE_AGE_TYPE_LABELS = { "": "All types", MINIFIG: "Figs only", PART: "Parts only" };
 
   function saleAgeDraftHtml() {
     var d = saleAgeDraft;
     if (!d) return "";
     var matchCount = eligibleSaleRows(manageInventoryAgedRows(d.beforeDate, d.type)).length;
     var daysAgo = Math.round((Date.now() - new Date(d.beforeDate + "T23:59:59").getTime()) / (24 * 60 * 60 * 1000));
-    var filtersHtml = d.expanded
-      ? '<div class="inventory-fields wanted-manual-fields">'
-        + '<div class="inventory-field"><label>Item type</label><select id="saleAgeTypeSelect">'
-        + '<option value=""' + (d.type === "" ? ' selected' : '') + '>All types</option>'
-        + '<option value="MINIFIG"' + (d.type === "MINIFIG" ? ' selected' : '') + '>Figs only</option>'
-        + '<option value="PART"' + (d.type === "PART" ? ' selected' : '') + '>Parts only</option>'
-        + '</select></div>'
-        + '<div class="inventory-field"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
-        + '</div>'
-        + '<div class="sale-age-quick-row">'
-        + SALE_AGE_QUICK_DAYS.map(function (n) {
-            return '<button type="button" class="inv-start-over-btn" data-age-days="' + n + '">' + n + '+ days</button>';
-          }).join("")
-        + '</div>'
-      : '';
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put aged inventory on sale</div>'
-      + filtersHtml
-      + '<div class="manage-inventory-hint">' + matchCount + ' item' + (matchCount === 1 ? '' : 's') + (daysAgo > 0 ? ', listed ' + daysAgo + '+ days ago,' : '') + ' with a price to discount' + (d.expanded ? '' : ' (' + SALE_AGE_TYPE_LABELS[d.type] + ')') + '.</div>'
-      + '<button type="button" class="price-guide-toggle-btn" id="saleAgeToggleBtn">' + (d.expanded ? "▾ Hide filters" : "▸ Change type/date") + '</button>'
+      + '<div class="inventory-fields wanted-manual-fields">'
+      + '<div class="inventory-field"><label>Item type</label><select id="saleAgeTypeSelect">'
+      + '<option value=""' + (d.type === "" ? ' selected' : '') + '>All types</option>'
+      + '<option value="MINIFIG"' + (d.type === "MINIFIG" ? ' selected' : '') + '>Figs only</option>'
+      + '<option value="PART"' + (d.type === "PART" ? ' selected' : '') + '>Parts only</option>'
+      + '</select></div>'
+      + '<div class="inventory-field"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
+      + '</div>'
+      + '<div class="sale-age-quick-row">'
+      + SALE_AGE_QUICK_DAYS.map(function (n) {
+          return '<button type="button" class="inv-start-over-btn" data-age-days="' + n + '">' + n + '+ days</button>';
+        }).join("")
+      + '</div>'
+      + '<div class="manage-inventory-hint">' + matchCount + ' item' + (matchCount === 1 ? '' : 's') + (daysAgo > 0 ? ', listed ' + daysAgo + '+ days ago,' : '') + ' with a price to discount.</div>'
       + '<div class="wanted-manual-actions">'
       + '<button type="button" class="reset-btn" id="saleAgePreviewBtn"' + (matchCount ? '' : ' disabled') + '>Review Sale…</button>'
       + '<button type="button" class="reset-btn" id="saleAgeCancelBtn">Cancel</button>'
@@ -6991,6 +7047,7 @@
 
   function cancelSaleDraft() {
     saleDraft = null;
+    saleAreaExpanded = false;
     renderManageInventoryResults();
   }
 
@@ -7104,6 +7161,7 @@
 
       var itemCount = Object.keys(items).length;
       saleDraft = null;
+      saleAreaExpanded = false;
       if (!itemCount) {
         window.alert("BrickLink rejected every item — sale not started. See the error on each row below.");
         return;
