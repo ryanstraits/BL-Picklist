@@ -890,14 +890,23 @@
     resize: vertical;
     min-height: 40px;
   }
-  /* A date input's native picker control renders at its own intrinsic,
-     locale-formatted minimum width (e.g. "Aug 18, 2026" plus the
-     calendar icon) — on a narrow phone that's wider than half of a
-     two-column row, so max-width/min-width on the input alone can't
-     stop it overflowing its cell. The only reliable fix is to not put
-     it in a half-width cell at all: .inv-full-row gives a field the
-     entire row, same as .description-field/.remarks-field already do. */
-  .inventory-field.remarks-field, .inventory-field.description-field, .inventory-field.inv-full-row { grid-column: 1 / -1; }
+  .inventory-field.remarks-field, .inventory-field.description-field { grid-column: 1 / -1; }
+  /* A native date input's own picker control can render at an intrinsic,
+     locale-formatted width (e.g. "Aug 18, 2026") that CSS width/
+     max-width on the input itself doesn't reliably constrain, especially
+     on iOS — the rendered control can paint past its box even though the
+     box's own layout width is correct. overflow:hidden on the field
+     wrapper is the actual hard guarantee: nothing can ever paint past
+     this cell's edge, whatever the native control tries to do. Paired
+     with .sale-fields-row below, which gives the date column more than
+     half the row so clipping is the rare fallback, not the normal case. */
+  .inventory-field.date-field { overflow: hidden; }
+  .inventory-field.date-field input { font-size: 12px; }
+  /* Used on the two Bulk Sale field rows (item type/date threshold,
+     %-off/end date) so the date column gets more than an even 50/50
+     split — the other field in each pair (a short select or a 2-digit
+     number) doesn't need it. */
+  .sale-fields-row { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) !important; }
   .inventory-row-result {
     margin-top: 8px;
     font-size: 12px;
@@ -7011,13 +7020,13 @@
     var daysAgo = Math.round((Date.now() - new Date(d.beforeDate + "T23:59:59").getTime()) / (24 * 60 * 60 * 1000));
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put aged inventory on sale</div>'
-      + '<div class="inventory-fields wanted-manual-fields">'
-      + '<div class="inventory-field inv-full-row"><label>Item type</label><select id="saleAgeTypeSelect">'
+      + '<div class="inventory-fields wanted-manual-fields sale-fields-row">'
+      + '<div class="inventory-field"><label>Item type</label><select id="saleAgeTypeSelect">'
       + '<option value=""' + (d.type === "" ? ' selected' : '') + '>All types</option>'
       + '<option value="MINIFIG"' + (d.type === "MINIFIG" ? ' selected' : '') + '>Figs only</option>'
       + '<option value="PART"' + (d.type === "PART" ? ' selected' : '') + '>Parts only</option>'
       + '</select></div>'
-      + '<div class="inventory-field inv-full-row"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
+      + '<div class="inventory-field date-field"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
       + '</div>'
       + '<div class="sale-age-quick-row">'
       + SALE_AGE_QUICK_DAYS.map(function (n) {
@@ -7096,9 +7105,9 @@
     var capped = d.rows.slice(0, MANAGE_INVENTORY_RESULT_CAP);
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put ' + d.rows.length + ' item' + (d.rows.length === 1 ? '' : 's') + ' on sale</div>'
-      + '<div class="inventory-fields wanted-manual-fields">'
-      + '<div class="inventory-field inv-full-row"><label>% off</label><input type="number" min="1" max="99" id="saleDraftPctInput" value="' + escapeHtml(d.pct) + '"></div>'
-      + '<div class="inventory-field inv-full-row"><label>Ends <span class="field-hint">(optional)</span></label><input type="date" id="saleDraftEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
+      + '<div class="inventory-fields wanted-manual-fields sale-fields-row">'
+      + '<div class="inventory-field"><label>% off</label><input type="number" min="1" max="99" id="saleDraftPctInput" value="' + escapeHtml(d.pct) + '"></div>'
+      + '<div class="inventory-field date-field"><label>Ends <span class="field-hint">(optional)</span></label><input type="date" id="saleDraftEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
       + '<div class="inventory-field description-field"><label>Label <span class="field-hint">(optional, just for your reference)</span></label><input type="text" id="saleDraftLabelInput" value="' + escapeHtml(d.label) + '" placeholder="e.g. Star Wars 20% off"></div>'
       + '</div>'
       + '<div class="sale-preview-list" id="saleDraftPreviewList">'
