@@ -932,17 +932,26 @@
      sale ran past its end date" are both states Ryan should notice, not
      a neutral/good vs. bad distinction, so there's nothing more to flip
      here once the date's passed; the text itself says which one it is. */
-  .sale-draft-panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
+  /* Shared visual identity for every "this is sale-related" container —
+     the entry-point boxes, the draft/age-threshold panels, and the
+     multi-select toolbar all get the same info-tinted treatment so the
+     whole bulk-sale feature reads as one clearly-labeled area of the
+     page, distinct from ordinary browse/search chrome around it. Only
+     the active-sale banner stays on its own warning tint — that one's
+     an alert ("a sale is running right now"), not a tool. */
+  .sale-tools-box, .sale-draft-panel {
+    background: var(--info-bg);
+    border: 1px solid var(--info);
     border-radius: 8px;
     padding: 12px;
     margin-bottom: 14px;
   }
-  .sale-draft-title { font-weight: 600; font-size: 14px; }
+  .sale-tools-box-title, .sale-draft-title { font-weight: 600; font-size: 14px; color: var(--info); }
+  .sale-tools-box-desc { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
+  .sale-tools-box .manage-inventory-sort-row { margin-top: 10px; }
   .sale-age-quick-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .sale-select-toolbar {
-    background: var(--surface);
+    background: var(--info-bg);
     border: 1px solid var(--info);
     border-radius: 8px;
     padding: 10px 12px;
@@ -950,6 +959,28 @@
   }
   .sale-select-toolbar-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text); }
   .sale-select-toolbar-text span { color: var(--text-secondary); font-size: 12px; }
+  .sale-preview-list {
+    margin-top: 10px;
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  .sale-preview-row {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    padding: 6px 8px;
+    font-size: 12.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sale-preview-row:last-child { border-bottom: none; }
+  .sale-preview-name { color: var(--text-secondary); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sale-preview-qty { color: var(--text-secondary); flex: none; }
+  .sale-preview-price { flex: none; white-space: nowrap; }
+  .sale-preview-price strong { color: var(--info); }
   .fig-log-banner {
     display: flex;
     justify-content: space-between;
@@ -6210,6 +6241,19 @@
       + '</div>';
   }
 
+  // Shared shell for every "here's how to start a bulk sale from this
+  // screen" control — gives the entry-point buttons the same clearly-
+  // labeled box the draft/threshold panels already use, instead of
+  // leaving them as bare buttons floating among the ordinary browse/sort
+  // controls around them. descHtml is optional (pass "" to skip it).
+  function saleToolsBoxHtml(title, descHtml, bodyHtml) {
+    return '<div class="sale-tools-box">'
+      + '<div class="sale-tools-box-title">' + escapeHtml(title) + '</div>'
+      + (descHtml ? '<div class="sale-tools-box-desc">' + descHtml + '</div>' : '')
+      + bodyHtml
+      + '</div>';
+  }
+
   // One browse tile — a plain single-button tile when Ryan isn't
   // multi-selecting (click navigates, same as always), or a checkbox
   // alongside a separate nav button once saleSelectMode is on, so
@@ -6279,10 +6323,11 @@
       return hint
         + manageInventoryStatsHtml(manageInventoryStats(manageInventoryRows || []))
         + '<div class="manage-inventory-hint">Browse by item type, or search above by name or item number.</div>'
-        + (saleSelectMode ? '' : '<div class="manage-inventory-sort-row">'
+        + (saleSelectMode ? '' : saleToolsBoxHtml('Bulk Sale', 'Discount a theme or category, or inventory that has sat unsold too long.',
+          '<div class="manage-inventory-sort-row">'
           + '<button type="button" class="inv-start-over-btn" id="manageInventorySelectModeBtn">Select categories/themes…</button>'
           + (saleAgeDraft ? '' : '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleAgeBtn">Put aged inventory on sale…</button>')
-          + '</div>')
+          + '</div>'))
         + '<div class="browse-tile-list">' + recentTile + typeTiles + '</div>';
     }
 
@@ -6312,10 +6357,11 @@
       var wholeTypeRow = typeRows.length
         ? (saleSelectMode
             ? '<label class="sale-select-whole-row"><input type="checkbox" data-select-type="' + escapeHtml(manageInventoryBrowseType) + '" data-select-cat="" data-select-label="' + escapeHtml(manageInventoryBrowseType) + '"' + (saleSelectedScopes[wholeTypeKey] ? ' checked' : '') + '> All of ' + escapeHtml(manageInventoryBrowseType) + ' (' + typeRows.length + ' lots)</label>'
-            : '<div class="manage-inventory-sort-row">'
+            : saleToolsBoxHtml('Bulk Sale', '',
+              '<div class="manage-inventory-sort-row">'
               + '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put all ' + escapeHtml(manageInventoryBrowseType) + ' on sale</button>'
               + '<button type="button" class="inv-start-over-btn" id="manageInventorySelectModeBtn">Select themes…</button>'
-              + '</div>')
+              + '</div>'))
         : '';
       return hint
         + manageInventoryBreadcrumb()
@@ -6333,9 +6379,8 @@
     return hint
       + manageInventoryBreadcrumb()
       + manageInventoryStatsHtml(manageInventoryStats(filtered))
-      + '<div class="manage-inventory-sort-row">' + manageInventorySortSelectHtml()
-      + (filtered.length && !saleSelectMode ? '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
-      + '</div>'
+      + '<div class="manage-inventory-sort-row">' + manageInventorySortSelectHtml() + '</div>'
+      + (filtered.length && !saleSelectMode ? saleToolsBoxHtml('Bulk Sale', '', '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>') : '')
       + capped.map(manageInventoryCardHtml).join("")
       + (filtered.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + filtered.length + ' items — search above to find a specific one.</div>' : '');
   }
@@ -6457,10 +6502,10 @@
         + '<div class="inventory-summary-row">'
         + '<span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span>'
         + '<div class="inventory-bulk-actions">'
-        + (matches.length && !saleSelectMode ? '<button type="button" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
         + '<button type="button" id="manageInventoryRefreshBtn">Refresh</button>'
         + '</div>'
         + '</div>'
+        + (matches.length && !saleSelectMode ? saleToolsBoxHtml('Bulk Sale', '', '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>') : '')
         + manageInventoryStatsHtml(manageInventoryStats(matches))
         + capped.map(manageInventoryCardHtml).join("")
         + (matches.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + matches.length + ' matches — refine your search to see the rest.</div>' : '');
@@ -6633,6 +6678,15 @@
     if (saleDraftConfirmBtnEl) saleDraftConfirmBtnEl.addEventListener("click", handleStartSaleConfirm);
     var saleDraftCancelBtnEl = document.getElementById("saleDraftCancelBtn");
     if (saleDraftCancelBtnEl) saleDraftCancelBtnEl.addEventListener("click", cancelSaleDraft);
+    // Updates on change (not every keystroke) so the preview list's
+    // "current → new price" column tracks whatever % is currently typed.
+    var saleDraftPctInputEl = document.getElementById("saleDraftPctInput");
+    if (saleDraftPctInputEl) {
+      saleDraftPctInputEl.addEventListener("change", function () {
+        saleDraft.pct = saleDraftPctInputEl.value;
+        updateSaleDraftPreview();
+      });
+    }
     var endSaleBtnEl = document.getElementById("endSaleBtn");
     if (endSaleBtnEl) endSaleBtnEl.addEventListener("click", handleEndSaleNow);
 
@@ -6911,9 +6965,48 @@
     renderManageInventoryResults();
   }
 
+  // One line of the before-you-accept summary list — current price vs.
+  // what it becomes at the %-off currently typed in, so Ryan can see
+  // exactly which items and prices are about to go live before he hits
+  // Start Sale, not just a bare count. validPct is false while the %
+  // field is empty/out of range, which shows the current price only
+  // rather than a misleading "→ $0.00".
+  function saleDraftPreviewRowHtml(row, pct, validPct) {
+    var newPriceHtml = validPct
+      ? ' → <strong>' + escapeHtml(formatCurrency(roundSalePrice(row.unitPrice, pct), "USD")) + '</strong>'
+      : '';
+    return '<div class="sale-preview-row">'
+      + '<span class="item-no mono">' + escapeHtml(row.itemNo) + '</span>'
+      + '<span class="item-type-tag">' + escapeHtml(row.type) + '</span>'
+      + '<span class="sale-preview-name">' + escapeHtml(row.name || "(name unknown)") + (isRealColorName(row.colorName) ? ' · ' + escapeHtml(row.colorName) : '') + '</span>'
+      + '<span class="sale-preview-qty">×' + escapeHtml(row.quantity) + '</span>'
+      + '<span class="sale-preview-price">' + escapeHtml(formatCurrency(row.unitPrice, "USD")) + newPriceHtml + '</span>'
+      + '</div>';
+  }
+
+  // Patches just the preview rows' prices in place when the % field
+  // changes, rather than re-rendering the whole results container (and
+  // with it the Start Sale/Cancel buttons themselves). That re-render
+  // used to run from the %-input's own change handler — which fires on
+  // blur, so clicking Start Sale right after editing the % blurred the
+  // field first, tore out and replaced the button the same click was
+  // already mid-dispatch on, and ate the click. Updating only the list
+  // leaves the rest of the panel, and its listeners, untouched.
+  function updateSaleDraftPreview() {
+    var listEl = document.getElementById("saleDraftPreviewList");
+    if (!listEl || !saleDraft) return;
+    var pct = parseFloat(saleDraft.pct);
+    var validPct = pct > 0 && pct < 100;
+    var capped = saleDraft.rows.slice(0, MANAGE_INVENTORY_RESULT_CAP);
+    listEl.innerHTML = capped.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("");
+  }
+
   function saleDraftHtml() {
     var d = saleDraft;
     if (!d) return "";
+    var pct = parseFloat(d.pct);
+    var validPct = pct > 0 && pct < 100;
+    var capped = d.rows.slice(0, MANAGE_INVENTORY_RESULT_CAP);
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put ' + d.rows.length + ' item' + (d.rows.length === 1 ? '' : 's') + ' on sale</div>'
       + '<div class="inventory-fields wanted-manual-fields">'
@@ -6921,6 +7014,10 @@
       + '<div class="inventory-field"><label>Ends <span class="field-hint">(optional)</span></label><input type="date" id="saleDraftEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
       + '<div class="inventory-field description-field"><label>Label <span class="field-hint">(optional, just for your reference)</span></label><input type="text" id="saleDraftLabelInput" value="' + escapeHtml(d.label) + '" placeholder="e.g. Star Wars 20% off"></div>'
       + '</div>'
+      + '<div class="sale-preview-list" id="saleDraftPreviewList">'
+      + capped.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("")
+      + '</div>'
+      + (d.rows.length > capped.length ? '<div class="manage-inventory-cap-note">+ ' + (d.rows.length - capped.length) + ' more not shown here, but included in the sale</div>' : '')
       + '<div class="wanted-manual-actions">'
       + '<button type="button" class="reset-btn" id="saleDraftConfirmBtn"' + (saleSubmitting ? ' disabled' : '') + '>' + (saleSubmitting ? "Starting…" : "Start Sale") + '</button>'
       + '<button type="button" class="reset-btn" id="saleDraftCancelBtn"' + (saleSubmitting ? ' disabled' : '') + '>Cancel</button>'
