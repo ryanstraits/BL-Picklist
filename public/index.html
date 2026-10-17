@@ -886,17 +886,18 @@
     width: 100%;
     min-width: 0;
   }
-  /* A date input's native picker control carries its own intrinsic
-     minimum width (locale-formatted, e.g. "Aug 18, 2026" plus the
-     calendar icon) that can exceed its grid cell — min-width:0 alone
-     doesn't stop that overflow for type="date" specifically, so it also
-     needs its own explicit clamp. */
-  .inventory-field input[type="date"] { max-width: 100%; }
   .inventory-field textarea {
     resize: vertical;
     min-height: 40px;
   }
-  .inventory-field.remarks-field, .inventory-field.description-field { grid-column: 1 / -1; }
+  /* A date input's native picker control renders at its own intrinsic,
+     locale-formatted minimum width (e.g. "Aug 18, 2026" plus the
+     calendar icon) — on a narrow phone that's wider than half of a
+     two-column row, so max-width/min-width on the input alone can't
+     stop it overflowing its cell. The only reliable fix is to not put
+     it in a half-width cell at all: .inv-full-row gives a field the
+     entire row, same as .description-field/.remarks-field already do. */
+  .inventory-field.remarks-field, .inventory-field.description-field, .inventory-field.inv-full-row { grid-column: 1 / -1; }
   .inventory-row-result {
     margin-top: 8px;
     font-size: 12px;
@@ -7011,12 +7012,12 @@
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put aged inventory on sale</div>'
       + '<div class="inventory-fields wanted-manual-fields">'
-      + '<div class="inventory-field"><label>Item type</label><select id="saleAgeTypeSelect">'
+      + '<div class="inventory-field inv-full-row"><label>Item type</label><select id="saleAgeTypeSelect">'
       + '<option value=""' + (d.type === "" ? ' selected' : '') + '>All types</option>'
       + '<option value="MINIFIG"' + (d.type === "MINIFIG" ? ' selected' : '') + '>Figs only</option>'
       + '<option value="PART"' + (d.type === "PART" ? ' selected' : '') + '>Parts only</option>'
       + '</select></div>'
-      + '<div class="inventory-field"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
+      + '<div class="inventory-field inv-full-row"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
       + '</div>'
       + '<div class="sale-age-quick-row">'
       + SALE_AGE_QUICK_DAYS.map(function (n) {
@@ -7096,8 +7097,8 @@
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put ' + d.rows.length + ' item' + (d.rows.length === 1 ? '' : 's') + ' on sale</div>'
       + '<div class="inventory-fields wanted-manual-fields">'
-      + '<div class="inventory-field"><label>% off</label><input type="number" min="1" max="99" id="saleDraftPctInput" value="' + escapeHtml(d.pct) + '"></div>'
-      + '<div class="inventory-field"><label>Ends <span class="field-hint">(optional)</span></label><input type="date" id="saleDraftEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
+      + '<div class="inventory-field inv-full-row"><label>% off</label><input type="number" min="1" max="99" id="saleDraftPctInput" value="' + escapeHtml(d.pct) + '"></div>'
+      + '<div class="inventory-field inv-full-row"><label>Ends <span class="field-hint">(optional)</span></label><input type="date" id="saleDraftEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
       + '<div class="inventory-field description-field"><label>Label <span class="field-hint">(optional, just for your reference)</span></label><input type="text" id="saleDraftLabelInput" value="' + escapeHtml(d.label) + '" placeholder="e.g. Star Wars 20% off"></div>'
       + '</div>'
       + '<div class="sale-preview-list" id="saleDraftPreviewList">'
