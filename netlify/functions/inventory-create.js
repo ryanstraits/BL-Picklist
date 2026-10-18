@@ -70,19 +70,19 @@ exports.handler = requireAuth(async (event) => {
     if (!Array.isArray(items) || !items.length) {
       return json(400, { error: 'items must be a non-empty array' });
     }
-    for (const item of items) {
-      if (!item || !item.itemNo || !item.type || !item.quantity) {
-        return json(400, { error: 'Each item requires itemNo, type, and quantity' });
-      }
-    }
-
     // Sequential, not Promise.all — these are live writes to BrickLink
     // (rate-limited, order doesn't matter but concurrency risk does), and
     // this way every item still gets a clean per-row result even if an
     // earlier one fails, rather than a concurrent batch's error handling
-    // getting tangled.
+    // getting tangled. Malformed items are reported the same way,
+    // per-item, rather than 400ing the whole request — one bad row
+    // shouldn't block every other item in a large batch too.
     const results = [];
     for (const item of items) {
+      if (!item || !item.itemNo || !item.type || !item.quantity) {
+        results.push({ key: item && item.key, success: false, error: 'Missing itemNo, type, or quantity — this item can\'t be created' });
+        continue;
+      }
       try {
         results.push(await createOne(item));
       } catch (err) {

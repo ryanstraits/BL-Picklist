@@ -29,17 +29,18 @@ exports.handler = requireAuth(async (event) => {
     if (!Array.isArray(items) || !items.length) {
       return json(400, { error: 'items must be a non-empty array' });
     }
-    for (const item of items) {
-      if (!item || !item.inventoryId) {
-        return json(400, { error: 'Each item requires inventoryId' });
-      }
-    }
-
     // Sequential, not Promise.all — same reasoning as inventory-create.js
     // and inventory-update.js: these are live writes to BrickLink, and
     // each row needs its own clean result even if an earlier one fails.
+    // Malformed items are reported the same way, per-item, rather than
+    // 400ing the whole request — one bad row shouldn't block every other
+    // item in a large batch too.
     const results = [];
     for (const item of items) {
+      if (!item || !item.inventoryId) {
+        results.push({ key: item && item.key, success: false, error: 'Missing inventoryId — this listing can\'t be deleted' });
+        continue;
+      }
       try {
         results.push(await deleteOne(item));
       } catch (err) {

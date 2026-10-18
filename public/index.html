@@ -7045,12 +7045,19 @@
     });
   }
 
-  // Rows with nothing to discount (no price yet, or already queued for
-  // delete) are silently dropped from the segment rather than surfaced as
-  // an error — a sale on "this theme" naturally only applies to listings
-  // that have a price to begin with.
+  // Rows with nothing to discount (no price yet, already queued for
+  // delete, or no quantity left to sell) are silently dropped from the
+  // segment rather than surfaced as an error — a sale on "this theme"
+  // naturally only applies to listings that have a price and stock to
+  // begin with. The inventoryId check guards the same BrickLink data
+  // quirk that can leave a listing with quantity 0 — without it, one bad
+  // row in a large scope would make the live-write endpoint reject the
+  // entire batch (see inventory-update.js), silently blocking every
+  // other item in the sale along with it.
   function eligibleSaleRows(rows) {
-    return rows.filter(function (r) { return !r.markedForDelete && parseFloat(r.unitPrice) > 0; });
+    return rows.filter(function (r) {
+      return !r.markedForDelete && parseFloat(r.unitPrice) > 0 && parseFloat(r.quantity) > 0 && !!r.inventoryId;
+    });
   }
 
   function startSaleAgeDraft() {
