@@ -6792,6 +6792,13 @@
         updateSaleDraftPreview();
       });
     }
+    var saleDraftSortSelectEl = document.getElementById("saleDraftSortSelect");
+    if (saleDraftSortSelectEl) {
+      saleDraftSortSelectEl.addEventListener("change", function () {
+        saleDraft.sortKey = saleDraftSortSelectEl.value;
+        renderManageInventoryResults();
+      });
+    }
     container.querySelectorAll(".sale-preview-remove-btn").forEach(function (el) {
       el.addEventListener("click", function () {
         handleSaleDraftRemoveRow(el.getAttribute("data-key"));
@@ -7108,6 +7115,29 @@
       + '</div>';
   }
 
+  // Figs, then parts, then sets — Ryan's own stated priority order, not
+  // alphabetical. Anything else (BOOK, GEAR, ...) sorts after all three.
+  var SALE_DRAFT_TYPE_ORDER = { MINIFIG: 0, PART: 1, SET: 2 };
+  function saleDraftRowValue(row) {
+    return (parseFloat(row.unitPrice) || 0) * (parseInt(row.quantity, 10) || 0);
+  }
+  function compareSaleDraftRows(a, b, key) {
+    if (key === "valueAsc") return saleDraftRowValue(a) - saleDraftRowValue(b);
+    if (key === "type") {
+      var ta = SALE_DRAFT_TYPE_ORDER.hasOwnProperty(a.type) ? SALE_DRAFT_TYPE_ORDER[a.type] : 99;
+      var tb = SALE_DRAFT_TYPE_ORDER.hasOwnProperty(b.type) ? SALE_DRAFT_TYPE_ORDER[b.type] : 99;
+      // Highest value first within a type group too, same as the
+      // standalone value sort's default direction.
+      return ta !== tb ? ta - tb : saleDraftRowValue(b) - saleDraftRowValue(a);
+    }
+    return saleDraftRowValue(b) - saleDraftRowValue(a); // valueDesc — the default
+  }
+  function sortSaleDraftRows(rows, key) {
+    var sorted = rows.slice();
+    sorted.sort(function (a, b) { return compareSaleDraftRows(a, b, key); });
+    return sorted;
+  }
+
   function startSaleDraft(rows) {
     var eligible = eligibleSaleRows(rows);
     var onSale = itemKeysInAnyActiveSale();
@@ -7118,7 +7148,7 @@
         : "None of these items have a price to discount.");
       return;
     }
-    saleDraft = { rows: openRows, pct: "20", endsAt: "", label: "", excludedCount: eligible.length - openRows.length };
+    saleDraft = { rows: openRows, pct: "20", endsAt: "", label: "", excludedCount: eligible.length - openRows.length, sortKey: "valueDesc" };
     renderManageInventoryResults();
   }
 
@@ -7182,7 +7212,18 @@
     // text (no photos, no editable inputs), so even a few hundred of them
     // render cheaply, and Ryan explicitly wants to be able to scan the
     // whole set before committing to a sale, not just the first 50.
-    listEl.innerHTML = saleDraft.rows.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("");
+    var sortedRows = sortSaleDraftRows(saleDraft.rows, saleDraft.sortKey);
+    listEl.innerHTML = sortedRows.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("");
+  }
+
+  function saleDraftSortSelectHtml(sortKey) {
+    return '<div class="manage-inventory-sort-row">'
+      + '<select class="manage-inventory-sort-select" id="saleDraftSortSelect">'
+      + '<option value="valueDesc"' + (sortKey === "valueDesc" ? ' selected' : '') + '>Value (highest first)</option>'
+      + '<option value="valueAsc"' + (sortKey === "valueAsc" ? ' selected' : '') + '>Value (lowest first)</option>'
+      + '<option value="type"' + (sortKey === "type" ? ' selected' : '') + '>Type (figs, parts, sets)</option>'
+      + '</select>'
+      + '</div>';
   }
 
   function saleDraftHtml() {
@@ -7190,6 +7231,7 @@
     if (!d) return "";
     var pct = parseFloat(d.pct);
     var validPct = pct > 0 && pct < 100;
+    var sortedRows = sortSaleDraftRows(d.rows, d.sortKey);
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put ' + d.rows.length + ' item' + (d.rows.length === 1 ? '' : 's') + ' on sale</div>'
       + (d.excludedCount ? '<div class="sale-tools-box-desc">' + d.excludedCount + ' item' + (d.excludedCount === 1 ? '' : 's') + ' already in another sale ' + (d.excludedCount === 1 ? 'was' : 'were') + ' left out.</div>' : '')
@@ -7198,8 +7240,9 @@
       + '<div class="inventory-field date-field"><label>Ends <span class="field-hint">(optional)</span></label><input type="date" id="saleDraftEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
       + '<div class="inventory-field description-field"><label>Label <span class="field-hint">(optional, just for your reference)</span></label><input type="text" id="saleDraftLabelInput" value="' + escapeHtml(d.label) + '" placeholder="e.g. Star Wars 20% off"></div>'
       + '</div>'
+      + saleDraftSortSelectHtml(d.sortKey)
       + '<div class="sale-preview-list" id="saleDraftPreviewList">'
-      + d.rows.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("")
+      + sortedRows.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("")
       + '</div>'
       + '<div class="wanted-manual-actions">'
       + '<button type="button" class="reset-btn" id="saleDraftConfirmBtn"' + (saleSubmitting ? ' disabled' : '') + '>' + (saleSubmitting ? "Starting…" : "Start Sale") + '</button>'
