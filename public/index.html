@@ -5868,22 +5868,29 @@
   var manageInventoryHasDates = false;
 
   // ---- Bulk Sale ----
-  // null = not fetched yet from the Blobs store; { active: false } once
-  // fetched with nothing running; { active: true, label, discountPct,
-  // startedAt, endsAt, items: { [row.key]: { originalUnitPrice, itemNo,
-  // colorId, name } } } while a sale is live. Only one sale at a time —
-  // starting a new one while one's active is refused rather than letting
-  // discounts stack, since BrickLink has no native concept of a sale at
-  // all (just one current unit_price), so this app owns the whole
-  // lifecycle including knowing what price to revert to.
-  var activeSale = null;
-  var activeSaleLoadPromise = null;
-  // The in-progress "Start Sale" form: { rows, pct, endsAt, label } once
-  // Ryan's picked a segment (a theme/category list or a search result
-  // list) to put on sale, else null.
+  // null = not fetched yet from the Blobs store; [] once fetched with
+  // nothing running; otherwise an array of concurrently running sales,
+  // each { id, active: true, label, discountPct, startedAt, endsAt,
+  // items: { [row.key]: { originalUnitPrice, itemNo, colorId, name } } }.
+  // Several sales can run at once (e.g. one per category) as long as
+  // they don't share an item — starting a new one filters out anything
+  // already in another active sale's items (see
+  // itemKeysInAnyActiveSale() below) rather than letting discounts
+  // stack or two sales fight over which original price to revert to,
+  // since BrickLink has no native concept of a sale at all (just one
+  // current unit_price) — this app owns the whole lifecycle per item.
+  var activeSales = null;
+  var activeSalesLoadPromise = null;
+  // The in-progress "Start Sale" form: { rows, pct, endsAt, label,
+  // excludedCount } once Ryan's picked a segment (a theme/category list
+  // or a search result list) to put on sale, else null. excludedCount is
+  // how many of that segment's otherwise-eligible rows got left out
+  // because they're already in a different running sale.
   var saleDraft = null;
   var saleSubmitting = false;
-  var saleEnding = false;
+  // Which running sale's "End Sale Now" is currently in flight (its id),
+  // or null — only one revert at a time, same as starting a sale.
+  var saleEndingId = null;
   // Multi-select mode for staging a sale across several types/themes at
   // once before committing to any of them — see toggleSaleSelectScope
   // below. Off by default; toggled on by its own entry button rather
@@ -6263,10 +6270,6 @@
   }
 
   function startSaleSelectMode() {
-    if (activeSale && activeSale.active) {
-      window.alert("A sale is already running (" + (activeSale.label || (activeSale.discountPct + "% off")) + "). End it first — this app only tracks one active sale's original prices at a time.");
-      return;
-    }
     saleSelectMode = true;
     saleSelectedScopes = {};
     renderManageInventoryResults();
@@ -6308,25 +6311,29 @@
 
   // The single "Bulk Sale" slot a screen gets, one call per screen,
   // always in the same spot in the layout — never a second box stacked
-  // somewhere else on the page. Whatever's actually in progress (a
-  // chosen scope being confirmed, the age-threshold picker, multi-select
-  // mode) takes over this same slot; with nothing in progress it's
-  // either the bare "▸ Bulk Sale" line (the default — out of the way
-  // until tapped) or, once tapped, the idle box with this screen's own
-  // entry buttons (idleBodyHtml; idleDescHtml is optional context text,
-  // "" to skip it). A screen with nothing to offer here (idleBodyHtml
-  // "") renders nothing at all unless a flow started elsewhere is still
-  // in progress — e.g. drilling into a theme while multi-select is on.
+  // somewhere else on the page. Any running sales' banners always render
+  // here first (any number of them can be active at once, on different
+  // categories), followed by whatever's actually in progress (a chosen
+  // scope being confirmed, the age-threshold picker, multi-select mode);
+  // with nothing in progress it's either the bare "▸ Bulk Sale" line
+  // (the default — out of the way until tapped) or, once tapped, the
+  // idle box with this screen's own entry buttons (idleBodyHtml;
+  // idleDescHtml is optional context text, "" to skip it) — starting
+  // another sale here is always available, even while others are
+  // running elsewhere. A screen with nothing to offer here (idleBodyHtml
+  // "") renders just the banners (if any) unless a flow started
+  // elsewhere is still in progress — e.g. drilling into a theme while
+  // multi-select is on.
   function saleAreaHtml(idleDescHtml, idleBodyHtml) {
-    if (activeSale && activeSale.active) return activeSaleBannerHtml();
-    if (saleDraft) return saleDraftHtml();
-    if (saleAgeDraft) return saleAgeDraftHtml();
-    if (saleSelectMode) return saleSelectToolbarHtml();
-    if (!idleBodyHtml) return "";
+    var bannersHtml = activeSalesBannerHtml();
+    if (saleDraft) return bannersHtml + saleDraftHtml();
+    if (saleAgeDraft) return bannersHtml + saleAgeDraftHtml();
+    if (saleSelectMode) return bannersHtml + saleSelectToolbarHtml();
+    if (!idleBodyHtml) return bannersHtml;
     if (!saleAreaExpanded) {
-      return '<button type="button" class="sale-area-collapsed-btn" id="saleAreaExpandBtn">▸ Bulk Sale</button>';
+      return bannersHtml + '<button type="button" class="sale-area-collapsed-btn" id="saleAreaExpandBtn">▸ Bulk Sale</button>';
     }
-    return '<div class="sale-draft-panel">'
+    return bannersHtml + '<div class="sale-draft-panel">'
       + '<button type="button" class="sale-area-collapse-btn" id="saleAreaCollapseBtn">▾ Bulk Sale</button>'
       + (idleDescHtml ? '<div class="sale-tools-box-desc">' + idleDescHtml + '</div>' : '')
       + idleBodyHtml
@@ -6786,8 +6793,11 @@
         handleSaleDraftRemoveRow(el.getAttribute("data-key"));
       });
     });
-    var endSaleBtnEl = document.getElementById("endSaleBtn");
-    if (endSaleBtnEl) endSaleBtnEl.addEventListener("click", handleEndSaleNow);
+    container.querySelectorAll(".sale-end-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        handleEndSaleNow(el.getAttribute("data-sale-id"));
+      });
+    });
 
     var selectModeBtnEl = document.getElementById("manageInventorySelectModeBtn");
     if (selectModeBtnEl) selectModeBtnEl.addEventListener("click", startSaleSelectMode);
@@ -6859,7 +6869,7 @@
     // Lazy-warm, same pattern as colorsMap elsewhere — doesn't block this
     // page's own load, just re-renders (picking up the banner) once it
     // resolves.
-    if (!activeSale) ensureActiveSaleLoaded();
+    if (!activeSales) ensureActiveSalesLoaded();
 
     manageInventoryView.innerHTML = ""
       + '<input type="search" class="manage-inventory-search" id="manageInventorySearchInput" placeholder="Search by item name or number…" value="' + escapeHtml(manageInventorySearchQuery) + '" autocomplete="off">'
@@ -6973,23 +6983,46 @@
   // forever this session" pattern as colorsMap/manageInventoryRows.
   // Explicit re-renders on landing so a page that opened before this
   // resolved (the banner needs it) picks it up once it does.
-  function ensureActiveSaleLoaded() {
-    if (activeSale) return Promise.resolve(activeSale);
-    if (!activeSaleLoadPromise) {
-      activeSaleLoadPromise = fetchJSON("/api/pick-state?key=activeSale").then(function (remote) {
-        activeSale = (remote && remote.active) ? remote : { active: false };
-        if (currentView === "manage-inventory") renderManageInventoryView();
-        return activeSale;
-      }).catch(function () {
-        activeSale = { active: false }; // offline/first-run — try again next visit
-        return activeSale;
-      });
+  // Accepts either the current shape (an array of sales) or the old
+  // single-sale object this key used to hold, so an in-progress sale
+  // saved before this app supported more than one still loads correctly.
+  function normalizeActiveSales(remote) {
+    if (Array.isArray(remote)) return remote;
+    if (remote && remote.active) {
+      remote.id = remote.id || "legacy";
+      return [remote];
     }
-    return activeSaleLoadPromise;
+    return [];
   }
 
-  function pushActiveSale() {
-    postJSON("/api/pick-state?key=activeSale", activeSale).catch(function () { /* offline — ignore, same as other pick-state writes */ });
+  function ensureActiveSalesLoaded() {
+    if (activeSales) return Promise.resolve(activeSales);
+    if (!activeSalesLoadPromise) {
+      activeSalesLoadPromise = fetchJSON("/api/pick-state?key=activeSale").then(function (remote) {
+        activeSales = normalizeActiveSales(remote);
+        if (currentView === "manage-inventory") renderManageInventoryView();
+        return activeSales;
+      }).catch(function () {
+        activeSales = []; // offline/first-run — try again next visit
+        return activeSales;
+      });
+    }
+    return activeSalesLoadPromise;
+  }
+
+  function pushActiveSales() {
+    postJSON("/api/pick-state?key=activeSale", activeSales).catch(function () { /* offline — ignore, same as other pick-state writes */ });
+  }
+
+  // Every item key currently inside ANY running sale — used to keep
+  // concurrent sales from double-discounting (or double-owning the
+  // "what was the original price" record for) the same listing.
+  function itemKeysInAnyActiveSale() {
+    var set = {};
+    (activeSales || []).forEach(function (sale) {
+      Object.keys(sale.items || {}).forEach(function (key) { set[key] = true; });
+    });
+    return set;
   }
 
   function roundSalePrice(unitPrice, pct) {
@@ -7065,16 +7098,16 @@
   }
 
   function startSaleDraft(rows) {
-    if (activeSale && activeSale.active) {
-      window.alert("A sale is already running (" + (activeSale.label || (activeSale.discountPct + "% off")) + "). End it first — this app only tracks one active sale's original prices at a time.");
-      return;
-    }
     var eligible = eligibleSaleRows(rows);
-    if (!eligible.length) {
-      window.alert("None of these items have a price to discount.");
+    var onSale = itemKeysInAnyActiveSale();
+    var openRows = eligible.filter(function (r) { return !onSale[r.key]; });
+    if (!openRows.length) {
+      window.alert(eligible.length
+        ? "Every eligible item here is already in another active sale."
+        : "None of these items have a price to discount.");
       return;
     }
-    saleDraft = { rows: eligible, pct: "20", endsAt: "", label: "" };
+    saleDraft = { rows: openRows, pct: "20", endsAt: "", label: "", excludedCount: eligible.length - openRows.length };
     renderManageInventoryResults();
   }
 
@@ -7146,6 +7179,7 @@
     var capped = d.rows.slice(0, MANAGE_INVENTORY_RESULT_CAP);
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put ' + d.rows.length + ' item' + (d.rows.length === 1 ? '' : 's') + ' on sale</div>'
+      + (d.excludedCount ? '<div class="sale-tools-box-desc">' + d.excludedCount + ' item' + (d.excludedCount === 1 ? '' : 's') + ' already in another sale ' + (d.excludedCount === 1 ? 'was' : 'were') + ' left out.</div>' : '')
       + '<div class="inventory-fields wanted-manual-fields sale-fields-row">'
       + '<div class="inventory-field"><label>% off</label><input type="number" min="1" max="99" id="saleDraftPctInput" value="' + escapeHtml(d.pct) + '"></div>'
       + '<div class="inventory-field date-field"><label>Ends <span class="field-hint">(optional)</span></label><input type="date" id="saleDraftEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
@@ -7218,15 +7252,16 @@
         return;
       }
 
-      activeSale = {
+      activeSales = (activeSales || []).concat([{
+        id: "sale-" + Math.random().toString(36).slice(2, 10),
         active: true,
         label: (labelInput.value || "").trim(),
         discountPct: pct,
         startedAt: new Date().toISOString(),
         endsAt: endsInput.value || "",
         items: items,
-      };
-      pushActiveSale();
+      }]);
+      pushActiveSales();
 
       if (itemCount < rows.length) {
         var failedCount = rows.length - itemCount;
@@ -7242,25 +7277,34 @@
     });
   }
 
-  function activeSaleBannerHtml() {
-    if (!activeSale || !activeSale.active) return "";
-    var itemCount = Object.keys(activeSale.items || {}).length;
-    var ended = activeSale.endsAt && new Date(activeSale.endsAt + "T23:59:59").getTime() < Date.now();
-    var title = activeSale.label || (activeSale.discountPct + "% off");
-    var detail = itemCount + " item" + (itemCount === 1 ? "" : "s") + " · started " + escapeHtml(formatDate(activeSale.startedAt))
-      + (activeSale.endsAt ? " · " + (ended ? "sale period ended " : "ends ") + escapeHtml(formatDate(activeSale.endsAt)) : "");
+  function activeSaleBannerHtml(sale) {
+    var itemCount = Object.keys(sale.items || {}).length;
+    var ended = sale.endsAt && new Date(sale.endsAt + "T23:59:59").getTime() < Date.now();
+    var title = sale.label || (sale.discountPct + "% off");
+    var detail = itemCount + " item" + (itemCount === 1 ? "" : "s") + " · started " + escapeHtml(formatDate(sale.startedAt))
+      + (sale.endsAt ? " · " + (ended ? "sale period ended " : "ends ") + escapeHtml(formatDate(sale.endsAt)) : "");
+    var ending = saleEndingId === sale.id;
     return '<div class="sale-banner' + (ended ? ' sale-banner-ended' : '') + '">'
       + '<div class="sale-banner-text"><strong>' + escapeHtml(title) + '</strong><span>' + detail + '</span></div>'
-      + '<button type="button" class="reset-btn" id="endSaleBtn"' + (saleEnding ? ' disabled' : '') + '>' + (saleEnding ? "Ending…" : "End Sale Now") + '</button>'
+      + '<button type="button" class="reset-btn sale-end-btn" data-sale-id="' + escapeHtml(sale.id) + '"' + (ending ? ' disabled' : '') + '>' + (ending ? "Ending…" : "End Sale Now") + '</button>'
       + '</div>';
   }
 
-  function handleEndSaleNow() {
-    if (!activeSale || !activeSale.active || saleEnding) return;
-    var itemKeys = Object.keys(activeSale.items || {});
+  // One banner per running sale, stacked in the one Bulk Sale slot —
+  // there's no cap on how many can be active at once.
+  function activeSalesBannerHtml() {
+    return (activeSales || []).map(activeSaleBannerHtml).join("");
+  }
+
+  function handleEndSaleNow(saleId) {
+    if (saleEndingId) return;
+    var sale = null;
+    (activeSales || []).forEach(function (s) { if (s.id === saleId) sale = s; });
+    if (!sale) return;
+    var itemKeys = Object.keys(sale.items || {});
     if (!window.confirm("End the sale and revert " + itemKeys.length + " item" + (itemKeys.length === 1 ? "" : "s") + " to their original price on BrickLink now?")) return;
 
-    saleEnding = true;
+    saleEndingId = saleId;
     renderManageInventoryResults();
 
     ensureManageInventoryLoaded().then(function () {
@@ -7269,14 +7313,14 @@
       itemKeys.forEach(function (key) {
         var row = findManageInventoryRow(key);
         if (!row) { missingKeys.push(key); return; } // listing's gone (deleted/sold out) — nothing left to revert on BrickLink
-        row.unitPrice = activeSale.items[key].originalUnitPrice;
+        row.unitPrice = sale.items[key].originalUnitPrice;
         row.result = null;
         toRevert.push(row);
       });
 
       if (!toRevert.length) {
-        activeSale = { active: false };
-        pushActiveSale();
+        activeSales = activeSales.filter(function (s) { return s.id !== saleId; });
+        pushActiveSales();
         return;
       }
 
@@ -7287,7 +7331,7 @@
         // and retryable via End Sale Now again, instead of quietly
         // vanishing while the listing is still discounted on BrickLink.
         var remainingItems = {};
-        Object.keys(activeSale.items).forEach(function (key) { remainingItems[key] = activeSale.items[key]; });
+        Object.keys(sale.items).forEach(function (key) { remainingItems[key] = sale.items[key]; });
         missingKeys.forEach(function (key) { delete remainingItems[key]; });
         results.forEach(function (result) {
           var row = findManageInventoryRow(result.key);
@@ -7307,20 +7351,23 @@
 
         var remainingCount = Object.keys(remainingItems).length;
         if (remainingCount) {
-          activeSale = {
-            active: true, label: activeSale.label, discountPct: activeSale.discountPct,
-            startedAt: activeSale.startedAt, endsAt: activeSale.endsAt, items: remainingItems,
-          };
+          activeSales = activeSales.map(function (s) {
+            if (s.id !== saleId) return s;
+            return {
+              id: s.id, active: true, label: s.label, discountPct: s.discountPct,
+              startedAt: s.startedAt, endsAt: s.endsAt, items: remainingItems,
+            };
+          });
           window.alert(remainingCount + " item" + (remainingCount === 1 ? "" : "s") + " couldn't be reverted — see the error on those rows. The sale stays active for just those; try End Sale Now again once fixed.");
         } else {
-          activeSale = { active: false };
+          activeSales = activeSales.filter(function (s) { return s.id !== saleId; });
         }
-        pushActiveSale();
+        pushActiveSales();
       });
     }).catch(function (err) {
       window.alert("Couldn't reach the server to end the sale: " + err.message);
     }).finally(function () {
-      saleEnding = false;
+      saleEndingId = null;
       renderManageInventoryResults();
     });
   }
