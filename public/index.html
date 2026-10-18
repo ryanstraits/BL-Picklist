@@ -1017,11 +1017,16 @@
   .sale-preview-row:last-child { border-bottom: none; }
   .sale-preview-name { color: var(--text-secondary); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sale-preview-qty { color: var(--text-secondary); flex: none; }
+  /* Always its own full-width line below the name/qty, regardless of
+     how short the name is — flex-basis: 100% forces a wrap here, and
+     since this is a single flex item (price + remove button together)
+     the remove button lands right after it on that same new line
+     rather than wrapping to a third line of its own. */
+  .sale-preview-price-row { flex: 1 1 100%; display: flex; align-items: center; justify-content: space-between; }
   .sale-preview-price { flex: none; white-space: nowrap; }
   .sale-preview-price strong { color: var(--danger); }
   .sale-preview-remove-btn {
     flex: none;
-    margin-left: auto;
     border: none;
     background: none;
     color: var(--text-secondary);
@@ -7181,8 +7186,10 @@
       + '<span class="item-type-tag">' + escapeHtml(row.type) + '</span>'
       + '<span class="sale-preview-name">' + escapeHtml(row.name || "(name unknown)") + (isRealColorName(row.colorName) ? ' · ' + escapeHtml(row.colorName) : '') + '</span>'
       + '<span class="sale-preview-qty">×' + escapeHtml(row.quantity) + '</span>'
+      + '<span class="sale-preview-price-row">'
       + '<span class="sale-preview-price">' + escapeHtml(formatCurrency(row.unitPrice, "USD")) + newPriceHtml + '</span>'
       + '<button type="button" class="sale-preview-remove-btn" data-key="' + escapeHtml(row.key) + '" aria-label="Remove ' + escapeHtml(row.itemNo) + ' from this sale" title="Remove from sale">✕</button>'
+      + '</span>'
       + '</div>';
   }
 
