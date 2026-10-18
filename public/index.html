@@ -937,27 +937,27 @@
     justify-content: space-between;
     align-items: center;
     gap: 10px;
-    background: var(--warning-bg);
-    border: 1px solid var(--warning);
+    background: var(--danger-soft);
+    border: 1px solid var(--danger);
     border-radius: 8px;
     padding: 10px 12px;
+    margin-top: 14px;
     margin-bottom: 14px;
   }
   .sale-banner-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text); }
   .sale-banner-text span { color: var(--text-secondary); font-size: 12px; }
-  /* Same warning-tinted shell either way — "a sale is running" and "a
-     sale ran past its end date" are both states Ryan should notice, not
-     a neutral/good vs. bad distinction, so there's nothing more to flip
+  /* Same tinted shell either way — "a sale is running" and "a sale ran
+     past its end date" are both states Ryan should notice, not a
+     neutral/good vs. bad distinction, so there's nothing more to flip
      here once the date's passed; the text itself says which one it is. */
   /* Shared visual identity for every "this is sale-related" container —
-     the entry-point boxes, the draft/age-threshold panels, and the
-     multi-select toolbar all get the same tinted treatment so the whole
-     bulk-sale feature reads as one clearly-labeled area of the page,
-     distinct from ordinary browse/search chrome around it and from the
-     blue "info" tint used elsewhere (the select toolbar's own family
-     here aside). Only the active-sale banner stays on its own warning
-     tint — that one's an alert ("a sale is running right now"), not a
-     tool. */
+     the entry-point boxes, the draft/age-threshold panels, the
+     multi-select toolbar, and the active-sale banner all get the same
+     tinted treatment and live in the same saleAreaHtml() slot, so the
+     whole bulk-sale feature reads as one clearly-labeled area of the
+     page, distinct from ordinary browse/search chrome around it and
+     from the blue "info" tint used elsewhere (the select toolbar's own
+     family here aside). */
   .sale-draft-panel {
     background: var(--danger-soft);
     border: 1px solid var(--danger);
@@ -2480,7 +2480,13 @@
   // dates, which have never shown this symptom, pass through unchanged).
   function formatDate(iso) {
     if (!iso) return "";
-    var normalized = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso.replace(" ", "T") + "Z";
+    // A bare YYYY-MM-DD (e.g. straight off a <input type="date">, like
+    // activeSale.endsAt) has no time component to normalize — pin it to
+    // midnight UTC directly instead of falling into the "+Z" branch
+    // below, which turns it into the unparseable "2026-10-31Z".
+    var normalized = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+      ? iso + "T00:00:00Z"
+      : (/[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso.replace(" ", "T") + "Z");
     var d = new Date(normalized);
     if (isNaN(d.getTime())) return iso;
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -6312,6 +6318,7 @@
   // "") renders nothing at all unless a flow started elsewhere is still
   // in progress — e.g. drilling into a theme while multi-select is on.
   function saleAreaHtml(idleDescHtml, idleBodyHtml) {
+    if (activeSale && activeSale.active) return activeSaleBannerHtml();
     if (saleDraft) return saleDraftHtml();
     if (saleAgeDraft) return saleAgeDraftHtml();
     if (saleSelectMode) return saleSelectToolbarHtml();
@@ -6570,12 +6577,11 @@
     } else if (!manageInventoryRows) {
       body = "";
     } else if (!query) {
-      body = activeSaleBannerHtml() + manageInventoryBrowseHtml(dirtyCount);
+      body = manageInventoryBrowseHtml(dirtyCount);
     } else {
       var matches = manageInventoryMatches(query);
       var capped = matches.slice(0, MANAGE_INVENTORY_RESULT_CAP);
-      body = activeSaleBannerHtml()
-        + '<div class="inventory-summary-row">'
+      body = '<div class="inventory-summary-row">'
         + '<span>' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') + '</span>'
         + '<div class="inventory-bulk-actions">'
         + '<button type="button" id="manageInventoryRefreshBtn">Refresh</button>'
