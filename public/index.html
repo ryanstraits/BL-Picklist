@@ -6114,6 +6114,10 @@
     var cutoff = new Date(beforeDate + "T23:59:59").getTime();
     return (manageInventoryRows || []).filter(function (r) {
       if (typeFilter && r.type !== typeFilter) return false;
+      // Stock room inventory is held back on purpose, not just sitting
+      // unsold — an age threshold shouldn't sweep it into a sale just
+      // because it's been there a while.
+      if (r.stockRoomId) return false;
       if (!r.dateCreated) return false;
       var t = new Date(r.dateCreated).getTime();
       return !isNaN(t) && t <= cutoff;
