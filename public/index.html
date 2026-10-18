@@ -7178,8 +7178,11 @@
     if (!listEl || !saleDraft) return;
     var pct = parseFloat(saleDraft.pct);
     var validPct = pct > 0 && pct < 100;
-    var capped = saleDraft.rows.slice(0, MANAGE_INVENTORY_RESULT_CAP);
-    listEl.innerHTML = capped.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("");
+    // No cap here — unlike the browse/search lists, these rows are plain
+    // text (no photos, no editable inputs), so even a few hundred of them
+    // render cheaply, and Ryan explicitly wants to be able to scan the
+    // whole set before committing to a sale, not just the first 50.
+    listEl.innerHTML = saleDraft.rows.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("");
   }
 
   function saleDraftHtml() {
@@ -7187,7 +7190,6 @@
     if (!d) return "";
     var pct = parseFloat(d.pct);
     var validPct = pct > 0 && pct < 100;
-    var capped = d.rows.slice(0, MANAGE_INVENTORY_RESULT_CAP);
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put ' + d.rows.length + ' item' + (d.rows.length === 1 ? '' : 's') + ' on sale</div>'
       + (d.excludedCount ? '<div class="sale-tools-box-desc">' + d.excludedCount + ' item' + (d.excludedCount === 1 ? '' : 's') + ' already in another sale ' + (d.excludedCount === 1 ? 'was' : 'were') + ' left out.</div>' : '')
@@ -7197,9 +7199,8 @@
       + '<div class="inventory-field description-field"><label>Label <span class="field-hint">(optional, just for your reference)</span></label><input type="text" id="saleDraftLabelInput" value="' + escapeHtml(d.label) + '" placeholder="e.g. Star Wars 20% off"></div>'
       + '</div>'
       + '<div class="sale-preview-list" id="saleDraftPreviewList">'
-      + capped.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("")
+      + d.rows.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("")
       + '</div>'
-      + (d.rows.length > capped.length ? '<div class="manage-inventory-cap-note">+ ' + (d.rows.length - capped.length) + ' more not shown here, but included in the sale</div>' : '')
       + '<div class="wanted-manual-actions">'
       + '<button type="button" class="reset-btn" id="saleDraftConfirmBtn"' + (saleSubmitting ? ' disabled' : '') + '>' + (saleSubmitting ? "Starting…" : "Start Sale") + '</button>'
       + '<button type="button" class="reset-btn" id="saleDraftCancelBtn"' + (saleSubmitting ? ' disabled' : '') + '>Cancel</button>'
