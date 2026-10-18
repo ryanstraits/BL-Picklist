@@ -1025,10 +1025,18 @@
     border: none;
     background: none;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 16px;
     line-height: 1;
-    padding: 3px 4px;
+    padding: 0;
     cursor: pointer;
+    /* A tappable area well beyond the icon's own visual size — the old
+       3px/4px padding gave a target only a few pixels across, too small
+       to reliably hit with a thumb. */
+    min-width: 36px;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .sale-preview-remove-btn:active { color: var(--danger); }
   .sale-draft-panel .price-guide-toggle-btn { color: var(--danger); }
@@ -7214,6 +7222,15 @@
     // whole set before committing to a sale, not just the first 50.
     var sortedRows = sortSaleDraftRows(saleDraft.rows, saleDraft.sortKey);
     listEl.innerHTML = sortedRows.map(function (r) { return saleDraftPreviewRowHtml(r, pct, validPct); }).join("");
+    // The rest of the panel's listeners survive this patch untouched, but
+    // the remove buttons are themselves part of what just got replaced —
+    // without re-wiring them here, the ✕ silently stops doing anything
+    // the moment the % field is ever changed.
+    listEl.querySelectorAll(".sale-preview-remove-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        handleSaleDraftRemoveRow(el.getAttribute("data-key"));
+      });
+    });
   }
 
   function saleDraftSortSelectHtml(sortKey) {
