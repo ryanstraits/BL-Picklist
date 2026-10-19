@@ -8,11 +8,14 @@ const DEFAULT_KEY = 'state';
 // backward compatibility with existing callers), 'actions'
 // (driveThruSent/feedbackSent), 'wantedListBank' (the Wanted List
 // bank's own cross-lookup items map), or 'activeSale' (the Manage
-// Inventory bulk-sale feature's single active-sale record). Same store,
+// Inventory bulk-sale feature's list of running sales — an array; it
+// used to be a single object). Same store,
 // same GET/POST shape, just a different named slot, so this one small
 // function covers all of them instead of duplicating the whole
 // Blobs-wiring dance per feature.
 const ALLOWED_KEYS = new Set(['state', 'actions', 'wantedListBank', 'activeSale']);
+// Keys whose value is a JSON array rather than an object.
+const ARRAY_KEYS = new Set(['activeSale']);
 
 // This project's functions use the classic AWS Lambda-compatible handler
 // signature (exports.handler = async (event) => {...}), not the newer
@@ -42,7 +45,7 @@ exports.handler = requireAuth(async (event) => {
   if (event.httpMethod === 'GET') {
     try {
       const data = await store.get(requestedKey, { type: 'json' });
-      return json(200, data || {});
+      return json(200, data || (ARRAY_KEYS.has(requestedKey) ? [] : {}));
     } catch (err) {
       return errorResponse(err);
     }
@@ -55,7 +58,11 @@ exports.handler = requireAuth(async (event) => {
     } catch (e) {
       return { statusCode: 400, body: 'Invalid JSON body' };
     }
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    if (ARRAY_KEYS.has(requestedKey)) {
+      if (!Array.isArray(payload)) {
+        return { statusCode: 400, body: 'Body must be a JSON array' };
+      }
+    } else if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       return { statusCode: 400, body: 'Body must be a JSON object' };
     }
 

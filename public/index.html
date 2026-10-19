@@ -7035,7 +7035,12 @@
   }
 
   function pushActiveSales() {
-    postJSON("/api/pick-state?key=activeSale", activeSales).catch(function () { /* offline — ignore, same as other pick-state writes */ });
+    // Unlike other pick-state writes this one can't be silently dropped:
+    // the record holds each item's pre-sale price, which can't be
+    // recovered once it's lost, and the sale would vanish on reload.
+    postJSON("/api/pick-state?key=activeSale", activeSales).catch(function (err) {
+      window.alert("Couldn't save the sale list (" + err.message + "). Don't reload this page — the sale is live on BrickLink but not recorded yet.");
+    });
   }
 
   // Every item key currently inside ANY running sale — used to keep
