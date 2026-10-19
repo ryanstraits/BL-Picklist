@@ -5923,10 +5923,8 @@
   // same startSaleDraft(rows)/saleDraft confirm panel every other sale
   // entry point already uses.
   var saleAgeDraft = null;
-  // The "Recover a lost sale" panel: { type, startDate, ageDays, pct,
-  // endsAt, label, removed } once open, else null. For a sale that went
-  // live on BrickLink but never got its record saved (so End Sale Now
-  // can't revert it) — see saleRecoverMatches().
+  // TEMPORARY "Recover lost sale" panel: { startDate } once open, else
+  // null. See RECOVER_SALE below.
   var saleRecoverDraft = null;
   // Whether the idle "Bulk Sale" entry box is expanded to show its
   // buttons, or collapsed to a single out-of-the-way line — the default
@@ -6897,21 +6895,10 @@
 
     var recoverSaleBtnEl = document.getElementById("manageInventoryRecoverSaleBtn");
     if (recoverSaleBtnEl) recoverSaleBtnEl.addEventListener("click", startSaleRecoverDraft);
-    ["Type", "StartDate", "AgeDays", "Pct", "Ends", "Label"].forEach(function (name) {
-      var el = document.getElementById("saleRecover" + name + "Input");
-      if (!el) return;
-      el.addEventListener("change", function () {
-        saleRecoverDraft[name === "Type" ? "type" : name === "StartDate" ? "startDate" : name === "AgeDays" ? "ageDays" : name === "Pct" ? "pct" : name === "Ends" ? "endsAt" : "label"] = el.value;
-        // Anything the % or the date range changes can re-shuffle which
-        // rows match, so a removal made under the old settings is dropped.
-        if (name === "Ends" || name === "Label") return; // nothing to re-list — and re-rendering on blur can swallow the click on Restore
-        saleRecoverDraft.removed = {};
-        renderManageInventoryResults();
-      });
-    });
-    container.querySelectorAll(".sale-recover-remove-btn").forEach(function (el) {
+    container.querySelectorAll("[data-recover-date]").forEach(function (el) {
       el.addEventListener("click", function () {
-        saleRecoverDraft.removed[el.getAttribute("data-key")] = true;
+        if (!saleRecoverDraft) return;
+        saleRecoverDraft.startDate = el.getAttribute("data-recover-date");
         renderManageInventoryResults();
       });
     });
@@ -7137,22 +7124,21 @@
 
   var SALE_AGE_QUICK_DAYS = [30, 60, 90, 180];
 
-  // ---- Recover a lost sale ----
+  // ---- Recover a lost sale — TEMPORARY, delete after the sale ends ----
   //
-  // For a sale whose discounts reached BrickLink but whose record never
-  // got saved (the activeSale key used to reject the list shape it was
-  // sent), so nothing in the app knows the pre-sale prices. Rebuilds the
-  // record without touching BrickLink: re-selects the rows the sale would
-  // have picked (same type + listed-age rule as the age picker, measured
-  // from when the sale started), and infers each original price by
-  // undoing the discount. Prices here are 3-decimal strings and Ryan
-  // prices in whole cents, so the original is the 2-decimal price that
-  // discounts to exactly the current one — a row where none does (an
-  // item that never got discounted, or was repriced since) is skipped
-  // instead of being guessed at, since a wrong "original" would push a
-  // bad price to BrickLink when the sale ends.
+  // One-off repair for a sale that went live on BrickLink but whose
+  // record was never saved (the activeSale key used to reject the list
+  // shape), so End Sale Now can't revert it. Rebuilds the record without
+  // touching BrickLink. Everything about the sale is fixed below — the
+  // only thing picked in the UI is the start date (via buttons, not
+  // text fields: re-rendering when a field blurs was swallowing taps on
+  // Restore/Cancel). Re-selects rows by the age rule the sale used,
+  // measured from its start date, and infers each original price by
+  // undoing the discount to the nearest cent.
+  var RECOVER_SALE = { type: "MINIFIG", pct: 10, ageDays: 90, endsAt: "2026-10-31", label: "Aged figs 10% off" };
+
   function startSaleRecoverDraft() {
-    saleRecoverDraft = { type: "MINIFIG", startDate: isoDateDaysAgo(1), ageDays: "90", pct: "10", endsAt: "", label: "", removed: {} };
+    saleRecoverDraft = { startDate: isoDateDaysAgo(1) };
     renderManageInventoryResults();
   }
 
@@ -7167,23 +7153,22 @@
     return d.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
   }
 
-  function saleRecoverMatches(d) {
-    var pct = parseFloat(d.pct);
-    var ageDays = parseInt(d.ageDays, 10);
-    var out = { matched: [], skipped: [], valid: pct > 0 && pct < 100 && ageDays >= 0 && !!d.startDate, cutoff: "" };
-    if (!out.valid) return out;
-    var cutoffDate = new Date(d.startDate + "T00:00:00");
-    cutoffDate.setDate(cutoffDate.getDate() - ageDays);
+  function saleRecoverMatches(startDate) {
+    var out = { matched: [], unmatched: [], cutoff: "" };
+    var cutoffDate = new Date(startDate + "T00:00:00");
+    cutoffDate.setDate(cutoffDate.getDate() - RECOVER_SALE.ageDays);
     out.cutoff = localIsoDate(cutoffDate);
     var onSale = itemKeysInAnyActiveSale();
-    eligibleSaleRows(manageInventoryAgedRows(out.cutoff, d.type)).forEach(function (r) {
-      if (onSale[r.key] || d.removed[r.key]) return;
+    eligibleSaleRows(manageInventoryAgedRows(out.cutoff, RECOVER_SALE.type)).forEach(function (r) {
+      if (onSale[r.key]) return;
       var cur = parseFloat(r.unitPrice);
-      var orig = Math.round(cur / (1 - pct / 100) * 100) / 100;
-      if (roundSalePrice(orig, pct) === formatPriceInput(cur)) {
+      var orig = Math.round(cur / (1 - RECOVER_SALE.pct / 100) * 100) / 100;
+      // Within a mill, not exact: BrickLink may hold the discounted price
+      // to fewer decimals than the 3 this app sent.
+      if (Math.abs(parseFloat(roundSalePrice(orig, RECOVER_SALE.pct)) - cur) <= 0.0011) {
         out.matched.push({ row: r, original: formatPriceInput(orig) });
       } else {
-        out.skipped.push(r);
+        out.unmatched.push(r);
       }
     });
     out.matched.sort(function (a, b) { return saleDraftRowValue(b.row) - saleDraftRowValue(a.row); });
@@ -7193,43 +7178,40 @@
   function saleRecoverHtml() {
     var d = saleRecoverDraft;
     if (!d) return "";
-    var m = saleRecoverMatches(d);
+    var m = saleRecoverMatches(d.startDate);
+    var dateBtns = [2, 1, 0].map(function (n) {
+      var iso = isoDateDaysAgo(n);
+      return '<button type="button" class="inv-start-over-btn" data-recover-date="' + iso + '">' + (iso === d.startDate ? '✓ ' : '') + escapeHtml(formatDate(iso)) + '</button>';
+    }).join("");
     return '<div class="sale-draft-panel">'
-      + '<div class="sale-draft-title">Recover a lost sale</div>'
-      + '<div class="sale-tools-box-desc">Rebuilds the sale record for a sale that is already live on BrickLink but isn’t showing here, so End Sale Now can revert it. Nothing is changed on BrickLink.</div>'
-      + '<div class="inventory-fields wanted-manual-fields sale-fields-row">'
-      + '<div class="inventory-field"><label>Item type</label><select id="saleRecoverTypeInput">'
-      + '<option value=""' + (d.type === "" ? ' selected' : '') + '>All types</option>'
-      + '<option value="MINIFIG"' + (d.type === "MINIFIG" ? ' selected' : '') + '>Figs only</option>'
-      + '<option value="PART"' + (d.type === "PART" ? ' selected' : '') + '>Parts only</option>'
-      + '</select></div>'
-      + '<div class="inventory-field"><label>% off</label><input type="number" min="1" max="99" id="saleRecoverPctInput" value="' + escapeHtml(d.pct) + '"></div>'
-      + '<div class="inventory-field"><label>Listed this many days before it started</label><input type="number" min="0" id="saleRecoverAgeDaysInput" value="' + escapeHtml(d.ageDays) + '"></div>'
-      + '<div class="inventory-field date-field"><label>Sale started</label><input type="date" id="saleRecoverStartDateInput" value="' + escapeHtml(d.startDate) + '"></div>'
-      + '<div class="inventory-field date-field"><label>Ends</label><input type="date" id="saleRecoverEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
-      + '<div class="inventory-field description-field"><label>Label <span class="field-hint">(optional)</span></label><input type="text" id="saleRecoverLabelInput" value="' + escapeHtml(d.label) + '" placeholder="e.g. Aged figs 10% off"></div>'
-      + '</div>'
-      + (m.valid
-        ? '<div class="manage-inventory-hint">' + m.matched.length + ' item' + (m.matched.length === 1 ? '' : 's') + ' listed on or before ' + escapeHtml(m.cutoff) + ' have a price that matches ' + escapeHtml(d.pct) + '% off.'
-          + (m.skipped.length ? ' ' + m.skipped.length + ' other' + (m.skipped.length === 1 ? '' : 's') + ' in range didn’t match (never discounted, or repriced since) and will be left alone.' : '') + '</div>'
-        : '<div class="manage-inventory-hint">Enter a % off between 1 and 99 and a start date.</div>')
+      + '<div class="sale-draft-title">Recover lost sale <span class="field-hint">(temporary)</span></div>'
+      + '<div class="sale-tools-box-desc">Figs, ' + RECOVER_SALE.pct + '% off, listed ' + RECOVER_SALE.ageDays + '+ days before the start date, ending ' + escapeHtml(formatDate(RECOVER_SALE.endsAt)) + '. Nothing changes on BrickLink — this only rebuilds the sale record so End Sale Now works.</div>'
+      + '<div class="manage-inventory-hint">Sale started:</div>'
+      + '<div class="sale-age-quick-row">' + dateBtns + '</div>'
+      + '<div class="manage-inventory-hint"><strong>' + m.matched.length + '</strong> fig' + (m.matched.length === 1 ? '' : 's') + ' listed on or before ' + escapeHtml(m.cutoff) + ' look like ' + RECOVER_SALE.pct + '% off.'
+      + (m.unmatched.length ? ' ' + m.unmatched.length + ' more in that range don’t, and will be left alone.' : '') + '</div>'
       + '<div class="sale-preview-list">'
       + m.matched.map(function (x) {
           var r = x.row;
           return '<div class="sale-preview-row">'
             + '<span class="item-no mono">' + escapeHtml(r.itemNo) + '</span>'
-            + '<span class="item-type-tag">' + escapeHtml(r.type) + '</span>'
             + '<span class="sale-preview-name">' + escapeHtml(r.name || "(name unknown)") + '</span>'
             + '<span class="sale-preview-qty">×' + escapeHtml(r.quantity) + '</span>'
-            + '<span class="sale-preview-price-row">'
-            + '<span class="sale-preview-price">' + escapeHtml(formatCurrency(r.unitPrice, "USD")) + ' <span class="field-hint">now</span> · was <strong>' + escapeHtml(formatCurrency(x.original, "USD")) + '</strong></span>'
-            + '<button type="button" class="sale-preview-remove-btn sale-recover-remove-btn" data-key="' + escapeHtml(r.key) + '" aria-label="Leave ' + escapeHtml(r.itemNo) + ' out" title="Leave out">✕</button>'
-            + '</span>'
+            + '<span class="sale-preview-price-row"><span class="sale-preview-price">' + escapeHtml(formatCurrency(r.unitPrice, "USD")) + ' now · was <strong>' + escapeHtml(formatCurrency(x.original, "USD")) + '</strong></span></span>'
             + '</div>';
         }).join("")
       + '</div>'
+      + (m.unmatched.length
+        ? '<details><summary class="manage-inventory-hint">Show the ' + m.unmatched.length + ' that didn’t match</summary><div class="sale-preview-list">'
+          + m.unmatched.map(function (r) {
+              return '<div class="sale-preview-row"><span class="item-no mono">' + escapeHtml(r.itemNo) + '</span>'
+                + '<span class="sale-preview-name">' + escapeHtml(r.name || "(name unknown)") + '</span>'
+                + '<span class="sale-preview-price-row"><span class="sale-preview-price">' + escapeHtml(formatCurrency(r.unitPrice, "USD")) + '</span></span></div>';
+            }).join("")
+          + '</div></details>'
+        : '')
       + '<div class="wanted-manual-actions">'
-      + '<button type="button" class="reset-btn" id="saleRecoverConfirmBtn"' + (m.matched.length ? '' : ' disabled') + '>Restore sale record</button>'
+      + '<button type="button" class="reset-btn" id="saleRecoverConfirmBtn">Restore sale record</button>'
       + '<button type="button" class="reset-btn" id="saleRecoverCancelBtn">Cancel</button>'
       + '</div>'
       + '</div>';
@@ -7237,10 +7219,12 @@
 
   function handleSaleRecoverConfirm() {
     if (!saleRecoverDraft) return;
-    var d = saleRecoverDraft;
-    var m = saleRecoverMatches(d);
-    if (!m.matched.length) return;
-    if (!window.confirm("Re-register these " + m.matched.length + " item" + (m.matched.length === 1 ? "" : "s") + " as a " + d.pct + "% off sale? Nothing changes on BrickLink now — but End Sale Now will set each one back to the “was” price shown, so check that list first.")) return;
+    var m = saleRecoverMatches(saleRecoverDraft.startDate);
+    if (!m.matched.length) {
+      window.alert("No figs matched, so there's nothing to restore. Try a different start date.");
+      return;
+    }
+    if (!window.confirm("Re-register these " + m.matched.length + " fig" + (m.matched.length === 1 ? "" : "s") + " as a " + RECOVER_SALE.pct + "% off sale? Nothing changes on BrickLink now — but End Sale Now will set each one back to the “was” price shown.")) return;
     var items = {};
     m.matched.forEach(function (x) {
       items[x.row.key] = { originalUnitPrice: x.original, itemNo: x.row.itemNo, colorId: x.row.colorId, name: x.row.name };
@@ -7248,44 +7232,16 @@
     activeSales = (activeSales || []).concat([{
       id: "sale-" + Math.random().toString(36).slice(2, 10),
       active: true,
-      label: (d.label || "").trim(),
-      discountPct: parseFloat(d.pct),
-      startedAt: new Date(d.startDate + "T12:00:00").toISOString(),
-      endsAt: d.endsAt || "",
+      label: RECOVER_SALE.label,
+      discountPct: RECOVER_SALE.pct,
+      startedAt: new Date(saleRecoverDraft.startDate + "T12:00:00").toISOString(),
+      endsAt: RECOVER_SALE.endsAt,
       items: items,
     }]);
     pushActiveSales();
     saleRecoverDraft = null;
     saleAreaExpanded = false;
     renderManageInventoryResults();
-  }
-
-  function saleAgeDraftHtml() {
-    var d = saleAgeDraft;
-    if (!d) return "";
-    var matchCount = eligibleSaleRows(manageInventoryAgedRows(d.beforeDate, d.type)).length;
-    var daysAgo = Math.round((Date.now() - new Date(d.beforeDate + "T23:59:59").getTime()) / (24 * 60 * 60 * 1000));
-    return '<div class="sale-draft-panel">'
-      + '<div class="sale-draft-title">Put aged inventory on sale</div>'
-      + '<div class="inventory-fields wanted-manual-fields sale-fields-row">'
-      + '<div class="inventory-field"><label>Item type</label><select id="saleAgeTypeSelect">'
-      + '<option value=""' + (d.type === "" ? ' selected' : '') + '>All types</option>'
-      + '<option value="MINIFIG"' + (d.type === "MINIFIG" ? ' selected' : '') + '>Figs only</option>'
-      + '<option value="PART"' + (d.type === "PART" ? ' selected' : '') + '>Parts only</option>'
-      + '</select></div>'
-      + '<div class="inventory-field date-field"><label>Listed on or before</label><input type="date" id="saleAgeDateInput" value="' + escapeHtml(d.beforeDate) + '"></div>'
-      + '</div>'
-      + '<div class="sale-age-quick-row">'
-      + SALE_AGE_QUICK_DAYS.map(function (n) {
-          return '<button type="button" class="inv-start-over-btn" data-age-days="' + n + '">' + n + '+ days</button>';
-        }).join("")
-      + '</div>'
-      + '<div class="manage-inventory-hint">' + matchCount + ' item' + (matchCount === 1 ? '' : 's') + (daysAgo > 0 ? ', listed ' + daysAgo + '+ days ago,' : '') + ' with a price to discount.</div>'
-      + '<div class="wanted-manual-actions">'
-      + '<button type="button" class="reset-btn" id="saleAgePreviewBtn"' + (matchCount ? '' : ' disabled') + '>Review Sale…</button>'
-      + '<button type="button" class="reset-btn" id="saleAgeCancelBtn">Cancel</button>'
-      + '</div>'
-      + '</div>';
   }
 
   // Figs, then parts, then sets — Ryan's own stated priority order, not
