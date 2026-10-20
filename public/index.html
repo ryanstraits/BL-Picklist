@@ -676,6 +676,10 @@
   .sort-card-extra, .sort-card-actions { flex: 1 0 100%; }
   .sort-card-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
   .sort-fig-row { cursor: default; }
+  .sort-lookup-link {
+    display: inline-block; margin-top: 2px; padding: 2px 0; border: 0; background: none;
+    font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--info); cursor: pointer;
+  }
   .sort-fig-row.sort-fig-all { background: var(--success-bg); }
   .sort-fig-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
   .sort-checks { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1255,6 +1259,9 @@
     cursor: pointer;
   }
   .set-fig-back-btn { margin-top: 10px; }
+  /* The sort-list add button sits in the header card's title block, so it's
+     a compact one rather than a full-size action button. */
+  .sort-list-add-btn { font-size: 12px; padding: 5px 10px; margin-top: 8px; text-align: left; }
   /* Same reason Manage Inventory's .item-row.inventory-row needs this —
      the price-guide block is a third flex child (sibling of .item-thumb/
      .item-body) meant to drop to its own full-width line below them. */
@@ -8125,6 +8132,9 @@
   // correctly, even though nothing here currently drills more than one
   // level deep (a minifig's own parts are PART-type, never MINIFIG).
   var setFigLookupNavStack = [];
+  // True when Lookup was opened from a Sort List card — shows a "← Back to
+  // Sort List" button until Ryan leaves some other way.
+  var setFigLookupCameFromSort = false;
   // Which half of a SET's results is showing when it has both ordinary
   // parts and loose minifigs ("FIGS" | "PARTS") — reset to minifigs-first
   // on every new submit, same lifetime as setFigLookupActiveKey. Unused
@@ -8221,7 +8231,9 @@
   function renderSetFigLookupView() {
     var backHtml = setFigLookupNavStack.length
       ? '<button type="button" class="reset-btn set-fig-back-btn" id="setFigBackBtn">← Back to ' + escapeHtml(setFigLookupBackLabel()) + '</button>'
-      : '';
+      : (setFigLookupCameFromSort
+        ? '<button type="button" class="reset-btn set-fig-back-btn" id="setFigBackToSortBtn">← Back to Sort List</button>'
+        : '');
     setFigLookupView.innerHTML = ""
       + '<div class="set-fig-lookup-intro">Enter a BrickLink set or minifig number to see which of its parts/figs you already have in inventory.</div>'
       + '<div class="set-fig-lookup-type-row">'
@@ -8234,6 +8246,14 @@
       + '</form>'
       + backHtml
       + '<div id="setFigLookupResults"></div>';
+
+    var backToSortBtn = document.getElementById("setFigBackToSortBtn");
+    if (backToSortBtn) {
+      backToSortBtn.addEventListener("click", function () {
+        setFigLookupCameFromSort = false;
+        goToSortList();
+      });
+    }
 
     var backBtn = document.getElementById("setFigBackBtn");
     if (backBtn) {
@@ -8257,6 +8277,7 @@
         setFigLookupQuery = "";
         setFigLookupActiveKey = null;
         setFigLookupNavStack = [];
+        setFigLookupCameFromSort = false;
         renderSetFigLookupView();
       });
     });
@@ -8304,6 +8325,7 @@
     setFigLookupQuery = "";
     setFigLookupActiveKey = null;
     setFigLookupNavStack = [];
+    setFigLookupCameFromSort = false;
     renderSetFigLookupView();
   }
 
@@ -8491,16 +8513,17 @@
       + '</div>'
       + '<div class="item-name">' + escapeHtml(decodeHtmlEntities(item.name) || "(name unknown)") + '</div>'
       + setFigLookupAvgCostHtml(item)
+      // Up beside the picture, under the title, rather than on a row of its own.
+      + (item.type === "SET"
+        ? '<button type="button" class="reset-btn sort-list-add-btn" data-setno="' + escapeHtml(item.itemNo) + '" data-name="' + escapeHtml(item.name || "") + '"'
+          + '>' + (sortListCopyCount(item.itemNo) ? '+ Add another copy (' + sortListCopyCount(item.itemNo) + ' on sort list)' : '+ Add to sort list') + '</button>'
+        : '')
       + '</div>'
       + '<div class="inventory-price-guide-block">'
       + '<div class="price-guide-header-row">'
       + viewOnBricklinkLinkHtml(item)
       + '<button type="button" class="price-guide-toggle-btn" data-key="' + escapeHtml(item.key) + '">' + (item.priceExpanded ? "▾" : "▸") + ' See active US listings</button>'
       + '</div>'
-      + (item.type === "SET"
-        ? '<div class="price-guide-header-row"><button type="button" class="reset-btn sort-list-add-btn" data-setno="' + escapeHtml(item.itemNo) + '" data-name="' + escapeHtml(item.name || "") + '"'
-          + '>' + (sortListCopyCount(item.itemNo) ? '+ Add another copy to sort list (' + sortListCopyCount(item.itemNo) + ' on it)' : '+ Add to sort list') + '</button></div>'
-        : '')
       + renderPriceGuidePanel(item, true)
       + '</div>'
       + '</div>';
@@ -10057,6 +10080,7 @@
       + '<span class="item-line1-right">' + sortVerdictHtml(e, a) + '</span>'
       + '</div>'
       + '<div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
+      + '<button type="button" class="sort-lookup-link" data-act="lookup" data-id="' + escapeHtml(e.id) + '">Look up set ›</button>'
       + (sortIdClash(e) ? '<div class="sort-flag sort-neg">Duplicate ID ' + escapeHtml(sortEntryId(e)) + '</div>' : '')
       + (!sortIdComplete(e) ? '<div class="sort-flag">Add copy # & theme for its ID.</div>' : '')
       + summary;
@@ -10283,6 +10307,16 @@
       if (!act) return;
       var e = sortFindEntry(t.getAttribute("data-id"));
       if (!e) return;
+      if (act === "lookup") {
+        // Open this set in Lookup, with a button there to come back here.
+        setFigLookupType = "SET";
+        setFigLookupQuery = e.setNo;
+        setFigLookupNavStack = [];
+        setFigLookupCameFromSort = true;
+        runSetFigLookup();
+        goToSetFigLookup();
+        return;
+      }
       if (act === "toggle") {
         if (sortExpanded[e.id]) flushSortList(); // Save: write immediately, then close the card
         sortExpanded[e.id] = !sortExpanded[e.id];
@@ -10425,7 +10459,10 @@
     manageInventoryCameFromSetFigLookup = false;
     goToManageInventory();
   });
-  setFigLookupBtn.addEventListener("click", goToSetFigLookup);
+  setFigLookupBtn.addEventListener("click", function () {
+    setFigLookupCameFromSort = false; // a direct tap on the tab is a fresh visit, not "from Sort"
+    goToSetFigLookup();
+  });
   wantedListBtn.addEventListener("click", goToWantedList);
   sortListBtn.addEventListener("click", goToSortList);
   wireSortListView();
