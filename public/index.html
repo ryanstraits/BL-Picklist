@@ -656,6 +656,32 @@
     padding: 1px 5px;
     flex: none;
   }
+  /* ---- Sort List page ---- */
+  .sort-card { flex-wrap: wrap; cursor: default; }
+  .sort-card:active { background: var(--surface); }
+  .sort-card > .item-thumb { width: 64px; height: 64px; }
+  .sort-card .sort-fig-row > .item-thumb { width: 52px; height: 52px; }
+  .sort-card .item-body { min-width: 0; flex: 1 1 0; }
+  .sort-card-extra, .sort-card-actions { flex: 1 0 100%; }
+  .sort-card-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+  .sort-fig-row { cursor: default; }
+  .sort-summary { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--text-secondary); margin-top: 4px; }
+  .sort-summary b { color: var(--text); }
+  .sort-summary b.sort-neg, .sort-neg { color: var(--danger); }
+  .sort-summary b.sort-pos { color: var(--success); }
+  .sort-flag { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+  .sort-verdict-sell { color: var(--success); border-color: var(--success); }
+  .sort-verdict-part { color: var(--info); border-color: var(--info); }
+  .sort-verdict-dump { color: var(--text-secondary); }
+  .sort-verdict-warn { color: var(--warning); border-color: var(--warning); }
+  .sort-verdict-wait { color: var(--text-secondary); font-style: italic; }
+  .sort-math-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+  .sort-math-table th, .sort-math-table td { text-align: right; padding: 3px 4px; border-bottom: 1px solid var(--border); }
+  .sort-math-table th:first-child, .sort-math-table td:first-child { text-align: left; }
+  .sort-math-table tr.sort-best td { font-weight: 700; }
+  .sort-settings { margin-top: 12px; }
+  .sort-settings summary { cursor: pointer; font-size: 13.5px; font-weight: 600; }
+  .sort-save-status { font-size: 12px; color: var(--text-secondary); min-height: 16px; margin-top: 4px; }
   .item-type-tag.sale-tag {
     color: var(--danger);
     border-color: var(--danger);
@@ -2001,7 +2027,8 @@
       <button class="nav-tab-btn" id="labelPrepBtn">Label Prep</button>
       <button class="nav-tab-btn" id="manageInventoryBtn">Manage</button>
       <button class="nav-tab-btn" id="setFigLookupBtn">Lookup</button>
-      <button class="nav-tab-btn" id="wantedListBtn">Wanted List<span class="wanted-list-badge hidden" id="wantedListBadge">0</span></button>
+      <button class="nav-tab-btn" id="wantedListBtn">Wanted<span class="wanted-list-badge hidden" id="wantedListBadge">0</span></button>
+      <button class="nav-tab-btn" id="sortListBtn">Sort</button>
       <button class="nav-tab-btn" id="addInventoryBtn">+ Add</button>
     </div>
     <div class="order-progress-row hidden" id="topbarProgressRow">
@@ -2028,6 +2055,7 @@
     <section id="view-order-lookup" class="hidden"></section>
     <section id="view-set-fig-lookup" class="hidden"></section>
     <section id="view-wanted-list" class="hidden"></section>
+    <section id="view-sort-list" class="hidden"></section>
   </main>
 </div>
 
@@ -2711,6 +2739,7 @@
   var orderLookupView = document.getElementById("view-order-lookup");
   var setFigLookupView = document.getElementById("view-set-fig-lookup");
   var wantedListView = document.getElementById("view-wanted-list");
+  var sortListView = document.getElementById("view-sort-list");
   var backBtn = document.getElementById("backBtn");
   var backBtnLabel = document.getElementById("backBtnLabel");
   var brandSub = document.getElementById("brandSub");
@@ -2726,6 +2755,7 @@
   var manageInventoryBtn = document.getElementById("manageInventoryBtn");
   var setFigLookupBtn = document.getElementById("setFigLookupBtn");
   var wantedListBtn = document.getElementById("wantedListBtn");
+  var sortListBtn = document.getElementById("sortListBtn");
   var addInventoryBtn = document.getElementById("addInventoryBtn");
   var wantedListBadge = document.getElementById("wantedListBadge");
   var topbarProgressRow = document.getElementById("topbarProgressRow");
@@ -2778,6 +2808,8 @@
     setFigLookupBtn.classList.toggle("active", currentView === "set-fig-lookup");
     wantedListBtn.style.display = (category === "inventory") ? "" : "none";
     wantedListBtn.classList.toggle("active", currentView === "wanted-list");
+    sortListBtn.style.display = (category === "inventory") ? "" : "none";
+    sortListBtn.classList.toggle("active", currentView === "sort-list");
     addInventoryBtn.style.display = (category === "inventory") ? "" : "none";
     addInventoryBtn.classList.toggle("active", currentView === "inventory");
     // Stats has no sibling pages to jump to, so the whole row stays
@@ -8352,6 +8384,10 @@
       + viewOnBricklinkLinkHtml(item)
       + '<button type="button" class="price-guide-toggle-btn" data-key="' + escapeHtml(item.key) + '">' + (item.priceExpanded ? "▾" : "▸") + ' See active US listings</button>'
       + '</div>'
+      + (item.type === "SET"
+        ? '<div class="price-guide-header-row"><button type="button" class="reset-btn sort-list-add-btn" data-setno="' + escapeHtml(item.itemNo) + '" data-name="' + escapeHtml(item.name || "") + '"'
+          + (sortListHasSet(item.itemNo) ? ' disabled>✓ On sort list' : '>+ Add to sort list') + '</button></div>'
+        : '')
       + renderPriceGuidePanel(item, true)
       + '</div>'
       + '</div>';
@@ -8517,6 +8553,19 @@
   // uses, just looking entries (and the header item) up via
   // findSetFigLookupEntry instead of findManageInventoryRow.
   function wireSetFigLookupPriceGuideHandlers(container) {
+    container.querySelectorAll(".sort-list-add-btn").forEach(function (el) {
+      el.addEventListener("click", function () {
+        el.disabled = true;
+        el.textContent = "Adding…";
+        addToSortList(el.getAttribute("data-setno"), el.getAttribute("data-name")).then(function (res) {
+          el.textContent = res.added ? "✓ Added to sort list" : "✓ Already on sort list";
+        }).catch(function (err) {
+          el.disabled = false;
+          el.textContent = "+ Add to sort list";
+          window.alert("Couldn’t add it: " + err.message);
+        });
+      });
+    });
     container.querySelectorAll(".price-guide-toggle-btn").forEach(function (el) {
       el.addEventListener("click", function () {
         var entry = findSetFigLookupEntry(el.getAttribute("data-key"));
@@ -9186,6 +9235,7 @@
     orderLookupView.classList.add("hidden");
     setFigLookupView.classList.add("hidden");
     wantedListView.classList.add("hidden");
+    sortListView.classList.add("hidden");
     ordersView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders");
@@ -9205,6 +9255,7 @@
     orderLookupView.classList.add("hidden");
     setFigLookupView.classList.add("hidden");
     wantedListView.classList.add("hidden");
+    sortListView.classList.add("hidden");
     inventoryView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory");
@@ -9226,6 +9277,7 @@
     orderLookupView.classList.add("hidden");
     setFigLookupView.classList.add("hidden");
     wantedListView.classList.add("hidden");
+    sortListView.classList.add("hidden");
     labelPrepView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders");
@@ -9244,6 +9296,7 @@
     orderLookupView.classList.add("hidden");
     setFigLookupView.classList.add("hidden");
     wantedListView.classList.add("hidden");
+    sortListView.classList.add("hidden");
     manageInventoryView.classList.remove("hidden");
     if (manageInventoryCameFromSetFigLookup) {
       backBtn.style.display = "inline-flex";
@@ -9269,6 +9322,7 @@
     orderLookupView.classList.add("hidden");
     setFigLookupView.classList.add("hidden");
     wantedListView.classList.add("hidden");
+    sortListView.classList.add("hidden");
     statsView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("stats");
@@ -9287,6 +9341,7 @@
     statsView.classList.add("hidden");
     setFigLookupView.classList.add("hidden");
     wantedListView.classList.add("hidden");
+    sortListView.classList.add("hidden");
     orderLookupView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("orders");
@@ -9299,6 +9354,711 @@
     if (!statsRows && !statsError) fetchStats();
   }
 
+  // ---- Sort List ----
+  //
+  // For triaging acquired lots of sets: per set, enter what you paid, how
+  // complete/clean it is, box + manual ratings and which of its minifigs you
+  // actually have, and get a rough "what should I do with this" verdict with
+  // the cost-benefit math behind it. Three routes are compared per set:
+  //   - Sell as set: the set's sold-price value, adjusted for completeness,
+  //     quality and box/manual, buying whatever minifigs are missing — unless
+  //     they'd cost more than the skip-threshold share of the set's value, in
+  //     which case it's sold without them.
+  //   - Part out: the figs you have sold individually (never worth less than
+  //     their weight at the fig-parts $/lb), plus the leftover non-fig weight
+  //     at the general-parts $/lb.
+  //   - Dump to bulk: the whole physical set's weight at the blended $/lb.
+  // Everything adjustable lives in sortSettings; the effort estimates behind
+  // "profit per effort" are the SORT_EFFORT constants below.
+  //
+  // "Completeness" here means the pieces other than minifigs — figs are
+  // tracked separately, one by one.
+
+  var SORT_DEFAULTS = {
+    genRate: 7.34,          // $/lb, general parts
+    figRate: 369.83,        // $/lb, fig parts
+    blendedRate: 13.54,     // $/lb, a whole set dumped into bulk
+    feePct: 10,             // selling fees + payment processing, % of sales
+    skipPct: 35,            // missing figs costing more than this % of the set's value aren't bought
+    boxPremiumPct: 15,      // value added by a perfect (10/10) box
+    manualPremiumPct: 5,    // value added by a perfect (10/10) manual
+    qualityFloorPct: 60,    // share of value kept by a 0/10-quality set
+    condGood: 100,          // % of a fig's market value by condition
+    condFair: 80,
+    condPoor: 60,
+  };
+  var SORT_SETTING_FIELDS = [
+    { key: "genRate", label: "General parts", suffix: "$/lb", step: "0.01" },
+    { key: "figRate", label: "Fig parts", suffix: "$/lb", step: "0.01" },
+    { key: "blendedRate", label: "Blended (whole set to bulk)", suffix: "$/lb", step: "0.01" },
+    { key: "feePct", label: "Selling fees", suffix: "%", step: "0.1" },
+    { key: "skipPct", label: "Don't buy missing figs above", suffix: "% of set value", step: "1" },
+    { key: "boxPremiumPct", label: "Box premium at 10/10", suffix: "%", step: "1" },
+    { key: "manualPremiumPct", label: "Manual premium at 10/10", suffix: "%", step: "1" },
+    { key: "qualityFloorPct", label: "Value kept at quality 0", suffix: "%", step: "1" },
+    { key: "condGood", label: "Fig worth, Good", suffix: "%", step: "1" },
+    { key: "condFair", label: "Fig worth, Fair", suffix: "%", step: "1" },
+    { key: "condPoor", label: "Fig worth, Poor", suffix: "%", step: "1" },
+  ];
+  // Rough minutes per route, for the profit-per-effort ranking.
+  var SORT_EFFORT = {
+    setBase: 25, setPerQualityPoint: 3, setPerMissingPct: 0.4, setPerBoughtFig: 12,
+    partBase: 10, partPerFig: 10,
+    dump: 5,
+  };
+  var SORT_RANKS = [
+    { key: "newest", label: "Newest first" },
+    { key: "roi", label: "ROI" },
+    { key: "profit", label: "Profit" },
+    { key: "value", label: "Total value" },
+    { key: "perhour", label: "Profit per effort" },
+  ];
+  var GRAMS_PER_LB = 453.592;
+
+  var sortSettings = null;
+  var sortList = null; // newest first
+  var sortLoadPromise = null;
+  var sortLoadError = null;
+  var sortRankKey = "newest";
+  var sortExpanded = {}; // id -> true
+  var sortSaveTimer = null;
+  var sortSaveStatus = "";
+  var sortFigCache = {}; // minifig itemNo -> { name, weightG, soldAvg, soldCount, stockMin } — this page load only
+
+  function sortNum(v) {
+    var n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
+  }
+  function sortMoney(n) {
+    return (n < 0 ? "−" : "") + "$" + Math.abs(n).toFixed(2);
+  }
+  function sortClamp(v, lo, hi) {
+    return Math.min(hi, Math.max(lo, v));
+  }
+
+  function ensureSortLoaded() {
+    if (sortLoadPromise) return sortLoadPromise;
+    sortLoadError = null;
+    sortLoadPromise = Promise.all([
+      fetchJSON("/api/pick-state?key=sortList"),
+      fetchJSON("/api/pick-state?key=sortSettings"),
+    ]).then(function (res) {
+      var list = Array.isArray(res[0]) ? res[0] : [];
+      list.forEach(function (e) {
+        // A price fetch that was cut off by a reload can't be resumed.
+        if (e.status === "loading") { e.status = "error"; e.error = "Price fetch was interrupted — tap Refresh prices."; }
+      });
+      sortList = list;
+      var saved = res[1] && typeof res[1] === "object" ? res[1] : {};
+      sortSettings = {};
+      Object.keys(SORT_DEFAULTS).forEach(function (k) {
+        sortSettings[k] = typeof saved[k] === "number" ? saved[k] : SORT_DEFAULTS[k];
+      });
+    }).catch(function (err) {
+      // Never fall back to an empty list here: the next save would then
+      // overwrite the real one.
+      sortLoadError = err.message;
+      sortLoadPromise = null;
+      throw err;
+    });
+    return sortLoadPromise;
+  }
+
+  function updateSortSaveStatus() {
+    var el = document.getElementById("sortSaveStatus");
+    if (el) el.textContent = sortSaveStatus;
+  }
+
+  function saveSortList() {
+    if (!sortList) return;
+    clearTimeout(sortSaveTimer);
+    sortSaveStatus = "Saving…";
+    updateSortSaveStatus();
+    sortSaveTimer = setTimeout(function () {
+      postJSON("/api/pick-state?key=sortList", sortList).then(function () {
+        sortSaveStatus = "Saved";
+        updateSortSaveStatus();
+      }).catch(function (err) {
+        sortSaveStatus = "Couldn’t save: " + err.message + " — don’t reload yet.";
+        updateSortSaveStatus();
+      });
+    }, 500);
+  }
+
+  function saveSortSettings() {
+    sortSaveStatus = "Saving…";
+    updateSortSaveStatus();
+    postJSON("/api/pick-state?key=sortSettings", sortSettings).then(function () {
+      sortSaveStatus = "Saved";
+      updateSortSaveStatus();
+    }).catch(function (err) {
+      sortSaveStatus = "Couldn’t save settings: " + err.message;
+      updateSortSaveStatus();
+    });
+  }
+
+  // ---- Analysis ----
+
+  function sortFigUnitValue(f) {
+    if (f.soldAvg > 0) return f.soldAvg;
+    if (f.stockMin > 0) return f.stockMin;
+    return 0;
+  }
+
+  function sortCondFactor(cond, st) {
+    return (cond === "poor" ? st.condPoor : cond === "fair" ? st.condFair : st.condGood) / 100;
+  }
+
+  function analyzeSortEntry(e, st) {
+    var lb = function (g) { return g / GRAMS_PER_LB; };
+    var figs = e.figs || [];
+    var setValue = e.setSoldAvg > 0 ? e.setSoldAvg : (e.setStockAvg > 0 ? e.setStockAvg : 0);
+    var figsAll = 0, figsWeightG = 0;
+    var ownedValue = 0, ownedWeightG = 0, ownedCount = 0, partOutFigs = 0;
+    var missingCount = 0, missingValue = 0, missingBuy = 0, missingNoPrice = 0;
+    figs.forEach(function (f) {
+      var unit = sortFigUnitValue(f);
+      var qty = f.qty || 1;
+      var have = sortClamp(f.have || 0, 0, qty);
+      var miss = qty - have;
+      var cf = sortCondFactor(f.cond, st);
+      figsAll += unit * qty;
+      figsWeightG += (f.weightG || 0) * qty;
+      ownedValue += have * unit * cf;
+      ownedWeightG += have * (f.weightG || 0);
+      ownedCount += have;
+      // Sold singly, a fig is never worth less than its parts by weight.
+      partOutFigs += have * Math.max(unit * cf, lb(f.weightG || 0) * st.figRate);
+      if (miss) {
+        missingCount += miss;
+        missingValue += miss * unit;
+        missingBuy += miss * (f.stockMin > 0 ? f.stockMin : unit);
+        if (!(unit > 0)) missingNoPrice += miss;
+      }
+    });
+
+    var completeness = sortClamp(sortNum(e.completeness), 0, 100);
+    var quality = sortClamp(sortNum(e.quality), 0, 10);
+    var floor = st.qualityFloorPct / 100;
+    var qualityF = floor + (1 - floor) * (quality / 10);
+    var premium = 1 + (sortClamp(sortNum(e.box), 0, 10) / 10) * (st.boxPremiumPct / 100)
+      + (sortClamp(sortNum(e.manual), 0, 10) / 10) * (st.manualPremiumPct / 100);
+    // The set's market value minus what its figs account for is the
+    // brick-and-everything-else share; completeness, quality and box/manual
+    // adjust that share (figs carry their own per-fig condition).
+    var brickFull = Math.max(setValue - figsAll, 0);
+    var brickAdj = brickFull * (completeness / 100) * qualityF * premium;
+    var fee = st.feePct / 100;
+
+    // Route 1 — sell as a set
+    var completeValue = brickAdj + ownedValue + missingValue;
+    var shareMissing = completeValue > 0 ? missingBuy / completeValue : 0;
+    var buyMissing = missingCount > 0 && shareMissing <= st.skipPct / 100;
+    var setRoute;
+    if (missingCount === 0 || buyMissing) {
+      setRoute = {
+        key: "set", label: missingCount ? "Sell as set (buy the missing figs)" : "Sell as set",
+        value: completeValue, cost: buyMissing ? missingBuy : 0,
+        net: completeValue * (1 - fee) - (buyMissing ? missingBuy : 0),
+      };
+    } else {
+      var asIs = brickAdj + ownedValue;
+      setRoute = { key: "set", label: "Sell as set without the missing figs", value: asIs, cost: 0, net: asIs * (1 - fee) };
+    }
+    setRoute.minutes = SORT_EFFORT.setBase
+      + (10 - quality) * SORT_EFFORT.setPerQualityPoint
+      + (100 - completeness) * SORT_EFFORT.setPerMissingPct
+      + (buyMissing ? missingCount * SORT_EFFORT.setPerBoughtFig : 0);
+
+    // Route 2 — part out
+    var remainderG = Math.max((e.setWeightG || 0) - figsWeightG, 0) * (completeness / 100);
+    var bulkParts = lb(remainderG) * st.genRate;
+    var partRoute = {
+      key: "part", label: "Part out", value: partOutFigs + bulkParts, cost: 0,
+      net: partOutFigs * (1 - fee) + bulkParts,
+      minutes: SORT_EFFORT.partBase + SORT_EFFORT.partPerFig * ownedCount,
+    };
+
+    // Route 3 — dump the whole thing into bulk
+    var dumpValue = lb(remainderG + ownedWeightG) * st.blendedRate;
+    var dumpRoute = { key: "dump", label: "Dump to bulk", value: dumpValue, cost: 0, net: dumpValue, minutes: SORT_EFFORT.dump };
+
+    var paidKnown = e.paid !== null && e.paid !== undefined && e.paid !== "";
+    var paid = paidKnown ? sortNum(e.paid) : 0;
+    var routes = [setRoute, partRoute, dumpRoute];
+    routes.forEach(function (r) {
+      r.profit = r.net - paid;
+      r.hours = r.minutes / 60;
+      r.perHour = r.hours > 0 ? r.profit / r.hours : 0;
+    });
+    var best = routes.slice().sort(function (a, b) { return (b.profit - a.profit) || (a.minutes - b.minutes); })[0];
+
+    var hasData = setValue > 0 || figs.some(function (f) { return sortFigUnitValue(f) > 0; });
+    var flags = [];
+    if (e.status === "ready" && !hasData) flags.push("No sold or listed prices found — values below are mostly zero.");
+    if (!paidKnown) flags.push("Enter what you paid to see profit and ROI.");
+    if (missingCount > 0 && !buyMissing) flags.push("Missing figs would cost " + Math.round(shareMissing * 100) + "% of the set’s value (limit " + st.skipPct + "%) — not buying them.");
+    if (missingCount > 0 && buyMissing) flags.push("Buying the " + missingCount + " missing fig" + (missingCount === 1 ? "" : "s") + " costs about " + sortMoney(missingBuy) + " (" + Math.round(shareMissing * 100) + "% of the set’s value).");
+    if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? " has" : "s have") + " no price data.");
+    if (ownedValue > brickAdj && ownedCount > 0) flags.push("Your figs are worth more than the rest of the set.");
+    if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No weight on file for this set, so bulk value is zero.");
+
+    return {
+      routes: routes, best: best, paid: paid, paidKnown: paidKnown,
+      profit: best.profit, roi: paidKnown && paid > 0 ? best.profit / paid : null,
+      value: best.net, perHour: best.perHour, hours: best.hours,
+      flags: flags, hasData: hasData,
+      parts: { setValue: setValue, figsAll: figsAll, brickFull: brickFull, brickAdj: brickAdj, qualityF: qualityF, premium: premium,
+        ownedValue: ownedValue, missingBuy: missingBuy, missingValue: missingValue, remainderG: remainderG, bulkParts: bulkParts },
+    };
+  }
+
+  function sortRankValue(a, key) {
+    if (key === "roi") return a.roi === null ? -Infinity : a.roi;
+    if (key === "profit") return a.profit;
+    if (key === "value") return a.value;
+    if (key === "perhour") return a.perHour;
+    return 0;
+  }
+
+  function sortedSortList() {
+    var arr = sortList.slice();
+    if (sortRankKey === "newest") return arr;
+    var scored = arr.map(function (e) { return { e: e, v: sortRankValue(analyzeSortEntry(e, sortSettings), sortRankKey) }; });
+    scored.sort(function (x, y) { return y.v - x.v; });
+    return scored.map(function (s) { return s.e; });
+  }
+
+  // ---- Fetching ----
+
+  function runPool(tasks, limit) {
+    return new Promise(function (resolve) {
+      if (!tasks.length) { resolve(); return; }
+      var i = 0, active = 0, done = 0;
+      function next() {
+        while (active < limit && i < tasks.length) {
+          (function (task) {
+            active++;
+            task().catch(function () { /* each task records its own failure */ }).then(function () {
+              active--; done++;
+              if (done === tasks.length) resolve(); else next();
+            });
+          })(tasks[i++]);
+        }
+      }
+      next();
+    });
+  }
+
+  function sortPriceFetch(type, no, guide) {
+    return fetchJSON("/api/price-guide?type=" + type + "&no=" + encodeURIComponent(no) + "&condition=U" + (guide === "sold" ? "&guide=sold" : ""));
+  }
+
+  function sortFindEntry(id) {
+    return (sortList || []).filter(function (e) { return e.id === id; })[0] || null;
+  }
+
+  function loadSortEntryData(e) {
+    e.status = "loading";
+    e.error = "";
+    e.progress = { done: 0, total: 3 };
+    patchSortCard(e.id);
+    var tick = function () { e.progress.done++; patchSortCard(e.id); };
+    var warnings = 0;
+
+    return fetchJSON("/api/item-lookup?type=SET&no=" + encodeURIComponent(e.setNo)).then(function (r) {
+      var item = (r && r.item) || {};
+      if (item.name) e.name = decodeHtmlEntities(item.name);
+      e.setWeightG = item.weightG || 0;
+      tick();
+      return fetchJSON("/api/item-subsets?type=SET&no=" + encodeURIComponent(e.setNo));
+    }).then(function (data) {
+      var old = {};
+      (e.figs || []).forEach(function (f) { old[f.itemNo] = f; });
+      var byNo = {};
+      ((data && data.entries) || []).forEach(function (x) {
+        if (x.type !== "MINIFIG" || x.isAlternate || x.isCounterpart) return;
+        if (byNo[x.itemNo]) { byNo[x.itemNo].qty += x.quantity || 1; return; }
+        var prev = old[x.itemNo] || {};
+        byNo[x.itemNo] = {
+          itemNo: x.itemNo, name: decodeHtmlEntities(x.name || ""), qty: x.quantity || 1,
+          have: prev.have || 0, cond: prev.cond || "good",
+          soldAvg: 0, soldCount: 0, stockMin: 0, weightG: 0,
+        };
+      });
+      e.figs = Object.keys(byNo).map(function (k) { return byNo[k]; });
+      tick();
+
+      var tasks = [];
+      // The set itself: what it sold for, with current listings as a fallback.
+      tasks.push(function () {
+        return sortPriceFetch("SET", e.setNo, "sold").then(function (p) {
+          e.setSoldAvg = Number(p.qtyAvgPrice || p.avgPrice) || 0;
+          e.setSoldCount = p.unitQuantity || 0;
+        }).catch(function () { warnings++; }).then(tick);
+      });
+      tasks.push(function () {
+        return sortPriceFetch("SET", e.setNo, "stock").then(function (p) {
+          e.setStockAvg = Number(p.avgPrice) || 0;
+        }).catch(function () { warnings++; }).then(tick);
+      });
+      e.figs.forEach(function (f) {
+        var cached = sortFigCache[f.itemNo];
+        if (cached) {
+          f.soldAvg = cached.soldAvg; f.soldCount = cached.soldCount; f.stockMin = cached.stockMin; f.weightG = cached.weightG;
+          if (!f.name && cached.name) f.name = cached.name;
+          return;
+        }
+        var c = sortFigCache[f.itemNo] = { name: "", weightG: 0, soldAvg: 0, soldCount: 0, stockMin: 0 };
+        tasks.push(function () {
+          return fetchJSON("/api/item-lookup?type=MINIFIG&no=" + encodeURIComponent(f.itemNo)).then(function (r) {
+            c.weightG = (r.item && r.item.weightG) || 0;
+            if (r.item && r.item.name) c.name = decodeHtmlEntities(r.item.name);
+          }).catch(function () { warnings++; }).then(function () { f.weightG = c.weightG; if (!f.name) f.name = c.name; tick(); });
+        });
+        tasks.push(function () {
+          return sortPriceFetch("MINIFIG", f.itemNo, "sold").then(function (p) {
+            c.soldAvg = Number(p.qtyAvgPrice || p.avgPrice) || 0;
+            c.soldCount = p.unitQuantity || 0;
+          }).catch(function () { warnings++; }).then(function () { f.soldAvg = c.soldAvg; f.soldCount = c.soldCount; tick(); });
+        });
+        tasks.push(function () {
+          return sortPriceFetch("MINIFIG", f.itemNo, "stock").then(function (p) {
+            c.stockMin = Number(p.minPrice) || 0;
+          }).catch(function () { warnings++; }).then(function () { f.stockMin = c.stockMin; tick(); });
+        });
+      });
+      e.progress.total = e.progress.done + tasks.length;
+      patchSortCard(e.id, true); // the fig checklist can be filled in now; prices follow
+      return runPool(tasks, 3);
+    }).then(function () {
+      e.status = "ready";
+      e.fetchedAt = new Date().toISOString();
+      if (warnings) e.error = warnings + " price lookup" + (warnings === 1 ? "" : "s") + " failed — tap Refresh prices to retry.";
+      // A failed lookup shouldn't be cached as a real zero.
+      (e.figs || []).forEach(function (f) { if (warnings && !(f.soldAvg > 0) && !(f.stockMin > 0)) delete sortFigCache[f.itemNo]; });
+      saveSortList();
+      patchSortCard(e.id, true);
+    }).catch(function (err) {
+      e.status = "error";
+      e.error = "Couldn’t load that set: " + err.message;
+      saveSortList();
+      patchSortCard(e.id, true);
+    });
+  }
+
+  // ---- Adding ----
+
+  function addToSortList(rawSetNo, knownName) {
+    var setNo = normalizeSetFigNo("SET", rawSetNo);
+    if (!setNo) return Promise.resolve({ added: false });
+    return ensureSortLoaded().then(function () {
+      var lower = setNo.toLowerCase();
+      var dup = sortList.filter(function (x) { return x.setNo.toLowerCase() === lower; })[0];
+      if (dup) return { added: false, existing: dup };
+      var e = {
+        id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        setNo: setNo, name: knownName ? decodeHtmlEntities(knownName) : "", addedAt: new Date().toISOString(),
+        paid: null, completeness: 100, quality: 7, box: 0, manual: 0,
+        figs: [], setSoldAvg: 0, setSoldCount: 0, setStockAvg: 0, setWeightG: 0,
+        status: "loading", error: "", progress: { done: 0, total: 3 },
+      };
+      sortList.unshift(e);
+      sortExpanded[e.id] = true;
+      saveSortList();
+      if (currentView === "sort-list") renderSortList();
+      loadSortEntryData(e);
+      return { added: true, entry: e };
+    });
+  }
+
+  function sortListHasSet(rawSetNo) {
+    if (!sortList) return false;
+    var lower = normalizeSetFigNo("SET", rawSetNo).toLowerCase();
+    return sortList.some(function (x) { return x.setNo.toLowerCase() === lower; });
+  }
+
+  // ---- Rendering ----
+
+  function sortVerdictHtml(e, a) {
+    if (e.status === "loading") return '<span class="item-type-tag sort-verdict sort-verdict-wait">Fetching…</span>';
+    if (e.status === "error") return '<span class="item-type-tag sort-verdict sort-verdict-warn">Error</span>';
+    if (!a.hasData) return '<span class="item-type-tag sort-verdict sort-verdict-warn">Needs data</span>';
+    var cls = a.best.key === "set" ? "sort-verdict-sell" : a.best.key === "part" ? "sort-verdict-part" : "sort-verdict-dump";
+    return '<span class="item-type-tag sort-verdict ' + cls + '">' + escapeHtml(a.best.label.replace(/ \(.*\)$/, "")) + '</span>';
+  }
+
+  function sortHeadBodyHtml(e) {
+    var a = analyzeSortEntry(e, sortSettings);
+    var summary;
+    if (e.status === "loading") {
+      summary = '<div class="sort-summary">Fetching prices… ' + (e.progress ? e.progress.done + '/' + e.progress.total : '') + '</div>';
+    } else if (e.status === "error" && !(e.figs && e.figs.length)) {
+      summary = '<div class="sort-summary sort-neg">' + escapeHtml(e.error || "Couldn’t load this set.") + '</div>';
+    } else {
+      var roiTxt = a.roi === null ? "—" : Math.round(a.roi * 100) + "%";
+      summary = '<div class="sort-summary">'
+        + '<span><b>' + escapeHtml(a.best.label) + '</b></span>'
+        + '<span>Value <b>' + sortMoney(a.value) + '</b></span>'
+        + '<span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span>'
+        + '<span>Profit <b class="' + (a.profit < 0 ? 'sort-neg' : 'sort-pos') + '">' + (a.paidKnown ? sortMoney(a.profit) : "—") + '</b></span>'
+        + '<span>ROI <b>' + roiTxt + '</b></span>'
+        + '<span>~' + a.hours.toFixed(1) + ' hr · <b>' + (a.paidKnown ? sortMoney(a.perHour) + '/hr' : "—") + '</b></span>'
+        + '</div>'
+        + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '')
+        + a.flags.map(function (f) { return '<div class="sort-flag">' + escapeHtml(f) + '</div>'; }).join("");
+    }
+    return '<div class="item-line1">'
+      + '<span class="item-no mono">' + escapeHtml(e.setNo) + '</span>'
+      + '<span class="item-line1-right">' + sortVerdictHtml(e, a) + '</span>'
+      + '</div>'
+      + '<div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
+      + summary;
+  }
+
+  function sortMathHtml(e) {
+    var a = analyzeSortEntry(e, sortSettings);
+    var p = a.parts;
+    var rows = a.routes.map(function (r) {
+      return '<tr' + (r === a.best ? ' class="sort-best"' : '') + '>'
+        + '<td>' + escapeHtml(r.label) + '</td>'
+        + '<td>' + sortMoney(r.value) + '</td>'
+        + '<td>' + sortMoney(r.net) + '</td>'
+        + '<td>' + (a.paidKnown ? sortMoney(r.profit) : "—") + '</td>'
+        + '<td>' + r.hours.toFixed(1) + '</td>'
+        + '</tr>';
+    }).join("");
+    return '<table class="sort-math-table"><thead><tr><th>Route</th><th>Gross</th><th>Net</th><th>Profit</th><th>Hrs</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      + '<div class="sort-flag">Set market value ' + sortMoney(p.setValue)
+      + (e.setSoldCount ? ' (' + e.setSoldCount + ' sales)' : '')
+      + ' = figs ' + sortMoney(p.figsAll) + ' + rest ' + sortMoney(p.brickFull)
+      + '. The rest, adjusted for completeness, quality (×' + p.qualityF.toFixed(2) + ') and box/manual (×' + p.premium.toFixed(2) + '), is ' + sortMoney(p.brickAdj) + '.</div>'
+      + '<div class="sort-flag">Net takes off ' + sortSettings.feePct + '% fees on anything sold (not bulk) and what buying missing figs costs. Hours are rough guesses from completeness, quality and how many figs you’d list.</div>';
+  }
+
+  function sortFigRowHtml(f) {
+    var qty = f.qty || 1;
+    var haveOpts = "";
+    for (var i = 0; i <= qty; i++) haveOpts += '<option value="' + i + '"' + (i === (f.have || 0) ? ' selected' : '') + '>' + i + '</option>';
+    var unit = sortFigUnitValue(f);
+    var priceTxt = unit > 0
+      ? (f.soldAvg > 0 ? 'sold avg ' + sortMoney(f.soldAvg) + (f.soldCount ? ' (' + f.soldCount + ')' : '') : 'no sales')
+        + (f.stockMin > 0 ? ' · cheapest ' + sortMoney(f.stockMin) : '')
+      : 'no price data';
+    return '<div class="item-row sort-fig-row">'
+      + '<div class="item-thumb">' + thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" }) + '</div>'
+      + '<div class="item-body">'
+      + '<div class="item-line1"><span class="item-no mono">' + escapeHtml(f.itemNo) + '</span><span class="item-line1-right">×' + qty + '</span></div>'
+      + '<div class="item-name">' + escapeHtml(f.name || "") + '</div>'
+      + '<div class="item-color">' + escapeHtml(priceTxt) + '</div>'
+      + '<div class="inventory-fields">'
+      + '<div class="inventory-field"><label>Have</label><select data-fig="' + escapeHtml(f.itemNo) + '" data-figf="have">' + haveOpts + '</select></div>'
+      + '<div class="inventory-field"><label>Condition</label><select data-fig="' + escapeHtml(f.itemNo) + '" data-figf="cond">'
+      + '<option value="good"' + (f.cond === "good" ? ' selected' : '') + '>Good</option>'
+      + '<option value="fair"' + (f.cond === "fair" ? ' selected' : '') + '>Fair</option>'
+      + '<option value="poor"' + (f.cond === "poor" ? ' selected' : '') + '>Poor</option>'
+      + '</select></div>'
+      + '</div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  function sortFigsHtml(e) {
+    var figs = (e.figs || []).slice().sort(function (x, y) { return sortFigUnitValue(y) - sortFigUnitValue(x); });
+    if (figs.length) return '<div class="manage-inventory-hint">Minifigs — how many do you have?</div>' + figs.map(sortFigRowHtml).join("");
+    return e.status === "ready" ? '<div class="manage-inventory-hint">BrickLink lists no minifigs for this set.</div>' : '';
+  }
+
+  function sortNumberField(label, field, value, min, max, step) {
+    return '<div class="inventory-field"><label>' + label + '</label><input type="number" inputmode="decimal" min="' + min + '" max="' + max + '" step="' + step + '" data-sortf="' + field + '" value="' + escapeHtml(value === null || value === undefined ? "" : value) + '"></div>';
+  }
+
+  function sortCardHtml(e) {
+    // A set that couldn't be found has nothing to edit or compute.
+    var failed = e.status === "error" && !(e.figs && e.figs.length);
+    var expanded = !!sortExpanded[e.id] && !failed;
+    var body = "";
+    if (expanded) {
+      body = '<div class="sort-card-extra">'
+        + '<div class="inventory-fields">'
+        + sortNumberField("Paid ($)", "paid", e.paid, 0, 100000, "0.01")
+        + sortNumberField("Completeness (%)", "completeness", e.completeness, 0, 100, "1")
+        + sortNumberField("Quality (0–10)", "quality", e.quality, 0, 10, "1")
+        + sortNumberField("Box (0–10, 0 = none)", "box", e.box, 0, 10, "1")
+        + sortNumberField("Manual (0–10, 0 = none)", "manual", e.manual, 0, 10, "1")
+        + '</div>'
+        + '<div class="sort-figs">' + sortFigsHtml(e) + '</div>'
+        + '<div class="sort-math">' + sortMathHtml(e) + '</div>'
+        + '</div>';
+    }
+    return '<div class="item-row sort-card" data-id="' + escapeHtml(e.id) + '">'
+      + '<div class="item-thumb">' + thumbHtml({ type: "SET", itemNo: e.setNo, colorId: 0, newOrUsed: "U" }) + '</div>'
+      + '<div class="item-body sort-head-body">' + sortHeadBodyHtml(e) + '</div>'
+      + body
+      + '<div class="sort-card-actions">'
+      + (failed ? '' : '<button type="button" class="reset-btn" data-act="toggle" data-id="' + escapeHtml(e.id) + '">' + (expanded ? "Done" : "Edit") + '</button>')
+      + '<button type="button" class="reset-btn" data-act="refresh" data-id="' + escapeHtml(e.id) + '"' + (e.status === "loading" ? ' disabled' : '') + '>Refresh prices</button>'
+      + '<button type="button" class="delete-row-btn" data-act="remove" data-id="' + escapeHtml(e.id) + '">Remove</button>'
+      + '</div>'
+      + '</div>';
+  }
+
+  // Re-draws just a card's summary and math, leaving its input fields (and
+  // whatever's being typed in them) alone.
+  // withFigs also re-draws the minifig checklist — only done when the fig
+  // list or its prices actually changed, never on an ordinary edit.
+  function patchSortCard(id, withFigs) {
+    var e = sortFindEntry(id);
+    var card = sortListView.querySelector('.sort-card[data-id="' + id + '"]');
+    if (!e || !card) return;
+    var head = card.querySelector(".sort-head-body");
+    if (head) head.innerHTML = sortHeadBodyHtml(e);
+    var math = card.querySelector(".sort-math");
+    if (math) math.innerHTML = sortMathHtml(e);
+    var figsEl = card.querySelector(".sort-figs");
+    if (figsEl && withFigs) {
+      figsEl.innerHTML = sortFigsHtml(e);
+      wireThumbLinks(figsEl);
+    }
+    var refreshBtn = card.querySelector('[data-act="refresh"]');
+    if (refreshBtn) refreshBtn.disabled = e.status === "loading";
+  }
+
+  function renderSortList() {
+    var wrap = document.getElementById("sortListWrap");
+    if (!wrap) return;
+    if (sortLoadError) {
+      wrap.innerHTML = '<div class="state-block error">Couldn’t load your sort list: ' + escapeHtml(sortLoadError) + '<br><button class="reset-btn" id="sortRetryBtn">Retry</button></div>';
+      return;
+    }
+    if (!sortList) { wrap.innerHTML = '<div class="state-block">Loading…</div>'; return; }
+    if (!sortList.length) {
+      wrap.innerHTML = '<div class="set-fig-lookup-intro">Nothing here yet. Type a set number above, or tap “+ Add to sort list” on a set in Lookup.</div>';
+      return;
+    }
+    wrap.innerHTML = '<div class="inventory-summary-row"><span>' + sortList.length + ' set' + (sortList.length === 1 ? '' : 's') + '</span>'
+      + '<select class="manage-inventory-sort-select" id="sortRankSelect">'
+      + SORT_RANKS.map(function (r) { return '<option value="' + r.key + '"' + (r.key === sortRankKey ? ' selected' : '') + '>' + (r.key === "newest" ? r.label : "Rank by " + r.label) + '</option>'; }).join("")
+      + '</select></div>'
+      + sortedSortList().map(sortCardHtml).join("");
+    wireThumbLinks(wrap);
+  }
+
+  function sortSettingsHtml() {
+    return '<details class="sort-settings"><summary>⚙ Rates &amp; assumptions</summary>'
+      + '<div class="inventory-fields">'
+      + SORT_SETTING_FIELDS.map(function (f) {
+          return '<div class="inventory-field"><label>' + escapeHtml(f.label) + ' <span class="field-hint">(' + escapeHtml(f.suffix) + ')</span></label>'
+            + '<input type="number" inputmode="decimal" step="' + f.step + '" min="0" data-setting="' + f.key + '" value="' + escapeHtml(sortSettings[f.key]) + '"></div>';
+        }).join("")
+      + '</div>'
+      + '<div class="manage-inventory-hint">Changes save automatically and re-run every set’s numbers.</div>'
+      + '</details>';
+  }
+
+  function renderSortView() {
+    sortListView.innerHTML = '<div class="state-block">Loading…</div>';
+    ensureSortLoaded().then(function () {
+      if (currentView !== "sort-list") return;
+      sortListView.innerHTML = ''
+        + '<div class="set-fig-lookup-intro">Rank the sets from your lots: enter what you paid and what shape each is in, tick the figs you have, and see whether to sell it as a set, part it out, or dump it to bulk.</div>'
+        + sortSettingsHtml()
+        + '<div class="wanted-manual-add"><div class="wanted-manual-itemno-row">'
+        + '<input type="text" class="wanted-manual-itemno-input" id="sortAddInput" placeholder="Add a set by number, e.g. 75192" autocomplete="off">'
+        + '<button type="button" class="reset-btn" id="sortAddBtn">Add</button>'
+        + '</div></div>'
+        + '<div class="sort-save-status" id="sortSaveStatus">' + escapeHtml(sortSaveStatus) + '</div>'
+        + '<div id="sortListWrap"></div>';
+      renderSortList();
+    }).catch(function () {
+      if (currentView !== "sort-list") return;
+      sortListView.innerHTML = '<div id="sortListWrap"></div>';
+      renderSortList();
+    });
+  }
+
+  function handleSortAdd() {
+    var input = document.getElementById("sortAddInput");
+    if (!input || !input.value.trim()) return;
+    var raw = input.value;
+    input.value = "";
+    addToSortList(raw).then(function (res) {
+      if (res.existing) {
+        window.alert("That set is already on your sort list.");
+        sortExpanded[res.existing.id] = true;
+        renderSortList();
+      }
+    }).catch(function (err) {
+      window.alert("Couldn’t add it: " + err.message);
+    });
+  }
+
+  // One set of delegated listeners on the (permanent) view element, so
+  // re-rendering the list never needs re-wiring.
+  function wireSortListView() {
+    sortListView.addEventListener("click", function (ev) {
+      var t = ev.target.closest("button");
+      if (!t) return;
+      if (t.id === "sortAddBtn") { handleSortAdd(); return; }
+      if (t.id === "sortRetryBtn") { sortLoadError = null; renderSortView(); return; }
+      var act = t.getAttribute("data-act");
+      if (!act) return;
+      var e = sortFindEntry(t.getAttribute("data-id"));
+      if (!e) return;
+      if (act === "toggle") {
+        sortExpanded[e.id] = !sortExpanded[e.id];
+        renderSortList();
+      } else if (act === "refresh") {
+        loadSortEntryData(e);
+      } else if (act === "remove") {
+        if (!window.confirm("Remove " + e.setNo + (e.name ? " " + e.name : "") + " from your sort list?")) return;
+        sortList = sortList.filter(function (x) { return x.id !== e.id; });
+        delete sortExpanded[e.id];
+        saveSortList();
+        renderSortList();
+      }
+    });
+    sortListView.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" && ev.target.id === "sortAddInput") { ev.preventDefault(); handleSortAdd(); }
+    });
+    sortListView.addEventListener("change", function (ev) {
+      var el = ev.target;
+      if (el.id === "sortRankSelect") { sortRankKey = el.value; renderSortList(); return; }
+      var setting = el.getAttribute("data-setting");
+      if (setting) {
+        var n = parseFloat(el.value);
+        sortSettings[setting] = isNaN(n) || n < 0 ? SORT_DEFAULTS[setting] : n;
+        el.value = sortSettings[setting];
+        saveSortSettings();
+        sortList.forEach(function (x) { patchSortCard(x.id); });
+        return;
+      }
+      var card = el.closest(".sort-card");
+      var e = card && sortFindEntry(card.getAttribute("data-id"));
+      if (!e) return;
+      var field = el.getAttribute("data-sortf");
+      if (field) {
+        if (field === "paid") {
+          e.paid = el.value === "" ? null : Math.max(0, sortNum(el.value));
+        } else if (field === "completeness") {
+          e.completeness = sortClamp(Math.round(sortNum(el.value)), 0, 100);
+        } else {
+          e[field] = sortClamp(Math.round(sortNum(el.value)), 0, 10);
+        }
+        if (field !== "paid") el.value = e[field];
+      } else if (el.getAttribute("data-figf")) {
+        var fig = (e.figs || []).filter(function (f) { return f.itemNo === el.getAttribute("data-fig"); })[0];
+        if (!fig) return;
+        if (el.getAttribute("data-figf") === "have") fig.have = parseInt(el.value, 10) || 0;
+        else fig.cond = el.value;
+      } else {
+        return;
+      }
+      saveSortList();
+      patchSortCard(e.id);
+    });
+  }
+
   function goToSetFigLookup() {
     currentView = "set-fig-lookup";
     ordersView.classList.add("hidden");
@@ -9309,12 +10069,18 @@
     statsView.classList.add("hidden");
     orderLookupView.classList.add("hidden");
     wantedListView.classList.add("hidden");
+    sortListView.classList.add("hidden");
     setFigLookupView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory");
     refreshBtn.style.display = "none";
     brandSub.textContent = "Set/Fig Lookup";
     renderSetFigLookupView();
+    if (!sortList) {
+      ensureSortLoaded().then(function () {
+        if (currentView === "set-fig-lookup") renderSetFigLookupResults();
+      }).catch(function () { /* the button just stays "+ Add" */ });
+    }
   }
 
   function goToWantedList() {
@@ -9327,12 +10093,32 @@
     statsView.classList.add("hidden");
     orderLookupView.classList.add("hidden");
     setFigLookupView.classList.add("hidden");
+    sortListView.classList.add("hidden");
     wantedListView.classList.remove("hidden");
     backBtn.style.display = "none";
     setTopbarNav("inventory");
     refreshBtn.style.display = "none";
     brandSub.textContent = "Wanted List";
     renderWantedListView();
+  }
+
+  function goToSortList() {
+    currentView = "sort-list";
+    ordersView.classList.add("hidden");
+    orderView.classList.add("hidden");
+    inventoryView.classList.add("hidden");
+    labelPrepView.classList.add("hidden");
+    manageInventoryView.classList.add("hidden");
+    statsView.classList.add("hidden");
+    orderLookupView.classList.add("hidden");
+    setFigLookupView.classList.add("hidden");
+    wantedListView.classList.add("hidden");
+    sortListView.classList.remove("hidden");
+    backBtn.style.display = "none";
+    setTopbarNav("inventory");
+    refreshBtn.style.display = "none";
+    brandSub.textContent = "Sort List";
+    renderSortView();
   }
 
   backBtn.addEventListener("click", function () {
@@ -9354,6 +10140,8 @@
   });
   setFigLookupBtn.addEventListener("click", goToSetFigLookup);
   wantedListBtn.addEventListener("click", goToWantedList);
+  sortListBtn.addEventListener("click", goToSortList);
+  wireSortListView();
   addInventoryBtn.addEventListener("click", goToInventory);
   // Wired once here rather than per-render like the in-page submit
   // buttons — these topbar mirrors are static DOM nodes that live inside
@@ -9427,6 +10215,7 @@
     else if (currentView === "order-lookup") goToOrderLookup();
     else if (currentView === "set-fig-lookup") goToSetFigLookup();
     else if (currentView === "wanted-list") goToWantedList();
+    else if (currentView === "sort-list") goToSortList();
     else goToOrders();
   }
 

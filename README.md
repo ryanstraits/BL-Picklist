@@ -643,6 +643,33 @@ Token Secret as sensitive as an API key that can move money.
   at a time. `setTopbarNav()`'s `subLabel`/`subHandler` are optional —
   Stats passes neither, and the sub-nav row just hides for that category
   rather than wiring a click handler to a sibling that doesn't exist.
+- **Sort List** — the "Sort" tab under Inventory (header "Sort List"),
+  for triaging acquired lots of sets. Type a set number (or tap
+  "+ Add to sort list" on a set in Lookup) and a card appears at the top
+  with its name, image and minifig list pulled from BrickLink
+  (`item-lookup` for name + catalog weight, `item-subsets` for the figs,
+  `price-guide?guide=sold` for what the set and each fig actually sold
+  for, plus current listings as a fallback and for the cheapest price to
+  buy a missing fig). Per set Ryan enters what he paid, completeness
+  (% of the non-fig pieces), quality 0-10, box 0-10 and manual 0-10
+  (0 = not present), and for each fig how many he has and their
+  condition. The card then compares three routes — sell as a set (buying
+  missing figs unless they'd cost more than the skip threshold's share of
+  the set's value, in which case it's sold without them), part out (figs
+  sold singly, never worth less than their weight at the fig-parts $/lb,
+  plus leftover non-fig weight at the general-parts $/lb), and dump to
+  bulk (whole physical set at the blended $/lb) — picks the highest
+  profit, and shows value, profit, ROI and a rough hours estimate
+  (`SORT_EFFORT`) for profit per effort. The list is newest first and
+  can be re-ranked by ROI, profit, total value or profit per effort. Every
+  rate and assumption (the three $/lb figures, fees %, skip threshold,
+  box/manual premiums, quality floor, fig-condition factors) is editable
+  in the page's "Rates & assumptions" block. The list and settings are
+  stored in the same Blobs store as everything else under the pick-state
+  keys `sortList` and `sortSettings`; a failed load never falls back to an
+  empty list, since the next save would then overwrite the real one.
+  Defaults (fees 10%, skip 35%, box +15%, manual +5%, quality floor 60%,
+  fig condition 100/80/60%) were picked as starting points, not measured.
 - **Sales Stats** — a page under its own top-level "Stats" category:
   order count, total sales $, and average order value, broken down by
   year and month, "just for a quick reference" per Ryan's own framing —

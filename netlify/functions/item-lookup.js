@@ -6,7 +6,8 @@ const { requireAuth } = require('./lib/site-auth');
 // item. item-subsets.js already fetches this same endpoint alongside a
 // set/fig's subsets; this is that call standing alone, for the Wanted
 // List's manual add-by-number form, where Ryan's typed in just an item
-// number and the row needs a real name instead of staying blank.
+// number and the row needs a real name instead of staying blank — and,
+// for the Sort page, the item's catalog weight.
 exports.handler = requireAuth(async (event) => {
   try {
     const params = event.queryStringParameters || {};
@@ -22,6 +23,9 @@ exports.handler = requireAuth(async (event) => {
         name: (itemData && itemData.name) || '',
         type: (itemData && itemData.type) || itemType,
         categoryId: (itemData && itemData.category_id) || 0,
+        // Catalog weight in grams (0 when BrickLink has none) — the Sort
+        // page values leftover bulk by weight.
+        weightG: Number(itemData && itemData.weight) || 0,
       },
     });
   } catch (err) {

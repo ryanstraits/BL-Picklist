@@ -11,10 +11,12 @@ const DEFAULT_KEY = 'state';
 // Inventory bulk-sale feature's list of running sales — an array). Same store,
 // same GET/POST shape, just a different named slot, so this one small
 // function covers all of them instead of duplicating the whole
-// Blobs-wiring dance per feature.
-const ALLOWED_KEYS = new Set(['state', 'actions', 'wantedListBank', 'activeSale']);
+// Blobs-wiring dance per feature. 'sortList' (the Sort page's array of
+// sets being ranked) and 'sortSettings' (its editable rates/assumptions)
+// are the Sort page's two slots.
+const ALLOWED_KEYS = new Set(['state', 'actions', 'wantedListBank', 'activeSale', 'sortList', 'sortSettings']);
 // Keys whose value is a JSON array rather than an object.
-const ARRAY_KEYS = new Set(['activeSale']);
+const ARRAY_KEYS = new Set(['activeSale', 'sortList']);
 
 // This project's functions use the classic AWS Lambda-compatible handler
 // signature (exports.handler = async (event) => {...}), not the newer

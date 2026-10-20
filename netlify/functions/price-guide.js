@@ -28,12 +28,17 @@ exports.handler = requireAuth(async (event) => {
 
     const newOrUsed = params.condition === 'U' ? 'U' : 'N';
     const colorId = params.color;
+    // guide=sold asks for what the item actually sold for over BrickLink's
+    // rolling window (the Sort page's "what could I get" number) instead of
+    // what's listed now. Not country-filtered: sold history is a
+    // market-wide signal, and a US-only slice of it is often too thin.
+    const sold = params.guide === 'sold';
 
     const query = new URLSearchParams({
-      guide_type: 'stock',
+      guide_type: sold ? 'sold' : 'stock',
       new_or_used: newOrUsed,
-      country_code: 'US',
     });
+    if (!sold) query.set('country_code', 'US');
     if (colorId) query.set('color_id', colorId);
 
     const data = await blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/price?${query.toString()}`);
@@ -55,9 +60,15 @@ exports.handler = requireAuth(async (event) => {
       currencyCode: (data && data.currency_code) || 'USD',
       minPrice: (data && data.min_price) || null,
       avgPrice: (data && data.avg_price) || null,
+      // Quantity-weighted average — what a typical piece actually went for,
+      // less swayed by one big lot than the plain average above.
+      qtyAvgPrice: (data && data.qty_avg_price) || null,
       maxPrice: (data && data.max_price) || null,
       totalQuantity: (data && data.total_quantity) || 0,
-      listings,
+      // Number of distinct sales/listings behind the figures (how much to
+      // trust them).
+      unitQuantity: (data && data.unit_quantity) || 0,
+      listings: sold ? [] : listings,
     });
   } catch (err) {
     return errorResponse(err);
