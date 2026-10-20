@@ -7210,9 +7210,20 @@
   // row in a large scope would make the live-write endpoint reject the
   // entire batch (see inventory-update.js), silently blocking every
   // other item in the sale along with it.
+  //
+  // Stock room listings are never eligible, from any way of starting a sale
+  // (a theme, a whole type, a search, multi-select, the age picker): they
+  // aren't live for sale, so a sale has no business touching them. Checked
+  // against both the live value and any unsaved edit, so neither a listing
+  // BrickLink has in a stock room nor one just moved into one on its card
+  // gets swept in.
+  function saleRowInStockRoom(r) {
+    return !!(r.stockRoomId || (r.orig && r.orig.stockRoomId));
+  }
   function eligibleSaleRows(rows) {
     return rows.filter(function (r) {
-      return !r.markedForDelete && parseFloat(r.unitPrice) > 0 && parseFloat(r.quantity) > 0 && !!r.inventoryId;
+      return !r.markedForDelete && parseFloat(r.unitPrice) > 0 && parseFloat(r.quantity) > 0 && !!r.inventoryId
+        && !saleRowInStockRoom(r);
     });
   }
 
@@ -7285,6 +7296,7 @@
 
   function startSaleDraft(rows) {
     var eligible = eligibleSaleRows(rows);
+    var stockRoomCount = rows.filter(saleRowInStockRoom).length;
     var onSale = itemKeysInAnyActiveSale();
     // Also left out: anything BrickLink already shows a sale percentage on,
     // whether from another sale here or set on BrickLink directly.
@@ -7292,10 +7304,12 @@
     if (!openRows.length) {
       window.alert(eligible.length
         ? "Every eligible item here is already in another active sale."
-        : "None of these items have a price to discount.");
+        : stockRoomCount
+          ? "Everything here is in a stock room, so there's nothing live to put on sale."
+          : "None of these items have a price to discount.");
       return;
     }
-    saleDraft = { rows: openRows, pct: "20", endsAt: "", label: "", excludedCount: eligible.length - openRows.length, sortKey: "valueDesc" };
+    saleDraft = { rows: openRows, pct: "20", endsAt: "", label: "", excludedCount: eligible.length - openRows.length, stockRoomCount: stockRoomCount, sortKey: "valueDesc" };
     renderManageInventoryResults();
   }
 
@@ -7393,6 +7407,7 @@
     return '<div class="sale-draft-panel">'
       + '<div class="sale-draft-title">Put ' + d.rows.length + ' item' + (d.rows.length === 1 ? '' : 's') + ' on sale</div>'
       + (d.excludedCount ? '<div class="sale-tools-box-desc">' + d.excludedCount + ' item' + (d.excludedCount === 1 ? '' : 's') + ' already in another sale ' + (d.excludedCount === 1 ? 'was' : 'were') + ' left out.</div>' : '')
+      + (d.stockRoomCount ? '<div class="sale-tools-box-desc">' + d.stockRoomCount + ' stock room item' + (d.stockRoomCount === 1 ? '' : 's') + ' left out — a sale only covers live listings.</div>' : '')
       + '<div class="inventory-fields wanted-manual-fields sale-fields-row">'
       + '<div class="inventory-field"><label>% off</label><input type="number" min="1" max="99" id="saleDraftPctInput" value="' + escapeHtml(d.pct) + '"></div>'
       + '<div class="inventory-field date-field"><label>Ends <span class="field-hint">(optional)</span></label><input type="date" id="saleDraftEndsInput" value="' + escapeHtml(d.endsAt) + '"></div>'
@@ -7424,7 +7439,13 @@
       window.alert("BrickLink's sale percentage has to be a whole number from 1 to 99.");
       return;
     }
-    var rows = saleDraft.rows;
+    // Last line of defense: drop anything that's been put in a stock room
+    // since the draft was built.
+    var rows = saleDraft.rows.filter(function (r) { return !saleRowInStockRoom(r); });
+    if (!rows.length) {
+      window.alert("Everything in this sale is now in a stock room, so there's nothing live to put on sale.");
+      return;
+    }
     if (!window.confirm("Put " + rows.length + " item" + (rows.length === 1 ? "" : "s") + " on sale at " + pct + "% off on BrickLink now? Their listed prices stay as they are.")) return;
 
     rows.forEach(function (r) { r.result = null; });
