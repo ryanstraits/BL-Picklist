@@ -5908,6 +5908,13 @@
   // of this type, uncategorized by theme").
   var manageInventoryBrowseType = null;
   var manageInventoryBrowseCategory = null;
+  // manageInventoryBrowseCategory's sentinel for "every theme of this type
+  // at once" (the All tile) — "" already means uncategorized, so it needs
+  // its own value.
+  var MANAGE_INVENTORY_ALL = "*";
+  // How many cards the category/All item list currently shows; grows by one
+  // page per "Show more" tap and resets whenever the browse level changes.
+  var manageInventoryListLimit = 50;
   var manageInventoryBrowseRecent = false;
   var manageInventoryCategoriesLoading = false;
   var manageInventorySortKey = "newest"; // itemNoAsc | itemNoDesc | newest | oldest
@@ -6273,7 +6280,7 @@
     } else if (manageInventoryBrowseType) {
       if (manageInventoryBrowseCategory !== null) {
         parts.push('<button type="button" class="browse-crumb" data-browse-reset="category">' + escapeHtml(manageInventoryBrowseType) + '</button>');
-        parts.push('<span class="browse-crumb-current">' + escapeHtml(categoryDisplayNameById(manageInventoryBrowseCategory)) + '</span>');
+        parts.push('<span class="browse-crumb-current">' + escapeHtml(manageInventoryBrowseCategory === MANAGE_INVENTORY_ALL ? "All" : categoryDisplayNameById(manageInventoryBrowseCategory)) + '</span>');
       } else {
         parts.push('<span class="browse-crumb-current">' + escapeHtml(manageInventoryBrowseType) + '</span>');
       }
@@ -6288,6 +6295,7 @@
   function manageInventoryCategoryRows(type, catId) {
     return (manageInventoryRows || []).filter(function (r) {
       if (r.type !== type) return false;
+      if (catId === MANAGE_INVENTORY_ALL) return true;
       var topId = r.categoryId ? topCategoryId(r.categoryId, categoriesById) : 0;
       return String(topId || 0) === catId;
     });
@@ -6502,6 +6510,14 @@
         return browseTileHtml('data-browse-category', id, t.name, browseTileStatsHtml(t), manageInventoryBrowseType, id, manageInventoryBrowseType + ' › ' + t.name);
       }).join("");
       var typeRows = manageInventoryTypeRows(manageInventoryBrowseType);
+      // Every theme at once — a plain nav tile (like Recently Added), never a
+      // sale-select checkbox: "all of this type" already has its own checkbox row.
+      var allTile = typeRows.length
+        ? '<button type="button" class="browse-tile browse-tile-recent browse-tile-all" data-browse-category="' + MANAGE_INVENTORY_ALL + '">'
+          + '<span class="browse-tile-name">All ' + escapeHtml(manageInventoryBrowseType) + '</span>'
+          + browseTileStatsHtml(manageInventoryStats(typeRows))
+          + '</button>'
+        : '';
       var wholeTypeKey = saleScopeKey(manageInventoryBrowseType, null);
       // Only the multi-select checkbox case lives inline with the tile
       // list itself — the idle "Put all X on sale"/"Select themes…"
@@ -6523,19 +6539,22 @@
         + (manageInventoryBrowseType === 'PART' ? ' (Parts mostly don’t have a real theme — this is BrickLink’s physical category tree instead, e.g. Bricks, Plates.)' : '')
         + '</div>'
         + wholeTypeCheckboxRow
-        + '<div class="browse-tile-list">' + themeTiles + '</div>';
+        + '<div class="browse-tile-list">' + allTile + themeTiles + '</div>';
     }
 
     var catId = manageInventoryBrowseCategory;
     var filtered = manageInventorySortRows(manageInventoryCategoryRows(manageInventoryBrowseType, catId));
-    var capped = filtered.slice(0, MANAGE_INVENTORY_RESULT_CAP);
+    var capped = filtered.slice(0, manageInventoryListLimit);
     return hint
       + manageInventoryBreadcrumb()
       + manageInventoryStatsHtml(manageInventoryStats(filtered))
       + saleAreaHtml('', filtered.length ? '<button type="button" class="inv-start-over-btn" id="manageInventoryStartSaleBtn">Put on sale</button>' : '')
       + '<div class="manage-inventory-sort-row">' + manageInventorySortSelectHtml() + '</div>'
       + capped.map(manageInventoryCardHtml).join("")
-      + (filtered.length > capped.length ? '<div class="manage-inventory-cap-note">Showing the first ' + capped.length + ' of ' + filtered.length + ' items — search above to find a specific one.</div>' : '');
+      + (filtered.length > capped.length
+        ? '<div class="manage-inventory-cap-note">Showing ' + capped.length + ' of ' + filtered.length + ' items.</div>'
+          + '<div class="manage-inventory-sort-row"><button type="button" class="inv-start-over-btn" id="manageInventoryShowMoreBtn">Show ' + Math.min(MANAGE_INVENTORY_RESULT_CAP, filtered.length - capped.length) + ' more</button></div>'
+        : '');
   }
 
   function manageInventoryMatches(query) {
@@ -6768,6 +6787,7 @@
         manageInventoryBrowseType = el.getAttribute("data-browse-type");
         manageInventoryBrowseCategory = null;
         manageInventoryBrowseRecent = false;
+        manageInventoryListLimit = MANAGE_INVENTORY_RESULT_CAP;
         saleAreaExpanded = false;
         renderManageInventoryResults();
       });
@@ -6775,6 +6795,7 @@
     container.querySelectorAll("[data-browse-category]").forEach(function (el) {
       el.addEventListener("click", function () {
         manageInventoryBrowseCategory = el.getAttribute("data-browse-category");
+        manageInventoryListLimit = MANAGE_INVENTORY_RESULT_CAP;
         saleAreaExpanded = false;
         renderManageInventoryResults();
       });
@@ -6791,10 +6812,19 @@
         var level = el.getAttribute("data-browse-reset");
         if (level === "type") { manageInventoryBrowseType = null; manageInventoryBrowseRecent = false; }
         manageInventoryBrowseCategory = null;
+        manageInventoryListLimit = MANAGE_INVENTORY_RESULT_CAP;
         saleAreaExpanded = false;
         renderManageInventoryResults();
       });
     });
+
+    var showMoreBtnEl = document.getElementById("manageInventoryShowMoreBtn");
+    if (showMoreBtnEl) {
+      showMoreBtnEl.addEventListener("click", function () {
+        manageInventoryListLimit += MANAGE_INVENTORY_RESULT_CAP;
+        renderManageInventoryResults();
+      });
+    }
 
     var sortSelectEl = document.getElementById("manageInventorySortSelect");
     if (sortSelectEl) {
