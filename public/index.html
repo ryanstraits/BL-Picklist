@@ -873,6 +873,11 @@
   .item-row.inventory-row { cursor: default; }
   .item-row.inventory-row:active { background: var(--surface); }
   .inventory-row.skipped { opacity: 0.45; }
+  /* A stock room listing isn't live for sale — a dotted gray outline marks
+     it. More specific than the unsaved-change/delete tints (which blank the
+     border), so the outline stays visible while editing. Padding is one
+     pixel less to absorb the thicker border without shifting the card. */
+  .item-row.inventory-row.in-stock-room { border: 2px dotted var(--text-secondary); padding: 11px; }
   /* Marks a row still waiting on a price check before submit — cleared
      (back to the plain default border) the moment Ryan touches that row's
      own Price field, not on page load or any other edit. On a long list
@@ -6589,7 +6594,7 @@
     var marked = row.markedForDelete;
     var fieldsDisabled = marked ? ' disabled' : '';
     return ""
-      + '<div class="item-row inventory-row' + (isManageInventoryRowDirty(row) ? ' row-dirty' : '') + (marked ? ' marked-for-delete' : '') + '" data-key="' + escapeHtml(row.key) + '">'
+      + '<div class="item-row inventory-row' + (isManageInventoryRowDirty(row) ? ' row-dirty' : '') + (marked ? ' marked-for-delete' : '') + (row.stockRoomId ? ' in-stock-room' : '') + '" data-key="' + escapeHtml(row.key) + '">'
       + '<div class="item-thumb">' + thumbHtml(row) + '<span class="qty-chip">' + row.quantity + '</span></div>'
       + '<div class="item-body">'
       + '<div class="item-line1">'
@@ -6733,7 +6738,10 @@
         var rowEl = el.closest(".item-row");
         var saleNoteEl = rowEl && rowEl.querySelector(".sale-note");
         if (saleNoteEl) saleNoteEl.textContent = inventorySaleNoteText(row);
-        if (rowEl) rowEl.classList.toggle("row-dirty", isManageInventoryRowDirty(row));
+        if (rowEl) {
+          rowEl.classList.toggle("row-dirty", isManageInventoryRowDirty(row));
+          rowEl.classList.toggle("in-stock-room", !!row.stockRoomId);
+        }
         updateManageInventorySubmitBar();
       });
     });
