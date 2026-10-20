@@ -665,6 +665,20 @@
   .sort-card-extra, .sort-card-actions { flex: 1 0 100%; }
   .sort-card-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
   .sort-fig-row { cursor: default; }
+  .sort-fig-row.sort-fig-all { background: var(--success-bg); }
+  .sort-fig-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+  .sort-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* The picklist's round green checkmark, one per copy of a fig. */
+  .sort-check {
+    flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%;
+    border: 2px solid var(--border); background: transparent;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .sort-check svg { display: none; width: 18px; height: 18px; }
+  .sort-check svg path { stroke: #fff; }
+  .sort-check.on { background: var(--success); border-color: var(--success); }
+  .sort-check.on svg { display: block; }
+  .sort-fig-cond { font-family: inherit; font-size: 13px; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
   .sort-summary { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--text-secondary); margin-top: 4px; }
   .sort-summary b { color: var(--text); }
   .sort-summary b.sort-neg, .sort-neg { color: var(--danger); }
@@ -2033,7 +2047,7 @@
       <button class="nav-tab-btn" id="manageInventoryBtn">Manage</button>
       <button class="nav-tab-btn" id="setFigLookupBtn">Lookup</button>
       <button class="nav-tab-btn" id="wantedListBtn">Wanted<span class="wanted-list-badge hidden" id="wantedListBadge">0</span></button>
-      <button class="nav-tab-btn" id="sortListBtn">Sort</button>
+      <button class="nav-tab-btn" id="sortListBtn">Sort<span class="wanted-list-badge hidden" id="sortListBadge">0</span></button>
       <button class="nav-tab-btn" id="addInventoryBtn">+ Add</button>
     </div>
     <div class="order-progress-row hidden" id="topbarProgressRow">
@@ -9551,6 +9565,7 @@
   var sortRankKey = "newest";
   var sortExpanded = {}; // id -> true
   var sortSaveTimer = null;
+  var sortSavePending = false; // an edit is waiting out the short save delay
   var sortSaveStatus = "";
   var sortFigCache = {}; // minifig itemNo -> { name, weightG, soldAvg, soldCount, stockMin } — this page load only
 
@@ -9624,6 +9639,7 @@
         if (e.status === "loading") { e.status = "error"; e.error = "Price fetch was interrupted — tap Refresh prices."; }
       });
       sortList = list;
+      updateSortListBadge();
       var saved = res[1] && typeof res[1] === "object" ? res[1] : {};
       sortSettings = {};
       Object.keys(SORT_DEFAULTS).forEach(function (k) {
@@ -9639,25 +9655,64 @@
     return sortLoadPromise;
   }
 
+  // The round count bubble on the Sort tab — same look as the Wanted tab's.
+  function updateSortListBadge() {
+    var badge = document.getElementById("sortListBadge");
+    if (!badge) return;
+    var n = sortList ? sortList.length : 0;
+    badge.textContent = String(n);
+    badge.classList.toggle("hidden", n === 0);
+  }
+
   function updateSortSaveStatus() {
     var el = document.getElementById("sortSaveStatus");
     if (el) el.textContent = sortSaveStatus;
   }
 
+  function writeSortList() {
+    sortSavePending = false;
+    return postJSON("/api/pick-state?key=sortList", sortList).then(function () {
+      sortSaveStatus = "Saved";
+      updateSortSaveStatus();
+    }).catch(function (err) {
+      sortSaveStatus = "Couldn’t save: " + err.message + " — don’t reload yet.";
+      updateSortSaveStatus();
+    });
+  }
+
   function saveSortList() {
     if (!sortList) return;
+    updateSortListBadge();
+    clearTimeout(sortSaveTimer);
+    sortSavePending = true;
+    sortSaveStatus = "Saving…";
+    updateSortSaveStatus();
+    sortSaveTimer = setTimeout(writeSortList, 500);
+  }
+
+  // Leaving or reloading the page while an edit is still waiting out the
+  // save delay would drop it, so send it right then — a beacon survives the
+  // page going away where an ordinary request may not.
+  function flushPendingSortSaveOnExit() {
+    if (!sortSavePending || !sortList) return;
+    sortSavePending = false;
+    clearTimeout(sortSaveTimer);
+    try {
+      navigator.sendBeacon("/api/pick-state?key=sortList", new Blob([JSON.stringify(sortList)], { type: "application/json" }));
+    } catch (err) { /* nothing more can be done as the page closes */ }
+  }
+  window.addEventListener("pagehide", flushPendingSortSaveOnExit);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flushPendingSortSaveOnExit();
+  });
+
+  // The Save button: write now instead of waiting out the short delay.
+  function flushSortList() {
+    if (!sortList) return Promise.resolve();
     clearTimeout(sortSaveTimer);
     sortSaveStatus = "Saving…";
     updateSortSaveStatus();
-    sortSaveTimer = setTimeout(function () {
-      postJSON("/api/pick-state?key=sortList", sortList).then(function () {
-        sortSaveStatus = "Saved";
-        updateSortSaveStatus();
-      }).catch(function (err) {
-        sortSaveStatus = "Couldn’t save: " + err.message + " — don’t reload yet.";
-        updateSortSaveStatus();
-      });
-    }, 500);
+    return writeSortList();
   }
 
   function saveSortSettings() {
@@ -9731,13 +9786,13 @@
     var setRoute;
     if (missingCount === 0 || buyMissing) {
       setRoute = {
-        key: "set", label: missingCount ? "Sell as set (buy the missing figs)" : "Sell as set",
+        key: "set", label: missingCount ? "Sell as set + buy figs" : "Sell as set",
         value: completeValue, cost: buyMissing ? missingBuy : 0,
         net: completeValue - (buyMissing ? missingBuy : 0),
       };
     } else {
       var asIs = brickAdj + ownedValue;
-      setRoute = { key: "set", label: "Sell as set without the missing figs", value: asIs, cost: 0, net: asIs };
+      setRoute = { key: "set", label: "Sell set, skip missing figs", value: asIs, cost: 0, net: asIs };
     }
 
     // Route 2 — part out
@@ -9763,13 +9818,13 @@
 
     var hasData = setValue > 0 || figs.some(function (f) { return sortFigUnitValue(f) > 0; });
     var flags = [];
-    if (e.status === "ready" && !hasData) flags.push("No sold or listed prices found — values below are mostly zero.");
-    if (!paidKnown) flags.push("Enter what you paid to see profit and ROI.");
-    if (missingCount > 0 && !buyMissing) flags.push("Missing figs would cost " + Math.round(shareMissing * 100) + "% of the set’s value (limit " + st.skipPct + "%) — not buying them.");
-    if (missingCount > 0 && buyMissing) flags.push("Buying the " + missingCount + " missing fig" + (missingCount === 1 ? "" : "s") + " costs about " + sortMoney(missingBuy) + " (" + Math.round(shareMissing * 100) + "% of the set’s value).");
-    if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? " has" : "s have") + " no price data.");
-    if (ownedValue > brickAdj && ownedCount > 0) flags.push("Your figs are worth more than the rest of the set.");
-    if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No weight on file for this set, so bulk value is zero.");
+    if (e.status === "ready" && !hasData) flags.push("No price data.");
+    if (!paidKnown) flags.push("Add Paid for profit & ROI.");
+    if (missingCount > 0 && !buyMissing) flags.push("Missing figs " + Math.round(shareMissing * 100) + "% of set (limit " + st.skipPct + "%) — skip.");
+    if (missingCount > 0 && buyMissing) flags.push("Buy " + missingCount + " fig" + (missingCount === 1 ? "" : "s") + ": " + sortMoney(missingBuy) + " (" + Math.round(shareMissing * 100) + "% of set).");
+    if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? "" : "s") + ": no price.");
+    if (ownedValue > brickAdj && ownedCount > 0) flags.push("Figs > Set");
+    if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No set weight — bulk $0.");
 
     return {
       routes: routes, best: best, paid: paid, paidKnown: paidKnown,
@@ -9964,7 +10019,7 @@
     if (e.status === "error") return '<span class="item-type-tag sort-verdict sort-verdict-warn">Error</span>';
     if (!a.hasData) return '<span class="item-type-tag sort-verdict sort-verdict-warn">Needs data</span>';
     var cls = a.best.key === "set" ? "sort-verdict-sell" : a.best.key === "part" ? "sort-verdict-part" : "sort-verdict-dump";
-    return '<span class="item-type-tag sort-verdict ' + cls + '">' + escapeHtml(a.best.label.replace(/ \(.*\)$/, "")) + '</span>';
+    return '<span class="item-type-tag sort-verdict ' + cls + '">' + escapeHtml(a.best.key === "set" ? "Sell as set" : a.best.key === "part" ? "Part out" : "Dump to bulk") + '</span>';
   }
 
   function sortHeadBodyHtml(e) {
@@ -9991,8 +10046,8 @@
       + '<span class="item-line1-right">' + sortVerdictHtml(e, a) + '</span>'
       + '</div>'
       + '<div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
-      + (sortIdClash(e) ? '<div class="sort-flag sort-neg">Another set on this list already has the ID ' + escapeHtml(sortEntryId(e)) + '.</div>' : '')
-      + (!sortIdComplete(e) ? '<div class="sort-flag">Enter a copy # and theme code to give this set its ID.</div>' : '')
+      + (sortIdClash(e) ? '<div class="sort-flag sort-neg">Duplicate ID ' + escapeHtml(sortEntryId(e)) + '</div>' : '')
+      + (!sortIdComplete(e) ? '<div class="sort-flag">Add copy # & theme for its ID.</div>' : '')
       + summary;
   }
 
@@ -10008,35 +10063,42 @@
         + '</tr>';
     }).join("");
     return '<table class="sort-math-table"><thead><tr><th>Route</th><th>Sells for</th><th>Buy figs</th><th>Profit</th></tr></thead><tbody>' + rows + '</tbody></table>'
-      + '<div class="sort-flag">Set market value ' + sortMoney(p.setValue)
-      + (e.setSoldCount ? ' (' + e.setSoldCount + ' sales)' : '')
+      + '<div class="sort-flag">Set ' + sortMoney(p.setValue) + (e.setSoldCount ? ' (' + e.setSoldCount + ' sold)' : '')
       + ' = figs ' + sortMoney(p.figsAll) + ' + rest ' + sortMoney(p.brickFull)
-      + '. The rest, adjusted for completeness, quality (×' + p.qualityF.toFixed(2) + ') and box/manual (×' + p.premium.toFixed(2) + '), is ' + sortMoney(p.brickAdj) + '.</div>'
-      + '<div class="sort-flag">Value is what the route sells for less what buying any missing figs costs; profit is that minus what you paid. Selling fees and your time aren’t counted.</div>';
+      + '. Rest adjusted (condition ×' + p.qualityF.toFixed(2) + ', box/manual ×' + p.premium.toFixed(2) + ') = ' + sortMoney(p.brickAdj) + '.</div>'
+      + '<div class="sort-flag">Profit = sells for − fig purchases − paid. No fees or time.</div>';
+  }
+
+  function sortFigChecksHtml(f) {
+    var qty = f.qty || 1;
+    var have = sortClamp(f.have || 0, 0, qty);
+    var out = "";
+    for (var i = 0; i < qty; i++) {
+      out += '<button type="button" class="sort-check' + (i < have ? ' on' : '') + '" data-fig="' + escapeHtml(f.itemNo) + '" data-i="' + (i + 1) + '" aria-label="Have ' + (i + 1) + ' of ' + qty + '">' + checkSvg() + '</button>';
+    }
+    return out;
   }
 
   function sortFigRowHtml(f) {
     var qty = f.qty || 1;
-    var haveOpts = "";
-    for (var i = 0; i <= qty; i++) haveOpts += '<option value="' + i + '"' + (i === (f.have || 0) ? ' selected' : '') + '>' + i + '</option>';
     var unit = sortFigUnitValue(f);
     var priceTxt = unit > 0
       ? (f.soldAvg > 0 ? 'sold avg ' + sortMoney(f.soldAvg) + (f.soldCount ? ' (' + f.soldCount + ')' : '') : 'no sales')
         + (f.stockMin > 0 ? ' · cheapest ' + sortMoney(f.stockMin) : '')
       : 'no price data';
-    return '<div class="item-row sort-fig-row">'
+    return '<div class="item-row sort-fig-row' + ((f.have || 0) >= qty ? ' sort-fig-all' : '') + '" data-fig="' + escapeHtml(f.itemNo) + '">'
       + '<div class="item-thumb">' + thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" }) + '</div>'
       + '<div class="item-body">'
       + '<div class="item-line1"><span class="item-no mono">' + escapeHtml(f.itemNo) + '</span><span class="item-line1-right">×' + qty + '</span></div>'
       + '<div class="item-name">' + escapeHtml(f.name || "") + '</div>'
       + '<div class="item-color">' + escapeHtml(priceTxt) + '</div>'
-      + '<div class="inventory-fields">'
-      + '<div class="inventory-field"><label>Have</label><select data-fig="' + escapeHtml(f.itemNo) + '" data-figf="have">' + haveOpts + '</select></div>'
-      + '<div class="inventory-field"><label>Condition</label><select data-fig="' + escapeHtml(f.itemNo) + '" data-figf="cond">'
+      + '<div class="sort-fig-controls">'
+      + '<div class="sort-checks">' + sortFigChecksHtml(f) + '</div>'
+      + '<select class="sort-fig-cond" data-fig="' + escapeHtml(f.itemNo) + '" data-figf="cond" aria-label="Condition">'
       + '<option value="good"' + (f.cond === "good" ? ' selected' : '') + '>Good</option>'
       + '<option value="fair"' + (f.cond === "fair" ? ' selected' : '') + '>Fair</option>'
       + '<option value="poor"' + (f.cond === "poor" ? ' selected' : '') + '>Poor</option>'
-      + '</select></div>'
+      + '</select>'
       + '</div>'
       + '</div>'
       + '</div>';
@@ -10044,7 +10106,7 @@
 
   function sortFigsHtml(e) {
     var figs = (e.figs || []).slice().sort(function (x, y) { return sortFigUnitValue(y) - sortFigUnitValue(x); });
-    if (figs.length) return '<div class="manage-inventory-hint">Minifigs — how many do you have?</div>' + figs.map(sortFigRowHtml).join("");
+    if (figs.length) return '<div class="manage-inventory-hint">Figs — tap the ones you have</div>' + figs.map(sortFigRowHtml).join("");
     return e.status === "ready" ? '<div class="manage-inventory-hint">BrickLink lists no minifigs for this set.</div>' : '';
   }
 
@@ -10077,7 +10139,7 @@
       + '<div class="item-body sort-head-body">' + sortHeadBodyHtml(e) + '</div>'
       + body
       + '<div class="sort-card-actions">'
-      + (failed ? '' : '<button type="button" class="reset-btn" data-act="toggle" data-id="' + escapeHtml(e.id) + '">' + (expanded ? "Done" : "Edit") + '</button>')
+      + (failed ? '' : '<button type="button" class="reset-btn" data-act="toggle" data-id="' + escapeHtml(e.id) + '">' + (expanded ? "Save" : "Edit") + '</button>')
       + '<button type="button" class="reset-btn" data-act="refresh" data-id="' + escapeHtml(e.id) + '"' + (e.status === "loading" ? ' disabled' : '') + '>Refresh prices</button>'
       + '<button type="button" class="delete-row-btn" data-act="remove" data-id="' + escapeHtml(e.id) + '">Remove</button>'
       + '</div>'
@@ -10133,7 +10195,7 @@
             + '<input type="number" inputmode="decimal" step="' + f.step + '" min="0" data-setting="' + f.key + '" value="' + escapeHtml(sortSettings[f.key]) + '"></div>';
         }).join("")
       + '</div>'
-      + '<div class="manage-inventory-hint">Changes save automatically and re-run every set’s numbers.</div>'
+      + '<div class="manage-inventory-hint">Saves automatically.</div>'
       + '</details>';
   }
 
@@ -10153,7 +10215,7 @@
     ensureSortLoaded().then(function () {
       if (currentView !== "sort-list") return;
       sortListView.innerHTML = ''
-        + '<div class="set-fig-lookup-intro">Rank the sets from your lots: enter what you paid and what shape each is in, tick the figs you have, and see whether to sell it as a set, part it out, or dump it to bulk.</div>'
+        + '<div class="set-fig-lookup-intro">Enter what you paid and each set’s condition, check off the figs you have, and see the best route.</div>'
         + sortSettingsHtml()
         + '<div class="wanted-manual-add"><div class="wanted-manual-itemno-row">'
         + '<input type="text" class="wanted-manual-itemno-input" id="sortAddInput" placeholder="Add a set by number, e.g. 75192" autocomplete="off">'
@@ -10168,6 +10230,23 @@
       sortListView.innerHTML = '<div id="sortListWrap"></div>';
       renderSortList();
     });
+  }
+
+  // A fig with several copies has a checkmark per copy: tapping the nth one
+  // fills the row up to n, or — if it was already filled — empties it down
+  // to n-1. Only that fig row and the card's numbers are redrawn.
+  function handleSortFigCheck(btn) {
+    var card = btn.closest(".sort-card");
+    var e = card && sortFindEntry(card.getAttribute("data-id"));
+    var fig = e && (e.figs || []).filter(function (f) { return f.itemNo === btn.getAttribute("data-fig"); })[0];
+    if (!fig) return;
+    var n = parseInt(btn.getAttribute("data-i"), 10);
+    fig.have = n <= (fig.have || 0) ? n - 1 : n;
+    var row = btn.closest(".sort-fig-row");
+    row.querySelectorAll(".sort-check").forEach(function (b, i) { b.classList.toggle("on", i < fig.have); });
+    row.classList.toggle("sort-fig-all", fig.have >= (fig.qty || 1));
+    saveSortList();
+    patchSortCard(e.id);
   }
 
   function handleSortAdd() {
@@ -10188,11 +10267,13 @@
       if (!t) return;
       if (t.id === "sortAddBtn") { handleSortAdd(); return; }
       if (t.id === "sortRetryBtn") { sortLoadError = null; renderSortView(); return; }
+      if (t.classList.contains("sort-check")) { handleSortFigCheck(t); return; }
       var act = t.getAttribute("data-act");
       if (!act) return;
       var e = sortFindEntry(t.getAttribute("data-id"));
       if (!e) return;
       if (act === "toggle") {
+        if (sortExpanded[e.id]) flushSortList(); // Save: write immediately, then close the card
         sortExpanded[e.id] = !sortExpanded[e.id];
         renderSortList();
       } else if (act === "refresh") {
@@ -10243,8 +10324,7 @@
       } else if (el.getAttribute("data-figf")) {
         var fig = (e.figs || []).filter(function (f) { return f.itemNo === el.getAttribute("data-fig"); })[0];
         if (!fig) return;
-        if (el.getAttribute("data-figf") === "have") fig.have = parseInt(el.value, 10) || 0;
-        else fig.cond = el.value;
+        fig.cond = el.value;
       } else {
         return;
       }
@@ -10401,6 +10481,7 @@
     syncStateFromRemote();
     syncOrderActionsFromRemote();
     syncWantedBankFromRemote();
+    ensureSortLoaded().catch(function () { /* the Sort page shows its own error */ });
   }
 
   function resumeCurrentView() {
