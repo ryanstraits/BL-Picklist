@@ -8,8 +8,7 @@ const DEFAULT_KEY = 'state';
 // backward compatibility with existing callers), 'actions'
 // (driveThruSent/feedbackSent), 'wantedListBank' (the Wanted List
 // bank's own cross-lookup items map), or 'activeSale' (the Manage
-// Inventory bulk-sale feature's list of running sales — an array; it
-// used to be a single object). Same store,
+// Inventory bulk-sale feature's list of running sales — an array). Same store,
 // same GET/POST shape, just a different named slot, so this one small
 // function covers all of them instead of duplicating the whole
 // Blobs-wiring dance per feature.

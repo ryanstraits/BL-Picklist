@@ -5901,15 +5901,16 @@
   // ---- Bulk Sale ----
   // null = not fetched yet from the Blobs store; [] once fetched with
   // nothing running; otherwise an array of concurrently running sales,
-  // each { id, active: true, label, discountPct, startedAt, endsAt,
-  // items: { [row.key]: { originalUnitPrice, itemNo, colorId, name } } }.
+  // each { id, active: true, mode: "rate", label, discountPct, startedAt,
+  // endsAt, items: { [row.key]: { itemNo, colorId, name } } }.
+  // A sale is BrickLink's own per-listing sale percentage (sale_rate) set
+  // on each item — unit_price is never touched — so this record only
+  // remembers which items are in it, plus its label and end date; the
+  // percentage itself lives on the listings (row.saleRate).
   // Several sales can run at once (e.g. one per category) as long as
   // they don't share an item — starting a new one filters out anything
   // already in another active sale's items (see
-  // itemKeysInAnyActiveSale() below) rather than letting discounts
-  // stack or two sales fight over which original price to revert to,
-  // since BrickLink has no native concept of a sale at all (just one
-  // current unit_price) — this app owns the whole lifecycle per item.
+  // itemKeysInAnyActiveSale() below), or already carrying a sale rate.
   var activeSales = null;
   var activeSalesLoadPromise = null;
   // The in-progress "Start Sale" form: { rows, pct, endsAt, label,
@@ -6520,20 +6521,11 @@
     });
   }
 
-  // What this card's Sale field reads: BrickLink's own sale percentage when
-  // set (the price buyers pay is unit_price less that %), else — for a sale
-  // that was run by lowering the price itself — the running sale's % with a
-  // note that the price already reflects it, else nothing.
+  // What this card's Sale field reads: BrickLink's sale percentage when
+  // set (the price buyers pay is unit_price less that %), else nothing.
   function inventorySaleReadoutHtml(row) {
     if (row.saleRate > 0) {
       return '<span class="sale-readout on-sale">' + row.saleRate + '% off · buyers pay ≈ ' + escapeHtml(formatCurrency(roundSalePrice(row.unitPrice, row.saleRate), "USD")) + '</span>';
-    }
-    var legacy = null;
-    (activeSales || []).forEach(function (sale) {
-      if (sale.mode !== "rate" && sale.items && sale.items[row.key]) legacy = sale;
-    });
-    if (legacy) {
-      return '<span class="sale-readout on-sale">' + legacy.discountPct + '% off · price already lowered (was ' + escapeHtml(formatCurrency(legacy.items[row.key].originalUnitPrice, "USD")) + ')</span>';
     }
     return '<span class="sale-readout">Not on sale</span>';
   }
@@ -7045,16 +7037,14 @@
   // forever this session" pattern as colorsMap/manageInventoryRows.
   // Explicit re-renders on landing so a page that opened before this
   // resolved (the banner needs it) picks it up once it does.
-  // Accepts either the current shape (an array of sales) or the old
-  // single-sale object this key used to hold, so an in-progress sale
-  // saved before this app supported more than one still loads correctly.
+  // Only sale-percentage ("rate") sales are understood; anything else in
+  // the stored value (an empty object from a fresh store, or a record from
+  // the earlier price-lowering sales, all ended by now) is ignored.
   function normalizeActiveSales(remote) {
-    if (Array.isArray(remote)) return remote;
-    if (remote && remote.active) {
-      remote.id = remote.id || "legacy";
-      return [remote];
-    }
-    return [];
+    var all = Array.isArray(remote) ? remote : [];
+    var rate = all.filter(function (s) { return s && s.mode === "rate"; });
+    if (rate.length !== all.length) console.warn("Ignored " + (all.length - rate.length) + " stored sale record(s) that aren't sale-percentage sales.");
+    return rate;
   }
 
   function ensureActiveSalesLoaded() {
@@ -7074,8 +7064,8 @@
 
   function pushActiveSales() {
     // Unlike other pick-state writes this one can't be silently dropped:
-    // the record holds each item's pre-sale price, which can't be
-    // recovered once it's lost, and the sale would vanish on reload.
+    // without it a sale that's live on BrickLink would vanish from here on
+    // reload, and End Sale Now would have nothing to end.
     postJSON("/api/pick-state?key=activeSale", activeSales).catch(function (err) {
       window.alert("Couldn't save the sale list (" + err.message + "). Don't reload this page — the sale is live on BrickLink but not recorded yet.");
     });
@@ -7328,9 +7318,7 @@
   // unit_price stays the real price and BrickLink shows buyers the
   // discounted one, so starting a sale is one field per listing, ending it
   // is setting that field back to 0, and there's no pre-sale price record
-  // to lose. (Sales started before this overwrote unit_price instead —
-  // those have no `mode` on their record and still end by restoring their
-  // saved original prices; see handleEndSaleNow.)
+  // to lose.
   function handleStartSaleConfirm() {
     if (!saleDraft || saleSubmitting) return;
     var pctInput = document.getElementById("saleDraftPctInput");
@@ -7420,10 +7408,7 @@
     (activeSales || []).forEach(function (s) { if (s.id === saleId) sale = s; });
     if (!sale) return;
     var itemKeys = Object.keys(sale.items || {});
-    var rateMode = sale.mode === "rate";
-    if (!window.confirm(rateMode
-      ? "End the sale and take " + itemKeys.length + " item" + (itemKeys.length === 1 ? "" : "s") + " off sale on BrickLink now?"
-      : "End the sale and revert " + itemKeys.length + " item" + (itemKeys.length === 1 ? "" : "s") + " to their original price on BrickLink now?")) return;
+    if (!window.confirm("End the sale and take " + itemKeys.length + " item" + (itemKeys.length === 1 ? "" : "s") + " off sale on BrickLink now?")) return;
 
     saleEndingId = saleId;
     renderManageInventoryResults();
@@ -7434,9 +7419,6 @@
       itemKeys.forEach(function (key) {
         var row = findManageInventoryRow(key);
         if (!row) { missingKeys.push(key); return; } // listing's gone (deleted/sold out) — nothing left to revert on BrickLink
-        // Rate-mode sales never touched unit_price, so there's nothing to put
-        // back — only the sale percentage gets cleared below.
-        if (!rateMode) row.unitPrice = sale.items[key].originalUnitPrice;
         row.result = null;
         toRevert.push(row);
       });
@@ -7447,7 +7429,7 @@
         return;
       }
 
-      return postInventoryPriceUpdates(toRevert, rateMode ? 0 : undefined).then(function (res) {
+      return postInventoryPriceUpdates(toRevert, 0).then(function (res) {
         var results = (res && res.results) || [];
         // Anything BrickLink didn't confirm stays in the sale record
         // rather than being dropped — a failed revert is still visible
@@ -7460,7 +7442,7 @@
           var row = findManageInventoryRow(result.key);
           if (result.success) {
             if (row) {
-              if (rateMode) row.saleRate = 0;
+              row.saleRate = 0;
               row.orig = {
                 quantity: row.quantity, newOrUsed: row.newOrUsed, unitPrice: row.unitPrice,
                 description: row.description, remarks: row.remarks, stockRoomId: row.stockRoomId,
@@ -7478,7 +7460,7 @@
           activeSales = activeSales.map(function (s) {
             if (s.id !== saleId) return s;
             return {
-              id: s.id, active: true, mode: s.mode, label: s.label, discountPct: s.discountPct,
+              id: s.id, active: true, mode: "rate", label: s.label, discountPct: s.discountPct,
               startedAt: s.startedAt, endsAt: s.endsAt, items: remainingItems,
             };
           });
