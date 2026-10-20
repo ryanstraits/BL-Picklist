@@ -8386,7 +8386,7 @@
       + '</div>'
       + (item.type === "SET"
         ? '<div class="price-guide-header-row"><button type="button" class="reset-btn sort-list-add-btn" data-setno="' + escapeHtml(item.itemNo) + '" data-name="' + escapeHtml(item.name || "") + '"'
-          + (sortListHasSet(item.itemNo) ? ' disabled>✓ On sort list' : '>+ Add to sort list') + '</button></div>'
+          + '>' + (sortListCopyCount(item.itemNo) ? '+ Add another copy to sort list (' + sortListCopyCount(item.itemNo) + ' on it)' : '+ Add to sort list') + '</button></div>'
         : '')
       + renderPriceGuidePanel(item, true)
       + '</div>'
@@ -8558,7 +8558,7 @@
         el.disabled = true;
         el.textContent = "Adding…";
         addToSortList(el.getAttribute("data-setno"), el.getAttribute("data-name")).then(function (res) {
-          el.textContent = res.added ? "✓ Added to sort list" : "✓ Already on sort list";
+          el.textContent = "✓ Added to sort list";
         }).catch(function (err) {
           el.disabled = false;
           el.textContent = "+ Add to sort list";
@@ -9368,8 +9368,9 @@
   //     their weight at the fig-parts $/lb), plus the leftover non-fig weight
   //     at the general-parts $/lb.
   //   - Dump to bulk: the whole physical set's weight at the blended $/lb.
-  // Everything adjustable lives in sortSettings; the effort estimates behind
-  // "profit per effort" are the SORT_EFFORT constants below.
+  // Everything adjustable lives in sortSettings. Selling fees and time spent
+  // are deliberately not modeled — fees apply to every route, and this is a
+  // hobby where time is Ryan's own call.
   //
   // "Completeness" here means the pieces other than minifigs — figs are
   // tracked separately, one by one.
@@ -9378,7 +9379,6 @@
     genRate: 7.34,          // $/lb, general parts
     figRate: 369.83,        // $/lb, fig parts
     blendedRate: 13.54,     // $/lb, a whole set dumped into bulk
-    feePct: 10,             // selling fees + payment processing, % of sales
     skipPct: 35,            // missing figs costing more than this % of the set's value aren't bought
     boxPremiumPct: 15,      // value added by a perfect (10/10) box
     manualPremiumPct: 5,    // value added by a perfect (10/10) manual
@@ -9391,7 +9391,6 @@
     { key: "genRate", label: "General parts", suffix: "$/lb", step: "0.01" },
     { key: "figRate", label: "Fig parts", suffix: "$/lb", step: "0.01" },
     { key: "blendedRate", label: "Blended (whole set to bulk)", suffix: "$/lb", step: "0.01" },
-    { key: "feePct", label: "Selling fees", suffix: "%", step: "0.1" },
     { key: "skipPct", label: "Don't buy missing figs above", suffix: "% of set value", step: "1" },
     { key: "boxPremiumPct", label: "Box premium at 10/10", suffix: "%", step: "1" },
     { key: "manualPremiumPct", label: "Manual premium at 10/10", suffix: "%", step: "1" },
@@ -9400,20 +9399,16 @@
     { key: "condFair", label: "Fig worth, Fair", suffix: "%", step: "1" },
     { key: "condPoor", label: "Fig worth, Poor", suffix: "%", step: "1" },
   ];
-  // Rough minutes per route, for the profit-per-effort ranking.
-  var SORT_EFFORT = {
-    setBase: 25, setPerQualityPoint: 3, setPerMissingPct: 0.4, setPerBoughtFig: 12,
-    partBase: 10, partPerFig: 10,
-    dump: 5,
-  };
   var SORT_RANKS = [
     { key: "newest", label: "Newest first" },
     { key: "roi", label: "ROI" },
     { key: "profit", label: "Profit" },
     { key: "value", label: "Total value" },
-    { key: "perhour", label: "Profit per effort" },
   ];
   var GRAMS_PER_LB = 453.592;
+  // Ryan's two-letter theme codes, as used in his spreadsheet — suggestions
+  // only (any two letters can be typed). Add the rest of his list here.
+  var SORT_THEME_CODES = ["SW"];
 
   var sortSettings = null;
   var sortList = null; // newest first
@@ -9424,6 +9419,33 @@
   var sortSaveTimer = null;
   var sortSaveStatus = "";
   var sortFigCache = {}; // minifig itemNo -> { name, weightG, soldAvg, soldCount, stockMin } — this page load only
+
+  // Ryan's spreadsheet ID for an owned set: the set number without its "-1"
+  // variant, then "-" and which copy he owns (1st, 2nd, ...), then "_" and
+  // the theme code — e.g. set 75342-1, 3rd copy, Star Wars → 75342-3_SW.
+  function sortSetBase(setNo) {
+    return String(setNo || "").replace(/-\d+$/, "");
+  }
+  function sortEntryId(e) {
+    var id = sortSetBase(e.setNo);
+    if (e.copyNo > 0) id += "-" + e.copyNo;
+    if (e.theme) id += "_" + e.theme;
+    return id;
+  }
+  function sortIdComplete(e) {
+    return e.copyNo > 0 && !!e.theme;
+  }
+  // Another entry already carrying the same ID.
+  function sortIdClash(e) {
+    if (!sortIdComplete(e)) return false;
+    var id = sortEntryId(e);
+    return sortList.some(function (x) { return x !== e && sortIdComplete(x) && sortEntryId(x) === id; });
+  }
+  function sortNextCopyNo(setNo) {
+    var max = 0;
+    sortList.forEach(function (x) { if (x.setNo.toLowerCase() === setNo.toLowerCase() && x.copyNo > max) max = x.copyNo; });
+    return max + 1;
+  }
 
   function sortNum(v) {
     var n = parseFloat(v);
@@ -9548,7 +9570,6 @@
     // adjust that share (figs carry their own per-fig condition).
     var brickFull = Math.max(setValue - figsAll, 0);
     var brickAdj = brickFull * (completeness / 100) * qualityF * premium;
-    var fee = st.feePct / 100;
 
     // Route 1 — sell as a set
     var completeValue = brickAdj + ownedValue + missingValue;
@@ -9559,39 +9580,33 @@
       setRoute = {
         key: "set", label: missingCount ? "Sell as set (buy the missing figs)" : "Sell as set",
         value: completeValue, cost: buyMissing ? missingBuy : 0,
-        net: completeValue * (1 - fee) - (buyMissing ? missingBuy : 0),
+        net: completeValue - (buyMissing ? missingBuy : 0),
       };
     } else {
       var asIs = brickAdj + ownedValue;
-      setRoute = { key: "set", label: "Sell as set without the missing figs", value: asIs, cost: 0, net: asIs * (1 - fee) };
+      setRoute = { key: "set", label: "Sell as set without the missing figs", value: asIs, cost: 0, net: asIs };
     }
-    setRoute.minutes = SORT_EFFORT.setBase
-      + (10 - quality) * SORT_EFFORT.setPerQualityPoint
-      + (100 - completeness) * SORT_EFFORT.setPerMissingPct
-      + (buyMissing ? missingCount * SORT_EFFORT.setPerBoughtFig : 0);
 
     // Route 2 — part out
     var remainderG = Math.max((e.setWeightG || 0) - figsWeightG, 0) * (completeness / 100);
     var bulkParts = lb(remainderG) * st.genRate;
     var partRoute = {
       key: "part", label: "Part out", value: partOutFigs + bulkParts, cost: 0,
-      net: partOutFigs * (1 - fee) + bulkParts,
-      minutes: SORT_EFFORT.partBase + SORT_EFFORT.partPerFig * ownedCount,
+      net: partOutFigs + bulkParts,
     };
 
     // Route 3 — dump the whole thing into bulk
     var dumpValue = lb(remainderG + ownedWeightG) * st.blendedRate;
-    var dumpRoute = { key: "dump", label: "Dump to bulk", value: dumpValue, cost: 0, net: dumpValue, minutes: SORT_EFFORT.dump };
+    var dumpRoute = { key: "dump", label: "Dump to bulk", value: dumpValue, cost: 0, net: dumpValue };
 
     var paidKnown = e.paid !== null && e.paid !== undefined && e.paid !== "";
     var paid = paidKnown ? sortNum(e.paid) : 0;
     var routes = [setRoute, partRoute, dumpRoute];
     routes.forEach(function (r) {
       r.profit = r.net - paid;
-      r.hours = r.minutes / 60;
-      r.perHour = r.hours > 0 ? r.profit / r.hours : 0;
     });
-    var best = routes.slice().sort(function (a, b) { return (b.profit - a.profit) || (a.minutes - b.minutes); })[0];
+    // Ties go to the earlier route (sell as set, then part out, then bulk).
+    var best = routes.reduce(function (top, r) { return r.profit > top.profit ? r : top; }, routes[0]);
 
     var hasData = setValue > 0 || figs.some(function (f) { return sortFigUnitValue(f) > 0; });
     var flags = [];
@@ -9606,7 +9621,7 @@
     return {
       routes: routes, best: best, paid: paid, paidKnown: paidKnown,
       profit: best.profit, roi: paidKnown && paid > 0 ? best.profit / paid : null,
-      value: best.net, perHour: best.perHour, hours: best.hours,
+      value: best.net,
       flags: flags, hasData: hasData,
       parts: { setValue: setValue, figsAll: figsAll, brickFull: brickFull, brickAdj: brickAdj, qualityF: qualityF, premium: premium,
         ownedValue: ownedValue, missingBuy: missingBuy, missingValue: missingValue, remainderG: remainderG, bulkParts: bulkParts },
@@ -9617,7 +9632,6 @@
     if (key === "roi") return a.roi === null ? -Infinity : a.roi;
     if (key === "profit") return a.profit;
     if (key === "value") return a.value;
-    if (key === "perhour") return a.perHour;
     return 0;
   }
 
@@ -9753,12 +9767,12 @@
     var setNo = normalizeSetFigNo("SET", rawSetNo);
     if (!setNo) return Promise.resolve({ added: false });
     return ensureSortLoaded().then(function () {
-      var lower = setNo.toLowerCase();
-      var dup = sortList.filter(function (x) { return x.setNo.toLowerCase() === lower; })[0];
-      if (dup) return { added: false, existing: dup };
+      // Owning several copies of one set is normal here, so there's no
+      // duplicate check — the copy number just counts up.
       var e = {
         id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         setNo: setNo, name: knownName ? decodeHtmlEntities(knownName) : "", addedAt: new Date().toISOString(),
+        copyNo: sortNextCopyNo(setNo), theme: (sortList[0] && sortList[0].theme) || SORT_THEME_CODES[0] || "",
         paid: null, completeness: 100, quality: 7, box: 0, manual: 0,
         figs: [], setSoldAvg: 0, setSoldCount: 0, setStockAvg: 0, setWeightG: 0,
         status: "loading", error: "", progress: { done: 0, total: 3 },
@@ -9772,10 +9786,10 @@
     });
   }
 
-  function sortListHasSet(rawSetNo) {
-    if (!sortList) return false;
+  function sortListCopyCount(rawSetNo) {
+    if (!sortList) return 0;
     var lower = normalizeSetFigNo("SET", rawSetNo).toLowerCase();
-    return sortList.some(function (x) { return x.setNo.toLowerCase() === lower; });
+    return sortList.filter(function (x) { return x.setNo.toLowerCase() === lower; }).length;
   }
 
   // ---- Rendering ----
@@ -9803,16 +9817,17 @@
         + '<span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span>'
         + '<span>Profit <b class="' + (a.profit < 0 ? 'sort-neg' : 'sort-pos') + '">' + (a.paidKnown ? sortMoney(a.profit) : "—") + '</b></span>'
         + '<span>ROI <b>' + roiTxt + '</b></span>'
-        + '<span>~' + a.hours.toFixed(1) + ' hr · <b>' + (a.paidKnown ? sortMoney(a.perHour) + '/hr' : "—") + '</b></span>'
         + '</div>'
         + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '')
         + a.flags.map(function (f) { return '<div class="sort-flag">' + escapeHtml(f) + '</div>'; }).join("");
     }
     return '<div class="item-line1">'
-      + '<span class="item-no mono">' + escapeHtml(e.setNo) + '</span>'
+      + '<span class="item-no mono">' + escapeHtml(sortIdComplete(e) ? sortEntryId(e) : e.setNo) + '</span>'
       + '<span class="item-line1-right">' + sortVerdictHtml(e, a) + '</span>'
       + '</div>'
       + '<div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
+      + (sortIdClash(e) ? '<div class="sort-flag sort-neg">Another set on this list already has the ID ' + escapeHtml(sortEntryId(e)) + '.</div>' : '')
+      + (!sortIdComplete(e) ? '<div class="sort-flag">Enter a copy # and theme code to give this set its ID.</div>' : '')
       + summary;
   }
 
@@ -9823,17 +9838,16 @@
       return '<tr' + (r === a.best ? ' class="sort-best"' : '') + '>'
         + '<td>' + escapeHtml(r.label) + '</td>'
         + '<td>' + sortMoney(r.value) + '</td>'
-        + '<td>' + sortMoney(r.net) + '</td>'
+        + '<td>' + (r.cost > 0 ? sortMoney(r.cost) : "—") + '</td>'
         + '<td>' + (a.paidKnown ? sortMoney(r.profit) : "—") + '</td>'
-        + '<td>' + r.hours.toFixed(1) + '</td>'
         + '</tr>';
     }).join("");
-    return '<table class="sort-math-table"><thead><tr><th>Route</th><th>Gross</th><th>Net</th><th>Profit</th><th>Hrs</th></tr></thead><tbody>' + rows + '</tbody></table>'
+    return '<table class="sort-math-table"><thead><tr><th>Route</th><th>Sells for</th><th>Buy figs</th><th>Profit</th></tr></thead><tbody>' + rows + '</tbody></table>'
       + '<div class="sort-flag">Set market value ' + sortMoney(p.setValue)
       + (e.setSoldCount ? ' (' + e.setSoldCount + ' sales)' : '')
       + ' = figs ' + sortMoney(p.figsAll) + ' + rest ' + sortMoney(p.brickFull)
       + '. The rest, adjusted for completeness, quality (×' + p.qualityF.toFixed(2) + ') and box/manual (×' + p.premium.toFixed(2) + '), is ' + sortMoney(p.brickAdj) + '.</div>'
-      + '<div class="sort-flag">Net takes off ' + sortSettings.feePct + '% fees on anything sold (not bulk) and what buying missing figs costs. Hours are rough guesses from completeness, quality and how many figs you’d list.</div>';
+      + '<div class="sort-flag">Value is what the route sells for less what buying any missing figs costs; profit is that minus what you paid. Selling fees and your time aren’t counted.</div>';
   }
 
   function sortFigRowHtml(f) {
@@ -9881,6 +9895,8 @@
     if (expanded) {
       body = '<div class="sort-card-extra">'
         + '<div class="inventory-fields">'
+        + sortNumberField("Copy # (1st, 2nd…)", "copyNo", e.copyNo, 1, 999, "1")
+        + '<div class="inventory-field"><label>Theme code</label><input type="text" maxlength="2" autocapitalize="characters" autocomplete="off" list="sortThemeCodes" data-sortf="theme" value="' + escapeHtml(e.theme || "") + '"></div>'
         + sortNumberField("Paid ($)", "paid", e.paid, 0, 100000, "0.01")
         + sortNumberField("Completeness (%)", "completeness", e.completeness, 0, 100, "1")
         + sortNumberField("Quality (0–10)", "quality", e.quality, 0, 10, "1")
@@ -9956,6 +9972,14 @@
       + '</details>';
   }
 
+  // Suggestions for the theme-code box: the known list plus any code
+  // already used on this list.
+  function sortThemeDatalistHtml() {
+    var codes = SORT_THEME_CODES.slice();
+    (sortList || []).forEach(function (x) { if (x.theme && codes.indexOf(x.theme) === -1) codes.push(x.theme); });
+    return '<datalist id="sortThemeCodes">' + codes.map(function (c) { return '<option value="' + escapeHtml(c) + '">'; }).join("") + '</datalist>';
+  }
+
   function renderSortView() {
     sortListView.innerHTML = '<div class="state-block">Loading…</div>';
     ensureSortLoaded().then(function () {
@@ -9967,6 +9991,7 @@
         + '<input type="text" class="wanted-manual-itemno-input" id="sortAddInput" placeholder="Add a set by number, e.g. 75192" autocomplete="off">'
         + '<button type="button" class="reset-btn" id="sortAddBtn">Add</button>'
         + '</div></div>'
+        + sortThemeDatalistHtml()
         + '<div class="sort-save-status" id="sortSaveStatus">' + escapeHtml(sortSaveStatus) + '</div>'
         + '<div id="sortListWrap"></div>';
       renderSortList();
@@ -9982,13 +10007,7 @@
     if (!input || !input.value.trim()) return;
     var raw = input.value;
     input.value = "";
-    addToSortList(raw).then(function (res) {
-      if (res.existing) {
-        window.alert("That set is already on your sort list.");
-        sortExpanded[res.existing.id] = true;
-        renderSortList();
-      }
-    }).catch(function (err) {
+    addToSortList(raw).catch(function (err) {
       window.alert("Couldn’t add it: " + err.message);
     });
   }
@@ -10011,7 +10030,7 @@
       } else if (act === "refresh") {
         loadSortEntryData(e);
       } else if (act === "remove") {
-        if (!window.confirm("Remove " + e.setNo + (e.name ? " " + e.name : "") + " from your sort list?")) return;
+        if (!window.confirm("Remove " + (sortIdComplete(e) ? sortEntryId(e) : e.setNo) + (e.name ? " " + e.name : "") + " from your sort list?")) return;
         sortList = sortList.filter(function (x) { return x.id !== e.id; });
         delete sortExpanded[e.id];
         saveSortList();
@@ -10040,12 +10059,18 @@
       if (field) {
         if (field === "paid") {
           e.paid = el.value === "" ? null : Math.max(0, sortNum(el.value));
+        } else if (field === "copyNo") {
+          e.copyNo = el.value === "" ? null : Math.max(1, Math.round(sortNum(el.value)));
+          el.value = e.copyNo === null ? "" : e.copyNo;
+        } else if (field === "theme") {
+          e.theme = el.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+          el.value = e.theme;
         } else if (field === "completeness") {
           e.completeness = sortClamp(Math.round(sortNum(el.value)), 0, 100);
         } else {
           e[field] = sortClamp(Math.round(sortNum(el.value)), 0, 10);
         }
-        if (field !== "paid") el.value = e[field];
+        if (field !== "paid" && field !== "copyNo" && field !== "theme") el.value = e[field];
       } else if (el.getAttribute("data-figf")) {
         var fig = (e.figs || []).filter(function (f) { return f.itemNo === el.getAttribute("data-fig"); })[0];
         if (!fig) return;
@@ -10055,7 +10080,9 @@
         return;
       }
       saveSortList();
-      patchSortCard(e.id);
+      // An ID change can create or clear a clash on a different card too.
+      if (field === "copyNo" || field === "theme") sortList.forEach(function (x) { patchSortCard(x.id); });
+      else patchSortCard(e.id);
     });
   }
 

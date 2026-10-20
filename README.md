@@ -659,17 +659,24 @@ Token Secret as sensitive as an API key that can move money.
   sold singly, never worth less than their weight at the fig-parts $/lb,
   plus leftover non-fig weight at the general-parts $/lb), and dump to
   bulk (whole physical set at the blended $/lb) — picks the highest
-  profit, and shows value, profit, ROI and a rough hours estimate
-  (`SORT_EFFORT`) for profit per effort. The list is newest first and
-  can be re-ranked by ROI, profit, total value or profit per effort. Every
-  rate and assumption (the three $/lb figures, fees %, skip threshold,
+  profit, and shows value, profit and ROI. Selling fees and time spent
+  are deliberately not modeled (fees hit every route alike; it's a hobby,
+  so time is Ryan's own call). The list is newest first and can be
+  re-ranked by ROI, profit or total value. Each set gets Ryan's spreadsheet
+  ID — the set number without its "-1", then `-` and which copy he owns,
+  then `_` and a two-letter theme code, e.g. `75342-3_SW` — from a
+  "Copy #" and "Theme code" box on the card (`SORT_THEME_CODES` holds the
+  suggested codes; new sets inherit the last-used theme and the next free
+  copy number, and the same set can be on the list more than once). A
+  card warns if another set already has the same ID. Every rate and
+  assumption (the three $/lb figures, skip threshold,
   box/manual premiums, quality floor, fig-condition factors) is editable
   in the page's "Rates & assumptions" block. The list and settings are
   stored in the same Blobs store as everything else under the pick-state
   keys `sortList` and `sortSettings`; a failed load never falls back to an
   empty list, since the next save would then overwrite the real one.
-  Defaults (fees 10%, skip 35%, box +15%, manual +5%, quality floor 60%,
-  fig condition 100/80/60%) were picked as starting points, not measured.
+  Defaults (skip 35%, box +15%, manual +5%, quality floor 60%, fig
+  condition 100/80/60%) were picked as starting points, not measured.
 - **Sales Stats** — a page under its own top-level "Stats" category:
   order count, total sales $, and average order value, broken down by
   year and month, "just for a quick reference" per Ryan's own framing —
