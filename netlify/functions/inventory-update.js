@@ -7,8 +7,9 @@ const { requireAuth } = require('./lib/site-auth');
 // sent are changed; everything else on the listing is left alone), which
 // is why this only ever sends the six fields Manage Inventory lets Ryan
 // edit — quantity, unit_price, new_or_used, description, remarks,
-// stock room — and never color_id or the item itself, both of which are
-// part of a listing's identity, not something you'd "edit" after the fact.
+// stock room — plus sale_rate when a sale starts or ends, and never
+// color_id or the item itself, both of which are part of a listing's
+// identity, not something you'd "edit" after the fact.
 async function updateOne(item) {
   const payload = {
     quantity: item.quantity,
@@ -25,7 +26,22 @@ async function updateOne(item) {
     is_stock_room: !!item.stockRoomId,
   };
   if (item.stockRoomId) payload.stock_room_id = item.stockRoomId;
-  await blPut(`/inventories/${encodeURIComponent(item.inventoryId)}`, payload);
+  // Only sent when the caller asks for it (starting/ending a sale) — every
+  // other edit leaves it out, and a partial update leaves it as it was.
+  const asksForSaleRate = item.saleRate !== undefined && item.saleRate !== null;
+  const wantsSaleRate = asksForSaleRate && Number.isInteger(item.saleRate) && item.saleRate >= 0 && item.saleRate <= 99;
+  if (asksForSaleRate && !wantsSaleRate) throw new Error('Sale rate must be a whole number from 0 to 99');
+  if (wantsSaleRate) payload.sale_rate = item.saleRate;
+  const updated = await blPut(`/inventories/${encodeURIComponent(item.inventoryId)}`, payload);
+  // BrickLink returns the listing as it now stands. A 200 that quietly
+  // didn't apply the rate would leave a "sale" nobody is getting, so check
+  // it rather than trust the status — a missing field reads as 0.
+  if (wantsSaleRate) {
+    const applied = Number(updated && updated.sale_rate) || 0;
+    if (applied !== item.saleRate) {
+      throw new Error(`BrickLink accepted the update but reports a sale rate of ${applied}%, not ${item.saleRate}%`);
+    }
+  }
   return { key: item.key, success: true };
 }
 

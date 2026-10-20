@@ -49,6 +49,9 @@ exports.handler = requireAuth(async () => {
       remarks: row.remarks || '',
       stockRoomId: row.stock_room_id || '',
       dateCreated: row.date_created || null,
+      // BrickLink's own per-listing sale percentage (0 = not on sale). unit_price
+      // stays the real price; BrickLink applies this on top for buyers.
+      saleRate: Number(row.sale_rate) || 0,
     }));
     return json(200, { items });
   } catch (err) {

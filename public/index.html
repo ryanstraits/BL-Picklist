@@ -656,6 +656,10 @@
     padding: 1px 5px;
     flex: none;
   }
+  .item-type-tag.sale-tag {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
   .item-price {
     font-size: 12.5px;
     font-weight: 600;
@@ -5967,6 +5971,7 @@
           remarks: remarks,
           stockRoomId: item.stockRoomId || "",
           dateCreated: item.dateCreated || null,
+          saleRate: Number(item.saleRate) || 0,
           orig: snapshot,
           result: null,
           markedForDelete: false,
@@ -6516,7 +6521,7 @@
       + '<div class="item-body">'
       + '<div class="item-line1">'
       + '<span class="item-no mono">' + escapeHtml(row.itemNo) + '</span>'
-      + '<span class="item-line1-right"><span class="item-type-tag">' + escapeHtml(row.type) + '</span></span>'
+      + '<span class="item-line1-right">' + (row.saleRate > 0 ? '<span class="item-type-tag sale-tag">' + row.saleRate + '% off</span>' : '') + '<span class="item-type-tag">' + escapeHtml(row.type) + '</span></span>'
       + '</div>'
       + '<div class="item-name">' + escapeHtml(row.name || "(name unknown)") + '</div>'
       + (isRealColorName(row.colorName) ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
@@ -7063,13 +7068,17 @@
   // shared here so starting/ending a sale goes through the exact same
   // live-write path as a manual field edit, not a second one that could
   // drift out of sync with it.
-  function postInventoryPriceUpdates(rows) {
+  // saleRate (optional): BrickLink's per-listing sale percentage — a whole
+  // number, 0 to clear. Left out entirely for ordinary edits.
+  function postInventoryPriceUpdates(rows, saleRate) {
     return postJSON("/api/inventory-update", {
       items: rows.map(function (r) {
-        return {
+        var item = {
           key: r.key, inventoryId: r.inventoryId, quantity: r.quantity, newOrUsed: r.newOrUsed,
           unitPrice: r.unitPrice, description: r.description, remarks: r.remarks, stockRoomId: r.stockRoomId,
         };
+        if (saleRate !== undefined) item.saleRate = saleRate;
+        return item;
       }),
     });
   }
@@ -7159,7 +7168,9 @@
   function startSaleDraft(rows) {
     var eligible = eligibleSaleRows(rows);
     var onSale = itemKeysInAnyActiveSale();
-    var openRows = eligible.filter(function (r) { return !onSale[r.key]; });
+    // Also left out: anything BrickLink already shows a sale percentage on,
+    // whether from another sale here or set on BrickLink directly.
+    var openRows = eligible.filter(function (r) { return !onSale[r.key] && !(r.saleRate > 0); });
     if (!openRows.length) {
       window.alert(eligible.length
         ? "Every eligible item here is already in another active sale."
@@ -7280,50 +7291,41 @@
       + '</div>';
   }
 
+  // Sales run on BrickLink's own per-listing sale percentage (sale_rate):
+  // unit_price stays the real price and BrickLink shows buyers the
+  // discounted one, so starting a sale is one field per listing, ending it
+  // is setting that field back to 0, and there's no pre-sale price record
+  // to lose. (Sales started before this overwrote unit_price instead —
+  // those have no `mode` on their record and still end by restoring their
+  // saved original prices; see handleEndSaleNow.)
   function handleStartSaleConfirm() {
     if (!saleDraft || saleSubmitting) return;
     var pctInput = document.getElementById("saleDraftPctInput");
     var endsInput = document.getElementById("saleDraftEndsInput");
     var labelInput = document.getElementById("saleDraftLabelInput");
     var pct = parseFloat(pctInput.value);
-    if (!(pct > 0 && pct < 100)) {
-      window.alert("Enter a percentage off between 1 and 99.");
+    if (!(pct >= 1 && pct <= 99 && pct === Math.floor(pct))) {
+      window.alert("BrickLink's sale percentage has to be a whole number from 1 to 99.");
       return;
     }
     var rows = saleDraft.rows;
-    if (!window.confirm("Discount " + rows.length + " item" + (rows.length === 1 ? "" : "s") + " by " + pct + "% on BrickLink now?")) return;
+    if (!window.confirm("Put " + rows.length + " item" + (rows.length === 1 ? "" : "s") + " on sale at " + pct + "% off on BrickLink now? Their listed prices stay as they are.")) return;
 
-    // The only copy of the pre-sale price — row.orig gets overwritten to
-    // the new (discounted) price the moment this update succeeds, same
-    // as any other field edit here, so it can't be read back from there
-    // later when it's time to revert.
-    var originals = {};
-    rows.forEach(function (r) {
-      originals[r.key] = { originalUnitPrice: r.unitPrice, itemNo: r.itemNo, colorId: r.colorId, name: r.name };
-      r.unitPrice = roundSalePrice(r.unitPrice, pct);
-      r.result = null;
-    });
-
+    rows.forEach(function (r) { r.result = null; });
     saleSubmitting = true;
     renderManageInventoryResults();
 
-    postInventoryPriceUpdates(rows).then(function (res) {
+    postInventoryPriceUpdates(rows, pct).then(function (res) {
       var results = (res && res.results) || [];
       var items = {};
       results.forEach(function (result) {
         var row = findManageInventoryRow(result.key);
         if (!row) return;
         if (result.success) {
-          row.orig = {
-            quantity: row.quantity, newOrUsed: row.newOrUsed, unitPrice: row.unitPrice,
-            description: row.description, remarks: row.remarks, stockRoomId: row.stockRoomId,
-          };
+          row.saleRate = pct;
           row.result = { success: true };
-          items[row.key] = originals[row.key];
+          items[row.key] = { itemNo: row.itemNo, colorId: row.colorId, name: row.name };
         } else {
-          // Never actually went live — undo the local price change so
-          // this row isn't left showing a discount it doesn't really have.
-          row.unitPrice = originals[row.key].originalUnitPrice;
           row.result = { success: false, error: result.error };
         }
       });
@@ -7339,6 +7341,7 @@
       activeSales = (activeSales || []).concat([{
         id: "sale-" + Math.random().toString(36).slice(2, 10),
         active: true,
+        mode: "rate",
         label: (labelInput.value || "").trim(),
         discountPct: pct,
         startedAt: new Date().toISOString(),
@@ -7349,11 +7352,9 @@
 
       if (itemCount < rows.length) {
         var failedCount = rows.length - itemCount;
-        window.alert(failedCount + " item" + (failedCount === 1 ? "" : "s") + " couldn't be discounted — see the error on those rows. The sale is active for the other " + itemCount + ".");
+        window.alert(failedCount + " item" + (failedCount === 1 ? "" : "s") + " couldn't be put on sale — see the error on those rows. The sale is active for the other " + itemCount + ".");
       }
     }).catch(function (err) {
-      // Nothing reached BrickLink — undo every local mutation.
-      rows.forEach(function (r) { r.unitPrice = originals[r.key].originalUnitPrice; });
       window.alert("Couldn't reach the server to start the sale: " + err.message);
     }).finally(function () {
       saleSubmitting = false;
@@ -7386,7 +7387,10 @@
     (activeSales || []).forEach(function (s) { if (s.id === saleId) sale = s; });
     if (!sale) return;
     var itemKeys = Object.keys(sale.items || {});
-    if (!window.confirm("End the sale and revert " + itemKeys.length + " item" + (itemKeys.length === 1 ? "" : "s") + " to their original price on BrickLink now?")) return;
+    var rateMode = sale.mode === "rate";
+    if (!window.confirm(rateMode
+      ? "End the sale and take " + itemKeys.length + " item" + (itemKeys.length === 1 ? "" : "s") + " off sale on BrickLink now?"
+      : "End the sale and revert " + itemKeys.length + " item" + (itemKeys.length === 1 ? "" : "s") + " to their original price on BrickLink now?")) return;
 
     saleEndingId = saleId;
     renderManageInventoryResults();
@@ -7397,7 +7401,9 @@
       itemKeys.forEach(function (key) {
         var row = findManageInventoryRow(key);
         if (!row) { missingKeys.push(key); return; } // listing's gone (deleted/sold out) — nothing left to revert on BrickLink
-        row.unitPrice = sale.items[key].originalUnitPrice;
+        // Rate-mode sales never touched unit_price, so there's nothing to put
+        // back — only the sale percentage gets cleared below.
+        if (!rateMode) row.unitPrice = sale.items[key].originalUnitPrice;
         row.result = null;
         toRevert.push(row);
       });
@@ -7408,7 +7414,7 @@
         return;
       }
 
-      return postInventoryPriceUpdates(toRevert).then(function (res) {
+      return postInventoryPriceUpdates(toRevert, rateMode ? 0 : undefined).then(function (res) {
         var results = (res && res.results) || [];
         // Anything BrickLink didn't confirm stays in the sale record
         // rather than being dropped — a failed revert is still visible
@@ -7421,6 +7427,7 @@
           var row = findManageInventoryRow(result.key);
           if (result.success) {
             if (row) {
+              if (rateMode) row.saleRate = 0;
               row.orig = {
                 quantity: row.quantity, newOrUsed: row.newOrUsed, unitPrice: row.unitPrice,
                 description: row.description, remarks: row.remarks, stockRoomId: row.stockRoomId,
@@ -7438,7 +7445,7 @@
           activeSales = activeSales.map(function (s) {
             if (s.id !== saleId) return s;
             return {
-              id: s.id, active: true, label: s.label, discountPct: s.discountPct,
+              id: s.id, active: true, mode: s.mode, label: s.label, discountPct: s.discountPct,
               startedAt: s.startedAt, endsAt: s.endsAt, items: remainingItems,
             };
           });
