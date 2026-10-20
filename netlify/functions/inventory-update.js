@@ -4,15 +4,32 @@ const { requireAuth } = require('./lib/site-auth');
 
 // Update Inventory — PUT /inventories/{inventory_id} — a partial update per
 // BrickLink's own documented behavior for this endpoint (only the fields
-// sent are changed; everything else on the listing is left alone), which
-// is why this only ever sends the six fields Manage Inventory lets Ryan
-// edit — quantity, unit_price, new_or_used, description, remarks,
-// stock room — plus sale_rate when a sale starts or ends, and never
-// color_id or the item itself, both of which are part of a listing's
-// identity, not something you'd "edit" after the fact.
+// sent are changed; everything else on the listing is left alone).
+//
+// QUANTITY IS A DIFFERENCE, NOT A TOTAL. On this endpoint BrickLink's
+// `quantity` is the amount to ADD to the listing's current quantity (negative
+// to subtract), not the new quantity — both client libraries say so
+// (ryansh100/bricklink-api's `quantityChange`; funwithbots/go-bricklink-api:
+// "you must specify the difference between the new quantity and the old
+// quantity as a plus/minus value"). Until this was fixed (Oct 20, 2026) the
+// app sent the listing's full quantity here on every update, so each write —
+// price edit, sale start/end, anything — added the listing's quantity to
+// itself. Callers now send `quantityChange` (new minus the quantity they
+// loaded; 0 for anything but a deliberate quantity edit) and the function
+// returns BrickLink's resulting `quantity` so the page can show the truth.
+// A bare `quantity` from an old, still-open page is deliberately ignored.
+//
+// Because it's a partial update, this only ever sends the fields Manage
+// Inventory lets Ryan edit — the quantity change, unit_price, new_or_used,
+// description, remarks, stock room — plus sale_rate when a sale starts or
+// ends, and never color_id or the item itself, both of which are part of a
+// listing's identity, not something you'd "edit" after the fact.
 async function updateOne(item) {
+  // A missing/invalid change is "no change", never a fallback to some
+  // absolute figure.
+  const quantityChange = Number.isInteger(item.quantityChange) ? item.quantityChange : 0;
   const payload = {
-    quantity: item.quantity,
+    quantity: quantityChange,
     unit_price: String(item.unitPrice || ''),
     new_or_used: item.newOrUsed === 'U' ? 'U' : 'N',
     description: item.description || '',
@@ -42,7 +59,11 @@ async function updateOne(item) {
       throw new Error(`BrickLink accepted the update but reports a sale rate of ${applied}%, not ${item.saleRate}%`);
     }
   }
-  return { key: item.key, success: true };
+  const resultingQuantity = Number(updated && updated.quantity);
+  return {
+    key: item.key, success: true,
+    ...(updated && updated.quantity !== undefined && Number.isFinite(resultingQuantity) ? { quantity: resultingQuantity } : {}),
+  };
 }
 
 exports.handler = requireAuth(async (event) => {
@@ -64,13 +85,12 @@ exports.handler = requireAuth(async (event) => {
     // these are live writes to BrickLink, and each row needs its own
     // clean result even if an earlier one fails. Malformed items are
     // reported the same way, per-item, rather than 400ing the whole
-    // request — a single row missing inventoryId/quantity (BrickLink can
-    // return quantity: 0 for a listing) would otherwise silently block
-    // every other item in a large batch too.
+    // request — a single row missing its inventoryId would otherwise
+    // silently block every other item in a large batch too.
     const results = [];
     for (const item of items) {
-      if (!item || !item.inventoryId || !item.quantity) {
-        results.push({ key: item && item.key, success: false, error: 'Missing inventoryId or quantity — this listing can\'t be updated' });
+      if (!item || !item.inventoryId) {
+        results.push({ key: item && item.key, success: false, error: 'Missing inventoryId — this listing can\'t be updated' });
         continue;
       }
       try {

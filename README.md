@@ -681,6 +681,20 @@ Token Secret as sensitive as an API key that can move money.
   empty list, since the next save would then overwrite the real one.
   Defaults (skip 35%, box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
+- **Inventory quantity writes (fixed Oct 20, 2026)** — on BrickLink's Update
+  Inventory call, `quantity` is a *difference to add* (negative to
+  subtract), not the new total; both client libraries say so. From Oct 9
+  until the fix, the app sent each listing's full quantity on every
+  `inventory-update` write — price edits, quantity edits, bulk-sale
+  starts/ends, per-card sale % edits — so each write added the listing's
+  quantity to itself, silently inflating stock. The function now takes
+  `quantityChange` (new minus the quantity the page loaded; 0 for any edit
+  that isn't a deliberate quantity change), ignores a bare `quantity` from
+  an old open page, and returns BrickLink's resulting quantity, which the
+  page adopts (and flags if it differs from what was typed). Manage
+  Inventory also has a "Quantity (high→low)" sort for finding inflated
+  listings. Netlify only keeps about an hour of request logs on this plan,
+  so which listings were hit can't be reconstructed from them.
 - **Sales Stats** — a page under its own top-level "Stats" category:
   order count, total sales $, and average order value, broken down by
   year and month, "just for a quick reference" per Ryan's own framing —

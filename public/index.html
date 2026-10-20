@@ -6132,6 +6132,7 @@
       if (key === "itemNoDesc") return compareManageInventoryItemNo(b, a);
       if (key === "newest") return compareManageInventoryDate(b, a);
       if (key === "oldest") return compareManageInventoryDate(a, b);
+      if (key === "qtyDesc") return (Number(b.quantity) || 0) - (Number(a.quantity) || 0) || compareManageInventoryItemNo(a, b);
       return compareManageInventoryItemNo(a, b);
     });
     return sorted;
@@ -6145,6 +6146,7 @@
       + '<option value="itemNoAsc"' + (manageInventorySortKey === "itemNoAsc" ? ' selected' : '') + '>Item # (low→high)</option>'
       + '<option value="itemNoDesc"' + (manageInventorySortKey === "itemNoDesc" ? ' selected' : '') + '>Item # (high→low)</option>'
       + dateOptions
+      + '<option value="qtyDesc"' + (manageInventorySortKey === "qtyDesc" ? ' selected' : '') + '>Quantity (high→low)</option>'
       + '</select>';
   }
 
@@ -6557,7 +6559,7 @@
     var resultHtml = "";
     if (row.result) {
       resultHtml = row.result.success
-        ? '<div class="inventory-row-result success">Updated on BrickLink</div>'
+        ? '<div class="inventory-row-result success">Updated on BrickLink' + (row.result.note ? ' — ' + escapeHtml(row.result.note) : '') + '</div>'
         : '<div class="inventory-row-result error">' + escapeHtml(row.result.error) + '</div>';
     }
     var marked = row.markedForDelete;
@@ -7001,10 +7003,7 @@
     if (toUpdate.length) {
       requests.push(postJSON("/api/inventory-update", {
         items: toUpdate.map(function (r) {
-          var item = {
-            key: r.key, inventoryId: r.inventoryId, quantity: r.quantity, newOrUsed: r.newOrUsed,
-            unitPrice: r.unitPrice, description: r.description, remarks: r.remarks, stockRoomId: r.stockRoomId,
-          };
+          var item = inventoryUpdateItem(r);
           // Only when it was actually edited — an untouched rate is left alone on BrickLink.
           if (r.saleRate !== r.orig.saleRate) item.saleRate = r.saleRate;
           return item;
@@ -7033,12 +7032,15 @@
           // that no longer exists to edit or delete again.
           manageInventoryRows = manageInventoryRows.filter(function (r) { return r.key !== row.key; });
         } else {
+          var typedQty = row.quantity;
+          var qtyDiffers = applyInventoryResultQuantity(row, result);
           row.orig = {
             quantity: row.quantity, newOrUsed: row.newOrUsed, unitPrice: row.unitPrice,
             description: row.description, remarks: row.remarks, stockRoomId: row.stockRoomId,
             saleRate: row.saleRate,
           };
           row.result = { success: true };
+          if (qtyDiffers) row.result.note = "BrickLink now shows quantity " + row.quantity + " (you entered " + typedQty + ")";
         }
       });
     }).catch(function (err) {
@@ -7129,15 +7131,35 @@
   // shared here so starting/ending a sale goes through the exact same
   // live-write path as a manual field edit, not a second one that could
   // drift out of sync with it.
+  // One row's payload for /api/inventory-update. BrickLink's update takes a
+  // quantity DIFFERENCE, not a total (see inventory-update.js), so this sends
+  // how far the row's quantity has moved from what was loaded — 0 for every
+  // edit except a deliberate quantity change. (It used to send the full
+  // quantity, which added it to the listing again on every write.)
+  function inventoryUpdateItem(r) {
+    return {
+      key: r.key, inventoryId: r.inventoryId, quantityChange: (Number(r.quantity) || 0) - (Number(r.orig.quantity) || 0),
+      newOrUsed: r.newOrUsed, unitPrice: r.unitPrice, description: r.description, remarks: r.remarks, stockRoomId: r.stockRoomId,
+    };
+  }
+
+  // After a successful write BrickLink reports the listing's resulting
+  // quantity; take that as the truth rather than assuming what was typed.
+  // Returns true when it differs from what the row held.
+  function applyInventoryResultQuantity(row, result) {
+    if (!row || typeof result.quantity !== "number") return false;
+    var differs = result.quantity !== row.quantity;
+    row.quantity = result.quantity;
+    row.orig.quantity = result.quantity;
+    return differs;
+  }
+
   // saleRate (optional): BrickLink's per-listing sale percentage — a whole
   // number, 0 to clear. Left out entirely for ordinary edits.
   function postInventoryPriceUpdates(rows, saleRate) {
     return postJSON("/api/inventory-update", {
       items: rows.map(function (r) {
-        var item = {
-          key: r.key, inventoryId: r.inventoryId, quantity: r.quantity, newOrUsed: r.newOrUsed,
-          unitPrice: r.unitPrice, description: r.description, remarks: r.remarks, stockRoomId: r.stockRoomId,
-        };
+        var item = inventoryUpdateItem(r);
         if (saleRate !== undefined) item.saleRate = saleRate;
         return item;
       }),
@@ -7381,6 +7403,7 @@
         var row = findManageInventoryRow(result.key);
         if (!row) return;
         if (result.success) {
+          applyInventoryResultQuantity(row, result);
           row.saleRate = pct;
           row.orig.saleRate = pct;
           row.result = { success: true };
@@ -7481,6 +7504,7 @@
           var row = findManageInventoryRow(result.key);
           if (result.success) {
             if (row) {
+              applyInventoryResultQuantity(row, result);
               row.saleRate = 0;
               row.orig = {
                 quantity: row.quantity, newOrUsed: row.newOrUsed, unitPrice: row.unitPrice,
