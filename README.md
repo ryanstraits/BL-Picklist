@@ -695,6 +695,24 @@ Token Secret as sensitive as an API key that can move money.
   Inventory also has a "Quantity (high→low)" sort for finding inflated
   listings. Netlify only keeps about an hour of request logs on this plan,
   so which listings were hit can't be reconstructed from them.
+- **Remembers where you were** — iOS drops a page that's been in the
+  background a while (a home-screen icon is no different from a Safari tab
+  in that), and the app then loads from scratch; before this it always
+  opened on the Orders list, because "which page" only lived in memory.
+  When the app goes to the background (`visibilitychange` → hidden /
+  `pagehide`, the last moment iOS reliably gives a page) it writes a small
+  snapshot to localStorage (`bl-assistant-ui-snapshot-v1`): the page, scroll
+  position, the Manage Inventory browse level/sort/search, the active Lookup
+  number, Order Lookup's search, the Sort List's ranking and open cards,
+  and which order is open. The next fresh launch reads it once, after the
+  login check, and goes back there (an open order waits for the order list
+  to load first; scroll waits for the page's content, and gives up on the
+  first touch). Snapshots older than 30 days, unreadable ones, and any
+  junk values are ignored. Nothing is saved while the login screen is up,
+  or while a restore is still in flight. Not kept on purpose: unsaved
+  Manage Inventory edits, open sale drafts, Add Inventory work in progress.
+  iOS can clear localStorage for home-screen apps, in which case there's
+  just no snapshot and it opens on Orders as it always did.
 - **Sales Stats** — a page under its own top-level "Stats" category:
   order count, total sales $, and average order value, broken down by
   year and month, "just for a quick reference" per Ryan's own framing —

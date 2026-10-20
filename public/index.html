@@ -4481,6 +4481,7 @@
     var order = orders.filter(function (o) { return o.orderId === orderId; })[0] || fallbackOrder;
     if (!order) return;
     orderDetailReadOnly = !!fallbackOrder;
+    lastOpenedOrderId = orderId;
 
     currentView = "order";
     ordersView.classList.add("hidden");
@@ -10523,14 +10524,150 @@
       // explicit call here, not just from the goTo* functions, to be
       // correct on this first load.
       setTopbarNav("orders");
+      restoreSnapshot = readUiSnapshot();
     }
     loadState();
-    loadOrders();
+    var ordersLoaded = loadOrders();
     syncStateFromRemote();
     syncOrderActionsFromRemote();
     syncWantedBankFromRemote();
     ensureSortLoaded().catch(function () { /* the Sort page shows its own error */ });
+    // A fresh launch (iOS dropped the page while it was in the background)
+    // goes back to where Ryan was instead of the Orders list.
+    if (restoreSnapshot) {
+      var snap = restoreSnapshot;
+      restoreSnapshot = null;
+      applyUiSnapshot(snap, ordersLoaded);
+    }
   }
+
+  // ---- Remember where you were ----
+  //
+  // iOS drops a page it's kept in the background for a while (a home-screen
+  // icon is no different from a Safari tab in that), and the app then loads
+  // from scratch — where every bit of "which page am I on" used to be lost,
+  // because it only lived in memory, so it always opened on Orders. The
+  // moment the app goes to the background (visibilitychange/pagehide — the
+  // last chance iOS reliably gives a page) it now writes a small snapshot of
+  // the page and the handful of things that decide what that page shows;
+  // the next fresh launch reads it back once. Deliberately small: unsaved
+  // edits, open sale drafts and the like aren't kept. localStorage can be
+  // cleared by iOS for home-screen apps, in which case there's simply no
+  // snapshot and the app opens on Orders as before.
+  var UI_SNAPSHOT_KEY = "bl-assistant-ui-snapshot-v1";
+  var UI_SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+  var lastOpenedOrderId = null;
+  var restoreSnapshot = null;
+  var uiRestoreInFlight = false; // an order is still being reopened — don't overwrite the snapshot with "Orders"
+
+  function takeUiSnapshot() {
+    var view = currentView;
+    var orderId = null;
+    if (view === "order") {
+      // A read-only order (opened from Order Lookup) isn't in the open list,
+      // so it comes back as the Order Lookup page instead.
+      if (orderDetailReadOnly || !lastOpenedOrderId) view = orderDetailReadOnly ? "order-lookup" : "orders";
+      else orderId = lastOpenedOrderId;
+    }
+    return {
+      savedAt: Date.now(),
+      view: view,
+      orderId: orderId,
+      scrollY: Math.round(window.scrollY || 0),
+      manage: {
+        type: manageInventoryBrowseType, category: manageInventoryBrowseCategory, recent: manageInventoryBrowseRecent,
+        recentDays: manageInventoryRecentDays, sort: manageInventorySortKey, search: manageInventorySearchQuery,
+      },
+      lookup: { type: setFigLookupType, query: setFigLookupActiveKey ? setFigLookupQuery : "" },
+      orderLookupQuery: orderLookupQuery,
+      sortRank: sortRankKey,
+      sortExpanded: Object.keys(sortExpanded).filter(function (id) { return sortExpanded[id]; }),
+    };
+  }
+
+  function saveUiSnapshot() {
+    // Not while the login screen is up (nothing real to remember), and not
+    // while a restore is still in flight (it would record the interim page).
+    if (!appStarted || uiRestoreInFlight) return;
+    try { window.localStorage.setItem(UI_SNAPSHOT_KEY, JSON.stringify(takeUiSnapshot())); } catch (e) { /* best-effort */ }
+  }
+
+  function readUiSnapshot() {
+    try {
+      var snap = JSON.parse(window.localStorage.getItem(UI_SNAPSHOT_KEY) || "null");
+      if (!snap || typeof snap !== "object" || Date.now() - snap.savedAt > UI_SNAPSHOT_MAX_AGE_MS) return null;
+      return snap;
+    } catch (e) { return null; }
+  }
+
+  // After the page's own content has had a moment to load, scroll back to
+  // where it was. Gives up after a few seconds, or the moment Ryan touches
+  // the screen, so it never fights him.
+  function restoreScrollPosition(y) {
+    if (!(y > 40)) return;
+    var tries = 0, cancelled = false;
+    var cancel = function () { cancelled = true; };
+    window.addEventListener("touchstart", cancel, { once: true, passive: true });
+    window.addEventListener("wheel", cancel, { once: true, passive: true });
+    var timer = setInterval(function () {
+      if (cancelled || ++tries > 30) { clearInterval(timer); return; }
+      if (document.documentElement.scrollHeight - window.innerHeight >= y) {
+        window.scrollTo(0, y);
+        clearInterval(timer);
+      }
+    }, 150);
+  }
+
+  function applyUiSnapshot(snap, ordersLoaded) {
+    var m = snap.manage || {};
+    if (m.type === null || typeof m.type === "string") manageInventoryBrowseType = m.type;
+    if (m.category === null || typeof m.category === "string") manageInventoryBrowseCategory = m.category;
+    manageInventoryBrowseRecent = !!m.recent;
+    if (m.recentDays === 15 || m.recentDays === 30) manageInventoryRecentDays = m.recentDays;
+    if (typeof m.sort === "string") manageInventorySortKey = m.sort;
+    if (typeof m.search === "string") manageInventorySearchQuery = m.search;
+    if (typeof snap.orderLookupQuery === "string") orderLookupQuery = snap.orderLookupQuery;
+    if (SORT_RANKS.some(function (r) { return r.key === snap.sortRank; })) sortRankKey = snap.sortRank;
+    (snap.sortExpanded || []).forEach(function (id) { sortExpanded[id] = true; });
+
+    var after = function () { restoreScrollPosition(snap.scrollY); };
+    switch (snap.view) {
+      case "order":
+        // The order list has to be loaded before one of its orders can open.
+        uiRestoreInFlight = true;
+        ordersLoaded.then(function () {
+          if (currentView === "orders" && snap.orderId) return openOrder(snap.orderId);
+        }).catch(function () { /* stay on the Orders list */ }).then(function () {
+          uiRestoreInFlight = false;
+          after();
+        });
+        break;
+      case "inventory": goToInventory(); break;
+      case "label-prep": goToLabelPrep(); break;
+      case "manage-inventory": manageInventoryCameFromSetFigLookup = false; goToManageInventory(); after(); break;
+      case "stats": goToStats(); after(); break;
+      case "order-lookup": goToOrderLookup(); after(); break;
+      case "wanted-list": goToWantedList(); after(); break;
+      case "sort-list": goToSortList(); after(); break;
+      case "set-fig-lookup":
+        if (snap.lookup && snap.lookup.query) {
+          setFigLookupType = snap.lookup.type === "SET" ? "SET" : "MINIFIG";
+          setFigLookupQuery = String(snap.lookup.query);
+          setFigLookupNavStack = [];
+          setFigLookupCameFromSort = false;
+          runSetFigLookup();
+        }
+        goToSetFigLookup();
+        after();
+        break;
+      default: after(); // the Orders list
+    }
+  }
+
+  window.addEventListener("pagehide", saveUiSnapshot);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") saveUiSnapshot();
+  });
 
   function resumeCurrentView() {
     if (currentView === "inventory") goToInventory();
