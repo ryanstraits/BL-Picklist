@@ -191,17 +191,28 @@
   /* Sub-nav lists every page in the current category (3 for Orders, 4 for
      Inventory), so it reads lighter/smaller than the two primary category
      buttons above it. */
-  /* flex-wrap, not the un-wrapped base row — Inventory's 4 buttons don't
-     fit one line at 390px, so this wraps to a second line (consistently,
-     on every Inventory sub-page, rather than overflowing or clipping). */
-  .topbar-row-subnav { margin-top: 8px; flex-wrap: wrap; row-gap: 6px; }
+  /* One line, always: Inventory has five buttons (two with count bubbles),
+     so the spacing is tight and tightens further on the narrowest phones
+     rather than letting the last button wrap onto a second line. */
+  .topbar-row-subnav { margin-top: 8px; flex-wrap: nowrap; gap: 6px; }
   .topbar-row-subnav .nav-tab-btn {
-    flex: none;
+    flex: 0 1 auto;
+    align-self: stretch; /* the bubble buttons are a hair taller — keep every button level */
+    white-space: nowrap;
     border: 1px solid var(--border);
     background: none;
     font-size: 12.5px;
-    padding: 5px 11px;
+    padding: 5px 9px;
     border-radius: 6px;
+  }
+  @media (max-width: 380px) {
+    .topbar-row-subnav { gap: 4px; }
+    .topbar-row-subnav .nav-tab-btn { font-size: 12px; padding: 5px 6px; }
+    .topbar-row-subnav .wanted-list-badge { margin-left: 3px; padding: 0 3px; }
+  }
+  @media (max-width: 340px) {
+    .topbar-row-subnav { gap: 3px; }
+    .topbar-row-subnav .nav-tab-btn { font-size: 11.5px; padding: 5px 4px; }
   }
   .topbar-row-subnav .nav-tab-btn:active { background: var(--surface-alt); }
   /* The page you're actually on stays in this row rather than vanishing
@@ -2046,7 +2057,7 @@
       <button class="nav-tab-btn" id="labelPrepBtn">Label Prep</button>
       <button class="nav-tab-btn" id="manageInventoryBtn">Manage</button>
       <button class="nav-tab-btn" id="setFigLookupBtn">Lookup</button>
-      <button class="nav-tab-btn" id="wantedListBtn">Wanted<span class="wanted-list-badge hidden" id="wantedListBadge">0</span></button>
+      <button class="nav-tab-btn" id="wantedListBtn">Want<span class="wanted-list-badge hidden" id="wantedListBadge">0</span></button>
       <button class="nav-tab-btn" id="sortListBtn">Sort<span class="wanted-list-badge hidden" id="sortListBadge">0</span></button>
       <button class="nav-tab-btn" id="addInventoryBtn">+ Add</button>
     </div>
