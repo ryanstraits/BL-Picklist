@@ -665,9 +665,13 @@ Token Secret as sensitive as an API key that can move money.
   re-ranked by ROI, profit or total value. Each set gets Ryan's spreadsheet
   ID — the set number without its "-1", then `-` and which copy he owns,
   then `_` and a two-letter theme code, e.g. `75342-3_SW` — from a
-  "Copy #" and "Theme code" box on the card (`SORT_THEME_CODES` holds the
-  suggested codes; new sets inherit the last-used theme and the next free
-  copy number, and the same set can be on the list more than once). A
+  "Copy #" and "Theme code" box on the card. `SORT_THEMES` holds Ryan's
+  spreadsheet codes (shown as suggestions); a new set gets the next free
+  copy number and a theme code guessed from its BrickLink category path
+  (`SORT_THEME_RULES`/`SORT_CITY_RULES`, best guesses from BrickLink's
+  category names), falling back to `GE` — and once a code is typed by
+  hand it's never overwritten by the guess. The same set can be on the
+  list more than once. A
   card warns if another set already has the same ID. Every rate and
   assumption (the three $/lb figures, skip threshold,
   box/manual premiums, quality floor, fig-condition factors) is editable

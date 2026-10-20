@@ -9406,9 +9406,55 @@
     { key: "value", label: "Total value" },
   ];
   var GRAMS_PER_LB = 453.592;
-  // Ryan's two-letter theme codes, as used in his spreadsheet — suggestions
-  // only (any two letters can be typed). Add the rest of his list here.
-  var SORT_THEME_CODES = ["SW"];
+  // Ryan's two-letter theme codes, as used in his spreadsheet (code → the
+  // spreadsheet themes sharing it). Suggestions only — any two letters can
+  // be typed. GE is the catch-all for anything not recognized.
+  var SORT_THEMES = [
+    ["DS", "Adventure Desert"],
+    ["GE", "Misc. General"],
+    ["LT", "Bulk Lot"],
+    ["KN", "Castle Knights / Castle Ninja"],
+    ["CA", "City Air"],
+    ["CC", "City Construction"],
+    ["CE", "City Emergency"],
+    ["CF", "City Fire"],
+    ["CH", "City House"],
+    ["CP", "City Police"],
+    ["CS", "City Sea"],
+    ["CI", "City Town"],
+    ["CT", "City Train"],
+    ["CV", "City Vehicle"],
+    ["HP", "Harry Potter"],
+    ["MV", "Marvel (Avengers, Dr Strange, Spiderman, Xmen)"],
+    ["ML", "MILS Plates"],
+    ["MF", "Minifig Lot"],
+    ["MO", "Modular"],
+    ["NJ", "Ninjago"],
+    ["PI", "Pirates"],
+    ["SE", "Sea Aqua"],
+    ["SP", "Space (Blacktron, Classic, Futuron, Ice, Police, Roboforce, Space, Spyrius, UFO, Unitron)"],
+    ["SW", "Star Wars"],
+    ["TE", "Technic (Classic, Model, Mon Jam)"],
+    ["TC", "Time Cruisers"],
+    ["WC", "Western Cowboys"],
+    ["WI", "Western Indians"],
+  ];
+  var SORT_FALLBACK_THEME = "GE";
+  // First match wins, tested against a set's whole BrickLink category path
+  // ("star wars > episode iv"). Best guesses from BrickLink's category
+  // names — wrong ones are just edited on the card.
+  var SORT_THEME_RULES = [
+    ["star wars", "SW"], ["harry potter", "HP"], ["ninjago", "NJ"], ["marvel", "MV"],
+    ["pirates", "PI"], ["time cruisers", "TC"], ["aquazone", "SE"],
+    ["indians", "WI"], ["western", "WC"], ["desert", "DS"],
+    ["technic", "TE"], ["modular", "MO"], ["castle", "KN"], ["space", "SP"],
+  ];
+  // Only consulted for paths under City/Town.
+  var SORT_CITY_RULES = [
+    ["airport", "CA"], ["fire", "CF"], ["police", "CP"], ["construction", "CC"],
+    ["harbor", "CS"], ["coast guard", "CS"], ["train", "CT"], ["railway", "CT"],
+    ["vehicle", "CV"], ["emergency", "CE"], ["hospital", "CE"], ["rescue", "CE"],
+  ];
 
   var sortSettings = null;
   var sortList = null; // newest first
@@ -9440,6 +9486,25 @@
     if (!sortIdComplete(e)) return false;
     var id = sortEntryId(e);
     return sortList.some(function (x) { return x !== e && sortIdComplete(x) && sortEntryId(x) === id; });
+  }
+  function sortCategoryPath(categoryId, cats) {
+    var names = [];
+    var id = categoryId;
+    for (var guard = 0; id && cats[id] && guard < 12; guard++) {
+      names.unshift(cats[id].name);
+      id = cats[id].parentId;
+    }
+    return names;
+  }
+  function sortGuessTheme(pathNames) {
+    var path = pathNames.join(" > ").toLowerCase();
+    var i;
+    for (i = 0; i < SORT_THEME_RULES.length; i++) if (path.indexOf(SORT_THEME_RULES[i][0]) !== -1) return SORT_THEME_RULES[i][1];
+    if (/\b(city|town)\b/.test(path)) {
+      for (i = 0; i < SORT_CITY_RULES.length; i++) if (path.indexOf(SORT_CITY_RULES[i][0]) !== -1) return SORT_CITY_RULES[i][1];
+      return "CI";
+    }
+    return SORT_FALLBACK_THEME;
   }
   function sortNextCopyNo(setNo) {
     var max = 0;
@@ -9684,8 +9749,20 @@
       var item = (r && r.item) || {};
       if (item.name) e.name = decodeHtmlEntities(item.name);
       e.setWeightG = item.weightG || 0;
+      e.categoryId = item.categoryId || 0;
       tick();
-      return fetchJSON("/api/item-subsets?type=SET&no=" + encodeURIComponent(e.setNo));
+      // Fill in the theme code from the set's BrickLink category — unless
+      // Ryan has already set one himself. A failed category load just
+      // leaves the GE fallback.
+      var themeStep = e.themeAuto && e.categoryId
+        ? getCategories().then(function (cats) {
+            if (e.themeAuto) e.theme = sortGuessTheme(sortCategoryPath(e.categoryId, cats));
+            sortList.forEach(function (x) { patchSortCard(x.id); });
+          }).catch(function () { /* keep the fallback */ })
+        : Promise.resolve();
+      return themeStep.then(function () {
+        return fetchJSON("/api/item-subsets?type=SET&no=" + encodeURIComponent(e.setNo));
+      });
     }).then(function (data) {
       var old = {};
       (e.figs || []).forEach(function (f) { old[f.itemNo] = f; });
@@ -9772,7 +9849,7 @@
       var e = {
         id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         setNo: setNo, name: knownName ? decodeHtmlEntities(knownName) : "", addedAt: new Date().toISOString(),
-        copyNo: sortNextCopyNo(setNo), theme: (sortList[0] && sortList[0].theme) || SORT_THEME_CODES[0] || "",
+        copyNo: sortNextCopyNo(setNo), theme: SORT_FALLBACK_THEME, themeAuto: true,
         paid: null, completeness: 100, quality: 7, box: 0, manual: 0,
         figs: [], setSoldAvg: 0, setSoldCount: 0, setStockAvg: 0, setWeightG: 0,
         status: "loading", error: "", progress: { done: 0, total: 3 },
@@ -9972,12 +10049,15 @@
       + '</details>';
   }
 
-  // Suggestions for the theme-code box: the known list plus any code
-  // already used on this list.
+  // Suggestions for the theme-code box: Ryan's codes (labelled with their
+  // spreadsheet themes) plus any other code already used on this list.
   function sortThemeDatalistHtml() {
-    var codes = SORT_THEME_CODES.slice();
-    (sortList || []).forEach(function (x) { if (x.theme && codes.indexOf(x.theme) === -1) codes.push(x.theme); });
-    return '<datalist id="sortThemeCodes">' + codes.map(function (c) { return '<option value="' + escapeHtml(c) + '">'; }).join("") + '</datalist>';
+    var codes = SORT_THEMES.map(function (t) { return t[0]; });
+    var opts = SORT_THEMES.map(function (t) { return '<option value="' + escapeHtml(t[0]) + '" label="' + escapeHtml(t[1]) + '">'; });
+    (sortList || []).forEach(function (x) {
+      if (x.theme && codes.indexOf(x.theme) === -1) { codes.push(x.theme); opts.push('<option value="' + escapeHtml(x.theme) + '">'); }
+    });
+    return '<datalist id="sortThemeCodes">' + opts.join("") + '</datalist>';
   }
 
   function renderSortView() {
@@ -10064,6 +10144,7 @@
           el.value = e.copyNo === null ? "" : e.copyNo;
         } else if (field === "theme") {
           e.theme = el.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+          e.themeAuto = false; // a hand-picked code is never overwritten by the category guess
           el.value = e.theme;
         } else if (field === "completeness") {
           e.completeness = sortClamp(Math.round(sortNum(el.value)), 0, 100);
