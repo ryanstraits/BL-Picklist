@@ -10524,7 +10524,10 @@
       // explicit call here, not just from the goTo* functions, to be
       // correct on this first load.
       setTopbarNav("orders");
-      restoreSnapshot = readUiSnapshot();
+      // Opening the site with ?fresh skips (and forgets) the saved position —
+      // an escape hatch should restoring ever misbehave.
+      if (/[?&]fresh\b/.test(window.location.search)) clearUiSnapshot();
+      else restoreSnapshot = readUiSnapshot();
     }
     loadState();
     var ordersLoaded = loadOrders();
@@ -10537,7 +10540,16 @@
     if (restoreSnapshot) {
       var snap = restoreSnapshot;
       restoreSnapshot = null;
-      applyUiSnapshot(snap, ordersLoaded);
+      try {
+        applyUiSnapshot(snap, ordersLoaded);
+      } catch (err) {
+        // Whatever the saved position was, it can't be restored: forget it
+        // and land on the Orders list rather than a half-built page.
+        console.error("Couldn't restore the saved position:", err);
+        uiRestoreInFlight = false;
+        clearUiSnapshot();
+        goToOrders();
+      }
     }
   }
 
@@ -10590,6 +10602,10 @@
     // while a restore is still in flight (it would record the interim page).
     if (!appStarted || uiRestoreInFlight) return;
     try { window.localStorage.setItem(UI_SNAPSHOT_KEY, JSON.stringify(takeUiSnapshot())); } catch (e) { /* best-effort */ }
+  }
+
+  function clearUiSnapshot() {
+    try { window.localStorage.removeItem(UI_SNAPSHOT_KEY); } catch (e) { /* nothing to clear */ }
   }
 
   function readUiSnapshot() {
