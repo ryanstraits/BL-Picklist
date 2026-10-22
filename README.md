@@ -653,13 +653,14 @@ Token Secret as sensitive as an API key that can move money.
   buy a missing fig). Per set Ryan enters what he paid, completeness
   (% of the non-fig pieces), quality 0-10, box 0-10 and manual 0-10
   (0 = not present), and for each fig how many he has and their
-  condition. The card then compares three routes — sell as a set (buying
+  condition. The card then compares two routes — sell as a set (buying
   missing figs unless they'd cost more than the skip threshold's share of
-  the set's value, in which case it's sold without them), part out (figs
-  sold singly, never worth less than their weight at the fig-parts $/lb,
-  plus leftover non-fig weight at the general-parts $/lb), and dump to
-  bulk (whole physical set at the blended $/lb) — picks the highest
-  profit, and shows value, profit and ROI. Selling fees and time spent
+  the set's value, in which case it's sold without them) and figs + bulk
+  (figs sold singly, never worth less than their weight at the fig-parts
+  $/lb, plus the leftover non-fig weight to bulk: general parts at the
+  general $/lb, and a "loose accessories per fig" allowance, 4 g by default,
+  at the fig-parts $/lb, since the set's weight has no per-part breakdown) —
+  picks the highest profit, and shows value, profit and ROI. Selling fees and time spent
   are deliberately not modeled (fees hit every route alike; it's a hobby,
   so time is Ryan's own call). The list is newest first and can be
   re-ranked by ROI, profit or total value. Each set gets Ryan's spreadsheet
@@ -696,6 +697,19 @@ Token Secret as sensitive as an API key that can move money.
   empty list, since the next save would then overwrite the real one.
   Defaults (skip 35%, box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
+  Each card also has a **Decision** dropdown (Sell as set / Figs + bulk) —
+  Ryan's call, separate from the app's recommendation chip — and the page
+  ends with lists built from those decisions: *Ready to sell* (Sell as set,
+  every fig checked off), *Figs to buy* (every missing fig across the
+  Sell-as-set sets, totaled, with the low-25 average price and which sets;
+  "Add all to Wanted list" sends them to the Wanted list once), *Pull from
+  your inventory* (own copies that fill those gaps — a stock room copy first,
+  then a live listing if it beats buying, with one pool of his copies shared
+  across all sets), and *Sets going to bulk* (the figs checked off, to list
+  individually, plus the leftover weight in lbs split general vs fig parts,
+  with a total). "Email these lists" opens a plain-text email of all four.
+  A fig row's "In your inventory" line is a link into Manage Inventory
+  searched on that fig, with a "Sort List" back button.
 - **Inventory quantity writes (fixed Oct 20, 2026)** — on BrickLink's Update
   Inventory call, `quantity` is a *difference to add* (negative to
   subtract), not the new total; both client libraries say so. From Oct 9
