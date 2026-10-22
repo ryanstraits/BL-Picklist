@@ -681,6 +681,8 @@
     font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--info); cursor: pointer;
   }
   .sort-fig-row.sort-fig-all { background: var(--success-bg); }
+  .sort-fig-stock { margin-top: 2px; }
+  .sort-fig-stock.have { color: var(--success); font-weight: 600; }
   .sort-fig-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
   .sort-checks { display: flex; flex-wrap: wrap; gap: 8px; }
   /* The picklist's round green checkmark, one per copy of a fig. */
@@ -10064,6 +10066,7 @@
     }).then(function () {
       e.status = "ready";
       e.fetchedAt = new Date().toISOString();
+      if (!manageInventoryRows) refreshSortFigStock();
       if (warnings) e.error = warnings + " price lookup" + (warnings === 1 ? "" : "s") + " failed — tap Refresh prices to retry.";
       // A failed lookup shouldn't be cached as a real zero.
       (e.figs || []).forEach(function (f) { if (warnings && !(f.soldAvg > 0) && !(f.stockMin > 0)) delete sortFigCache[f.itemNo]; });
@@ -10166,6 +10169,27 @@
       + '<div class="sort-flag">Profit = sells for − fig purchases − paid. No fees or time.</div>';
   }
 
+  // Whether this fig is already in Ryan's own BrickLink inventory, and at
+  // what price(s) — the same matching and wording the Lookup page uses
+  // (quantity on hand, each distinct listed price, any stock room). Blank
+  // until the inventory has loaded; refreshSortFigStock() fills it in then.
+  function sortFigStockHtml(f) {
+    if (!manageInventoryRows) return "";
+    var m = setFigLookupMatch({ itemNo: f.itemNo, colorId: 0, type: "MINIFIG" });
+    if (!m.haveQty) return '<div class="item-color sort-fig-stock">Not in your inventory</div>';
+    return '<div class="item-color sort-fig-stock have">In your inventory: ×' + m.haveQty + ' · '
+      + escapeHtml(inventoryStockPriceSummary(f.itemNo, 0)) + setFigLookupStockRoomHtml(m.roomQtys) + '</div>';
+  }
+
+  // Loads the inventory (once per session — Manage Inventory and Lookup share
+  // it) and redraws the fig lists of any open cards with the stock lines.
+  function refreshSortFigStock() {
+    ensureManageInventoryLoaded().then(function () {
+      if (currentView !== "sort-list") return;
+      (sortList || []).forEach(function (e) { patchSortCard(e.id, true); });
+    }).catch(function () { /* the fig rows just show no stock line */ });
+  }
+
   function sortFigChecksHtml(f) {
     var qty = f.qty || 1;
     var have = sortClamp(f.have || 0, 0, qty);
@@ -10189,6 +10213,7 @@
       + '<div class="item-line1"><span class="item-no mono">' + escapeHtml(f.itemNo) + '</span><span class="item-line1-right">×' + qty + '</span></div>'
       + '<div class="item-name">' + escapeHtml(f.name || "") + '</div>'
       + '<div class="item-color">' + escapeHtml(priceTxt) + '</div>'
+      + sortFigStockHtml(f)
       + '<div class="sort-fig-controls">'
       + '<div class="sort-checks">' + sortFigChecksHtml(f) + '</div>'
       + '<select class="sort-fig-cond" data-fig="' + escapeHtml(f.itemNo) + '" data-figf="cond" aria-label="Condition">'
@@ -10334,6 +10359,7 @@
         + '<div id="sortListWrap"></div>';
       renderSortList();
       reguessSortThemes();
+      refreshSortFigStock();
     }).catch(function () {
       if (currentView !== "sort-list") return;
       sortListView.innerHTML = '<div id="sortListWrap"></div>';
@@ -10395,6 +10421,7 @@
         if (sortExpanded[e.id]) flushSortList(); // Save: write immediately, then close the card
         sortExpanded[e.id] = !sortExpanded[e.id];
         renderSortList();
+        if (sortExpanded[e.id] && !manageInventoryRows) refreshSortFigStock();
       } else if (act === "refresh") {
         loadSortEntryData(e);
       } else if (act === "remove") {
