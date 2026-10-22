@@ -681,7 +681,10 @@ Token Secret as sensitive as an API key that can move money.
   card warns if another set already has the same ID. Every rate and
   assumption (the three $/lb figures, skip threshold,
   box/manual premiums, quality floor, fig-condition factors) is editable
-  in the page's "Rates & assumptions" block. The list and settings are
+  in the page's "Rates & assumptions" block. Each fig row also says whether
+  that fig is already in Ryan's own BrickLink inventory and at what price(s)
+  (same matching and wording as Lookup: quantity on hand, each distinct listed
+  price, any stock room), or "Not in your inventory". The list and settings are
   stored in the same Blobs store as everything else under the pick-state
   keys `sortList` and `sortSettings`; a failed load never falls back to an
   empty list, since the next save would then overwrite the real one.
