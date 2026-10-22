@@ -681,6 +681,8 @@
     font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--info); cursor: pointer;
   }
   .sort-fig-row.sort-fig-all { background: var(--success-bg); }
+  .sort-list-tools { display: flex; align-items: center; gap: 8px; }
+  .sort-refresh-all { font-size: 12.5px; padding: 6px 10px; }
   .sort-fig-stock { margin-top: 2px; }
   .sort-fig-stock.have { color: var(--success); font-weight: 600; }
   .sort-fig-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
@@ -9632,7 +9634,7 @@
   var sortSaveTimer = null;
   var sortSavePending = false; // an edit is waiting out the short save delay
   var sortSaveStatus = "";
-  var sortFigCache = {}; // minifig itemNo -> { name, weightG, soldAvg, soldCount, stockMin } — this page load only
+  var sortFigCache = {}; // minifig itemNo -> { name, weightG, soldAvg, soldCount, stockMin, stockAvg25, stockN } — this page load only
 
   // Ryan's spreadsheet ID for an owned set: the set number without its "-1"
   // variant, then "-" and which copy he owns (1st, 2nd, ...), then "_" and
@@ -9838,13 +9840,53 @@
     return (cond === "poor" ? st.condPoor : cond === "fair" ? st.condFair : st.condGood) / 100;
   }
 
+  // The copies of a fig Ryan already owns in his own BrickLink inventory:
+  // how many sit in a stock room (not for sale, so pulling one gives up
+  // nothing) and the price of each live listing (ascending, after any sale
+  // percentage). One entry per copy, capped so a huge lot can't balloon this.
+  function sortOwnFigUnits(itemNo) {
+    var out = { free: 0, live: [] };
+    if (!manageInventoryRows) return out;
+    manageInventoryRows.forEach(function (r) {
+      if (r.type !== "MINIFIG" || r.itemNo !== itemNo || r.markedForDelete) return;
+      var qty = parseInt(r.quantity, 10) || 0;
+      if (qty <= 0) return;
+      if (r.stockRoomId || (r.orig && r.orig.stockRoomId)) { out.free += qty; return; }
+      var price = parseFloat(r.unitPrice) || 0;
+      var rate = (r.orig && r.orig.saleRate) || 0;
+      if (rate > 0) price = price * (1 - rate / 100);
+      for (var i = 0; i < Math.min(qty, 20); i++) out.live.push(price);
+    });
+    out.live.sort(function (a, b) { return a - b; });
+    return out;
+  }
+
+  // What it takes to fill `miss` empty spots for one fig. Each spot costs the
+  // cheaper of buying one on BrickLink — the average of its 25 cheapest
+  // current listings (not just the single cheapest) — and using one of
+  // Ryan's own: a live listing costs what it would have sold for (the sale
+  // he gives up — his price, not what he paid), and a stock room copy costs
+  // nothing since it isn't on the market. Stock room copies go first.
+  function sortMissingFigCost(f, miss, unit) {
+    var buy = f.stockAvg25 > 0 ? f.stockAvg25 : (f.stockMin > 0 ? f.stockMin : unit);
+    var own = sortOwnFigUnits(f.itemNo);
+    var total = 0, usedLive = 0, usedFree = 0;
+    for (var i = 0; i < miss; i++) {
+      if (usedFree < own.free) { usedFree++; continue; }
+      var livePrice = own.live[usedLive];
+      if (livePrice !== undefined && !(buy > 0 && buy < livePrice)) { total += livePrice; usedLive++; }
+      else total += buy;
+    }
+    return { total: total, ownLive: usedLive, ownFree: usedFree };
+  }
+
   function analyzeSortEntry(e, st) {
     var lb = function (g) { return g / GRAMS_PER_LB; };
     var figs = e.figs || [];
     var setValue = e.setSoldAvg > 0 ? e.setSoldAvg : (e.setStockAvg > 0 ? e.setStockAvg : 0);
     var figsAll = 0, figsWeightG = 0;
     var ownedValue = 0, ownedWeightG = 0, ownedCount = 0, partOutFigs = 0;
-    var missingCount = 0, missingValue = 0, missingBuy = 0, missingNoPrice = 0;
+    var missingCount = 0, missingValue = 0, missingBuy = 0, missingNoPrice = 0, ownLiveUsed = 0, ownFreeUsed = 0;
     figs.forEach(function (f) {
       var unit = sortFigUnitValue(f);
       var qty = f.qty || 1;
@@ -9861,7 +9903,10 @@
       if (miss) {
         missingCount += miss;
         missingValue += miss * unit;
-        missingBuy += miss * (f.stockMin > 0 ? f.stockMin : unit);
+        var fill = sortMissingFigCost(f, miss, unit);
+        missingBuy += fill.total;
+        ownLiveUsed += fill.ownLive;
+        ownFreeUsed += fill.ownFree;
         if (!(unit > 0)) missingNoPrice += miss;
       }
     });
@@ -9920,7 +9965,7 @@
     if (e.status === "ready" && !hasData) flags.push("No price data.");
     if (!paidKnown) flags.push("Add Paid for profit & ROI.");
     if (missingCount > 0 && !buyMissing) flags.push("Missing figs " + Math.round(shareMissing * 100) + "% of set (limit " + st.skipPct + "%) — skip.");
-    if (missingCount > 0 && buyMissing) flags.push("Buy " + missingCount + " fig" + (missingCount === 1 ? "" : "s") + ": " + sortMoney(missingBuy) + " (" + Math.round(shareMissing * 100) + "% of set).");
+    if (missingCount > 0 && buyMissing) flags.push("Complete figs: " + sortMoney(missingBuy) + " (" + Math.round(shareMissing * 100) + "% of set)" + (ownLiveUsed + ownFreeUsed ? " · " + (ownLiveUsed + ownFreeUsed) + " from your stock" : "") + ".");
     if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? "" : "s") + ": no price.");
     if (ownedValue > brickAdj && ownedCount > 0) flags.push("Figs > Set");
     if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No set weight — bulk $0.");
@@ -10015,7 +10060,7 @@
         byNo[x.itemNo] = {
           itemNo: x.itemNo, name: decodeHtmlEntities(x.name || ""), qty: x.quantity || 1,
           have: prev.have || 0, cond: prev.cond || "good",
-          soldAvg: 0, soldCount: 0, stockMin: 0, weightG: 0,
+          soldAvg: 0, soldCount: 0, stockMin: 0, stockAvg25: 0, stockN: 0, weightG: 0,
         };
       });
       e.figs = Object.keys(byNo).map(function (k) { return byNo[k]; });
@@ -10037,11 +10082,11 @@
       e.figs.forEach(function (f) {
         var cached = sortFigCache[f.itemNo];
         if (cached) {
-          f.soldAvg = cached.soldAvg; f.soldCount = cached.soldCount; f.stockMin = cached.stockMin; f.weightG = cached.weightG;
+          f.soldAvg = cached.soldAvg; f.soldCount = cached.soldCount; f.stockMin = cached.stockMin; f.stockAvg25 = cached.stockAvg25; f.stockN = cached.stockN; f.weightG = cached.weightG;
           if (!f.name && cached.name) f.name = cached.name;
           return;
         }
-        var c = sortFigCache[f.itemNo] = { name: "", weightG: 0, soldAvg: 0, soldCount: 0, stockMin: 0 };
+        var c = sortFigCache[f.itemNo] = { name: "", weightG: 0, soldAvg: 0, soldCount: 0, stockMin: 0, stockAvg25: 0, stockN: 0 };
         tasks.push(function () {
           return fetchJSON("/api/item-lookup?type=MINIFIG&no=" + encodeURIComponent(f.itemNo)).then(function (r) {
             c.weightG = (r.item && r.item.weightG) || 0;
@@ -10057,7 +10102,13 @@
         tasks.push(function () {
           return sortPriceFetch("MINIFIG", f.itemNo, "stock").then(function (p) {
             c.stockMin = Number(p.minPrice) || 0;
-          }).catch(function () { warnings++; }).then(function () { f.stockMin = c.stockMin; tick(); });
+            // The server already returns just the 25 cheapest current US used
+            // listings, cheapest first — their plain average is what it would
+            // realistically cost to buy one.
+            var prices = (p.listings || []).map(function (l) { return Number(l.unitPrice); }).filter(function (n) { return n > 0; });
+            c.stockN = prices.length;
+            c.stockAvg25 = prices.length ? prices.reduce(function (a, b) { return a + b; }, 0) / prices.length : 0;
+          }).catch(function () { warnings++; }).then(function () { f.stockMin = c.stockMin; f.stockAvg25 = c.stockAvg25; f.stockN = c.stockN; tick(); });
         });
       });
       e.progress.total = e.progress.done + tasks.length;
@@ -10069,7 +10120,7 @@
       if (!manageInventoryRows) refreshSortFigStock();
       if (warnings) e.error = warnings + " price lookup" + (warnings === 1 ? "" : "s") + " failed — tap Refresh prices to retry.";
       // A failed lookup shouldn't be cached as a real zero.
-      (e.figs || []).forEach(function (f) { if (warnings && !(f.soldAvg > 0) && !(f.stockMin > 0)) delete sortFigCache[f.itemNo]; });
+      (e.figs || []).forEach(function (f) { if (warnings && !(f.soldAvg > 0) && !(f.stockMin > 0) && !(f.stockAvg25 > 0)) delete sortFigCache[f.itemNo]; });
       saveSortList();
       patchSortCard(e.id, true);
     }).catch(function (err) {
@@ -10162,11 +10213,11 @@
         + '<td>' + (a.paidKnown ? sortMoney(r.profit) : "—") + '</td>'
         + '</tr>';
     }).join("");
-    return '<table class="sort-math-table"><thead><tr><th>Route</th><th>Sells for</th><th>Buy figs</th><th>Profit</th></tr></thead><tbody>' + rows + '</tbody></table>'
+    return '<table class="sort-math-table"><thead><tr><th>Route</th><th>Sells for</th><th>Fig cost</th><th>Profit</th></tr></thead><tbody>' + rows + '</tbody></table>'
       + '<div class="sort-flag">Set ' + sortMoney(p.setValue) + (e.setSoldCount ? ' (' + e.setSoldCount + ' sold)' : '')
       + ' = figs ' + sortMoney(p.figsAll) + ' + rest ' + sortMoney(p.brickFull)
       + '. Rest adjusted (condition ×' + p.qualityF.toFixed(2) + ', box/manual ×' + p.premium.toFixed(2) + ') = ' + sortMoney(p.brickAdj) + '.</div>'
-      + '<div class="sort-flag">Profit = sells for − fig purchases − paid. No fees or time.</div>';
+      + '<div class="sort-flag">Profit = sells for − fig cost − paid. Fig cost = the cheaper of buying (avg of the 25 cheapest listings) or one of yours (live listing = the sale you give up, stock room = free). No fees or time.</div>';
   }
 
   // Whether this fig is already in Ryan's own BrickLink inventory, and at
@@ -10205,7 +10256,7 @@
     var unit = sortFigUnitValue(f);
     var priceTxt = unit > 0
       ? (f.soldAvg > 0 ? 'sold avg ' + sortMoney(f.soldAvg) + (f.soldCount ? ' (' + f.soldCount + ')' : '') : 'no sales')
-        + (f.stockMin > 0 ? ' · cheapest ' + sortMoney(f.stockMin) : '')
+        + (f.stockAvg25 > 0 ? ' · low-' + f.stockN + ' avg ' + sortMoney(f.stockAvg25) : (f.stockMin > 0 ? ' · cheapest ' + sortMoney(f.stockMin) : ''))
       : 'no price data';
     return '<div class="item-row sort-fig-row' + ((f.have || 0) >= qty ? ' sort-fig-all' : '') + '" data-fig="' + escapeHtml(f.itemNo) + '">'
       + '<div class="item-thumb">' + thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" }) + '</div>'
@@ -10267,7 +10318,6 @@
       + body
       + '<div class="sort-card-actions">'
       + (failed ? '' : '<button type="button" class="reset-btn" data-act="toggle" data-id="' + escapeHtml(e.id) + '">' + (expanded ? "Save" : "Edit") + '</button>')
-      + '<button type="button" class="reset-btn" data-act="refresh" data-id="' + escapeHtml(e.id) + '"' + (e.status === "loading" ? ' disabled' : '') + '>Refresh prices</button>'
       + '<button type="button" class="delete-row-btn" data-act="remove" data-id="' + escapeHtml(e.id) + '">Remove</button>'
       + '</div>'
       + '</div>';
@@ -10296,8 +10346,6 @@
       figsEl.innerHTML = sortFigsHtml(e);
       wireThumbLinks(figsEl);
     }
-    var refreshBtn = card.querySelector('[data-act="refresh"]');
-    if (refreshBtn) refreshBtn.disabled = e.status === "loading";
   }
 
   function renderSortList() {
@@ -10313,11 +10361,43 @@
       return;
     }
     wrap.innerHTML = '<div class="inventory-summary-row"><span>' + sortList.length + ' set' + (sortList.length === 1 ? '' : 's') + '</span>'
+      + '<span class="sort-list-tools"><button type="button" class="reset-btn sort-refresh-all" id="sortRefreshAllBtn">Refresh prices</button>'
       + '<select class="manage-inventory-sort-select" id="sortRankSelect">'
       + SORT_RANKS.map(function (r) { return '<option value="' + r.key + '"' + (r.key === sortRankKey ? ' selected' : '') + '>' + (r.key === "newest" ? r.label : "Rank by " + r.label) + '</option>'; }).join("")
-      + '</select></div>'
+      + '</select></span></div>'
       + sortedSortList().map(sortCardHtml).join("");
     wireThumbLinks(wrap);
+    updateSortRefreshAllBtn();
+  }
+
+  // The top-of-list Refresh prices button: re-fetches every set's prices, one
+  // set at a time (each already makes a batch of BrickLink calls), starting
+  // from a clean slate so the fig prices really are fresh, not this page
+  // load's remembered ones.
+  var sortRefreshAll = null; // { done, total } while running
+  function updateSortRefreshAllBtn() {
+    var btn = document.getElementById("sortRefreshAllBtn");
+    if (!btn) return;
+    btn.disabled = !!sortRefreshAll;
+    btn.textContent = sortRefreshAll ? "Refreshing " + sortRefreshAll.done + "/" + sortRefreshAll.total + "…" : "Refresh prices";
+  }
+  function refreshAllSortPrices() {
+    if (sortRefreshAll || !sortList || !sortList.length) return;
+    var entries = sortList.filter(function (e) { return e.status !== "loading"; });
+    if (!entries.length) return;
+    sortFigCache = {};
+    sortRefreshAll = { done: 0, total: entries.length };
+    updateSortRefreshAllBtn();
+    entries.reduce(function (chain, e) {
+      return chain.then(function () { return loadSortEntryData(e); }).then(function () {
+        sortRefreshAll.done++;
+        updateSortRefreshAllBtn();
+      });
+    }, Promise.resolve()).catch(function () { /* each set records its own failure */ }).then(function () {
+      sortRefreshAll = null;
+      updateSortRefreshAllBtn();
+      renderSortList(); // settled: re-sorts if a price-based ranking is on
+    });
   }
 
   function sortSettingsHtml() {
@@ -10401,6 +10481,7 @@
       var t = ev.target.closest("button");
       if (!t) return;
       if (t.id === "sortAddBtn") { handleSortAdd(); return; }
+      if (t.id === "sortRefreshAllBtn") { refreshAllSortPrices(); return; }
       if (t.id === "sortRetryBtn") { sortLoadError = null; renderSortView(); return; }
       if (t.classList.contains("sort-check")) { handleSortFigCheck(t); return; }
       var act = t.getAttribute("data-act");
@@ -10422,8 +10503,6 @@
         sortExpanded[e.id] = !sortExpanded[e.id];
         renderSortList();
         if (sortExpanded[e.id] && !manageInventoryRows) refreshSortFigStock();
-      } else if (act === "refresh") {
-        loadSortEntryData(e);
       } else if (act === "remove") {
         if (!window.confirm("Remove " + (sortIdComplete(e) ? sortEntryId(e) : e.setNo) + (e.name ? " " + e.name : "") + " from your sort list?")) return;
         sortList = sortList.filter(function (x) { return x.id !== e.id; });
