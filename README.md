@@ -709,7 +709,20 @@ Token Secret as sensitive as an API key that can move money.
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
   A fig row's "In your inventory" line is a link into Manage Inventory
-  searched on that fig, with a "Sort List" back button.
+  searched on that fig, with a "Sort List" back button. Two buttons act on
+  the lists, both behind a confirmation: *Move live ones to stock room…*
+  (pick Stock Room A/B/C) lists exactly what will change first — a live
+  lot taken whole just gets its stock room set (`inventory-update`,
+  `quantityChange` 0); one taken in part is split: the live lot's quantity is
+  lowered first (so a failure can never list the same figs twice), then a new
+  stock room listing with the same price, condition and notes is created
+  (`inventory-create`). It refuses while Manage Inventory has unsaved edits
+  (the inventory is reloaded afterwards) and reports each lot's outcome,
+  including a lowered lot whose stock room listing failed. *Send figs to Add
+  Inventory…* puts the checked-off figs of the Figs + bulk sets into Add
+  Inventory as Used minifig rows (priced from the fig's market value) to
+  review and submit there — nothing reaches BrickLink until then, and figs
+  already handed over aren't added twice.
 - **Inventory quantity writes (fixed Oct 20, 2026)** — on BrickLink's Update
   Inventory call, `quantity` is a *difference to add* (negative to
   subtract), not the new total; both client libraries say so. From Oct 9

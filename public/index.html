@@ -717,6 +717,7 @@
   .sort-out-row { padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
   .sort-out-main { display: flex; justify-content: space-between; gap: 10px; }
   .sort-out-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .sort-out-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
   .sort-out-btn { display: inline-block; margin-top: 10px; text-decoration: none; }
   .sort-settings { margin-top: 12px; }
   .sort-settings summary { cursor: pointer; font-size: 13.5px; font-weight: 600; }
@@ -10438,7 +10439,7 @@
         figs.forEach(function (f) {
           var have = sortClamp(f.have || 0, 0, f.qty || 1);
           if (!have) return;
-          listed.push({ itemNo: f.itemNo, name: f.name || "", qty: have, cond: f.cond || "good", value: sortFigUnitValue(f) * sortCondFactor(f.cond, sortSettings) });
+          listed.push({ itemNo: f.itemNo, name: f.name || "", qty: have, cond: f.cond || "good", unit: sortFigUnitValue(f), value: sortFigUnitValue(f) * sortCondFactor(f.cond, sortSettings) });
         });
         plan.bulk.push({
           label: label, name: e.name || "", figs: listed,
@@ -10499,6 +10500,9 @@
     return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(sortPlanText(plan));
   }
 
+  var SORT_STOCK_ROOMS = ["A", "B", "C"];
+  var sortStockRoom = "A";
+  var sortMoveBusy = false;
   var sortBuyAddedSig = "";
   function sortBuySig(plan) {
     return plan.buy.map(function (r) { return r.itemNo + ":" + r.qty; }).join(",");
@@ -10542,6 +10546,11 @@
       if (r.free) bits.push(r.free + ' already in stock room');
       return sortOutRow('<span class="mono">' + escapeHtml(r.itemNo) + '</span> ' + escapeHtml(r.name), "", escapeHtml(bits.join(' · ')) + ' · for ' + escapeHtml(sortSetsText(r.sets)));
     }).join("") : '<div class="sort-out-sub">None.</div>';
+    if (plan.pull.some(function (r) { return r.live.length; })) {
+      html += '<div class="sort-out-actions"><select class="manage-inventory-sort-select" id="sortStockRoomSelect" aria-label="Stock room">'
+        + SORT_STOCK_ROOMS.map(function (l) { return '<option value="' + l + '"' + (l === sortStockRoom ? ' selected' : '') + '>Stock Room ' + l + '</option>'; }).join("")
+        + '</select><button type="button" class="reset-btn" id="sortMoveBtn"' + (sortMoveBusy ? ' disabled' : '') + '>' + (sortMoveBusy ? 'Moving…' : 'Move live ones to stock room…') + '</button></div>';
+    }
     // Sets going to bulk
     var gen = 0, fp = 0;
     plan.bulk.forEach(function (b) { gen += b.generalLb; fp += b.figPartsLb; });
@@ -10555,6 +10564,9 @@
         + figLines + '</div>';
     }).join("") + '<div class="sort-out-row"><div class="sort-out-main"><span>Total to bulk</span><b>' + sortLbs(gen) + ' general · ' + sortLbs(fp) + ' fig parts</b></div></div>'
       : '<div class="sort-out-sub">None.</div>';
+    if (plan.bulk.some(function (b) { return b.figs.length; })) {
+      html += '<button type="button" class="reset-btn sort-out-btn" id="sortToInventoryBtn">Send figs to Add Inventory…</button> ';
+    }
     html += '<a class="reset-btn sort-out-btn" id="sortEmailBtn" href="' + escapeHtml(sortPlanEmailHref(plan)) + '">Email these lists</a>';
     html += '</div>';
     return html;
@@ -10571,6 +10583,136 @@
   function scheduleSortOutputs() {
     clearTimeout(sortOutputsTimer);
     sortOutputsTimer = setTimeout(renderSortOutputs, 60);
+  }
+
+  // Which of Ryan's live fig lots would be touched to pull the figs the plan
+  // promises from his own listings: cheapest (after any sale %) first, the
+  // same order the per-set math prices them in. A lot taken whole just flips
+  // into the stock room; a lot taken in part is split — its quantity drops
+  // and a new stock room listing holds the pulled copies.
+  function sortMovePlan(plan, room) {
+    var steps = [];
+    if (!manageInventoryRows) return { steps: steps, problem: "Your inventory hasn’t loaded yet — try again in a moment." };
+    if (manageInventoryRows.some(isManageInventoryRowDirty)) {
+      return { steps: steps, problem: "You have unsaved edits in Manage Inventory. Save or cancel them there first." };
+    }
+    plan.pull.forEach(function (r) {
+      var need = r.live.length;
+      if (!need) return;
+      var lots = manageInventoryRows.filter(function (x) {
+        return x.type === "MINIFIG" && x.itemNo === r.itemNo && !x.markedForDelete && !saleRowInStockRoom(x) && (parseInt(x.quantity, 10) || 0) > 0;
+      }).sort(function (a, b) {
+        var pa = (parseFloat(a.unitPrice) || 0) * (1 - (a.orig.saleRate || 0) / 100);
+        var pb = (parseFloat(b.unitPrice) || 0) * (1 - (b.orig.saleRate || 0) / 100);
+        return pa - pb;
+      });
+      lots.forEach(function (lot) {
+        if (need <= 0) return;
+        var qty = parseInt(lot.quantity, 10) || 0;
+        var take = Math.min(qty, need);
+        need -= take;
+        steps.push({ row: lot, itemNo: r.itemNo, name: r.name, take: take, whole: take === qty });
+      });
+    });
+    var bad = steps.filter(function (st) { return !st.row.inventoryId; })[0];
+    if (bad) return { steps: [], problem: bad.itemNo + " has a listing with no BrickLink id, so it can’t be changed from here." };
+    return { steps: steps };
+  }
+
+  function sortMoveStepText(st, room) {
+    var price = sortMoney(parseFloat(st.row.unitPrice) || 0);
+    var qty = parseInt(st.row.quantity, 10) || 0;
+    return st.itemNo + " " + st.name + " — "
+      + (st.whole
+        ? "whole listing ×" + qty + " at " + price + " goes to Stock Room " + room
+        : "×" + st.take + " of your ×" + qty + " at " + price + ": live listing drops to ×" + (qty - st.take) + ", new Stock Room " + room + " listing ×" + st.take);
+  }
+
+  function handleSortMoveToStock() {
+    if (sortMoveBusy) return;
+    var room = sortStockRoom;
+    var mv = sortMovePlan(sortPlan(), room);
+    if (mv.problem) { window.alert(mv.problem); return; }
+    if (!mv.steps.length) { window.alert("Nothing live to move."); return; }
+    var ok = window.confirm("This changes your live BrickLink listings:\n\n"
+      + mv.steps.map(function (st) { return "• " + sortMoveStepText(st, room); }).join("\n")
+      + "\n\nMove them?");
+    if (!ok) return;
+    sortMoveBusy = true;
+    renderSortOutputs();
+    var report = [];
+    function failed(res) { return !res || !res.results || !res.results[0] || !res.results[0].success; }
+    function why(res, err) { return err ? err.message : ((res && res.results && res.results[0] && res.results[0].error) || "no result from BrickLink"); }
+    mv.steps.reduce(function (chain, st) {
+      return chain.then(function () {
+        var r = st.row, o = r.orig;
+        var base = { key: r.key, inventoryId: r.inventoryId, newOrUsed: o.newOrUsed, unitPrice: o.unitPrice, description: o.description, remarks: o.remarks };
+        if (st.whole) {
+          return postJSON("/api/inventory-update", { items: [Object.assign({ quantityChange: 0, stockRoomId: room }, base)] }).then(function (res) {
+            report.push((failed(res) ? "FAILED " : "Moved ") + st.itemNo + (failed(res) ? " — " + why(res) : " ×" + st.take));
+          }, function (err) { report.push("FAILED " + st.itemNo + " — " + why(null, err)); });
+        }
+        // Split: lower the live lot first, so a failure can never leave the
+        // same figs listed twice.
+        return postJSON("/api/inventory-update", { items: [Object.assign({ quantityChange: -st.take, stockRoomId: "" }, base)] }).then(function (res) {
+          if (failed(res)) { report.push("FAILED " + st.itemNo + " — " + why(res)); return; }
+          return postJSON("/api/inventory-create", { items: [{
+            key: r.key + "-room", itemNo: r.itemNo, type: "MINIFIG", colorId: r.colorId || 0, quantity: st.take,
+            newOrUsed: o.newOrUsed, unitPrice: o.unitPrice, description: o.description, remarks: o.remarks, stockRoomId: room,
+          }] }).then(function (cres) {
+            report.push(failed(cres)
+              ? "PARTLY DONE " + st.itemNo + " — live listing lowered by " + st.take + " but the Stock Room listing wasn’t created (" + why(cres) + "). Add ×" + st.take + " to Stock Room " + room + " by hand."
+              : "Split " + st.itemNo + " — ×" + st.take + " to Stock Room " + room);
+          }, function (err) {
+            report.push("PARTLY DONE " + st.itemNo + " — live listing lowered by " + st.take + " but the Stock Room listing wasn’t created (" + why(null, err) + "). Add ×" + st.take + " to Stock Room " + room + " by hand.");
+          });
+        }, function (err) { report.push("FAILED " + st.itemNo + " — " + why(null, err)); });
+      });
+    }, Promise.resolve()).then(function () {
+      return loadManageInventoryRows().catch(function () { report.push("Couldn’t reload your inventory — refresh it in Manage Inventory."); });
+    }).then(function () {
+      sortMoveBusy = false;
+      if (currentView === "sort-list") { renderSortList(); renderSortOutputs(); }
+      window.alert(report.join("\n"));
+    });
+  }
+
+  // Figs from the sets going to bulk, as rows waiting in Add Inventory for
+  // Ryan to review (price, condition, description) — nothing reaches
+  // BrickLink until he submits there. Figs already handed over aren't added
+  // twice.
+  function handleSortToInventory() {
+    var plan = sortPlan();
+    var byFig = {};
+    plan.bulk.forEach(function (b) {
+      b.figs.forEach(function (f) {
+        var row = byFig[f.itemNo] || (byFig[f.itemNo] = { itemNo: f.itemNo, name: f.name, qty: 0, unit: f.unit });
+        row.qty += f.qty;
+      });
+    });
+    var waiting = {};
+    (inventoryRows || []).forEach(function (r) { if (r.fromSort) waiting[r.itemNo] = true; });
+    var fresh = Object.keys(byFig).filter(function (k) { return !waiting[k]; }).map(function (k) { return byFig[k]; });
+    if (!fresh.length) {
+      window.alert("Those figs are already waiting in Add Inventory.");
+      goToInventory();
+      return;
+    }
+    var pieces = fresh.reduce(function (n, f) { return n + f.qty; }, 0);
+    if (!window.confirm("Add " + fresh.length + " fig" + (fresh.length === 1 ? "" : "s") + " (" + pieces + " total) to Add Inventory for review?\nNothing goes to BrickLink until you submit there.")) return;
+    if (!inventoryRows) inventoryRows = [];
+    fresh.slice().reverse().forEach(function (f) {
+      var row = csvObjToInventoryRow({
+        ITEMTYPE: "M", ITEMID: f.itemNo, COLOR: "0", COLORNAME: "", ITEMNAME: f.name, QTY: String(f.qty),
+        CONDITION: "U", PRICE: f.unit > 0 ? f.unit : "", REMARKS: "", DESCRIPTION: "",
+      });
+      row.fromSort = true;
+      inventoryRows.unshift(row);
+    });
+    goToInventory();
+    ensureManageInventoryLoaded().then(function () {
+      if (currentView === "inventory") patchItemStockCounts(inventoryView);
+    }).catch(function () { /* lines just stay blank */ });
   }
 
   function handleSortBuyWanted() {
@@ -10720,6 +10862,8 @@
       if (t.id === "sortAddBtn") { handleSortAdd(); return; }
       if (t.id === "sortRefreshAllBtn") { refreshAllSortPrices(); return; }
       if (t.id === "sortBuyWantedBtn") { handleSortBuyWanted(); return; }
+      if (t.id === "sortMoveBtn") { handleSortMoveToStock(); return; }
+      if (t.id === "sortToInventoryBtn") { handleSortToInventory(); return; }
       if (t.id === "sortRetryBtn") { sortLoadError = null; renderSortView(); return; }
       if (t.classList.contains("sort-check")) { handleSortFigCheck(t); return; }
       var act = t.getAttribute("data-act");
@@ -10764,6 +10908,7 @@
     sortListView.addEventListener("change", function (ev) {
       var el = ev.target;
       if (el.id === "sortRankSelect") { sortRankKey = el.value; renderSortList(); return; }
+      if (el.id === "sortStockRoomSelect") { sortStockRoom = el.value; return; }
       var setting = el.getAttribute("data-setting");
       if (setting) {
         var n = parseFloat(el.value);
