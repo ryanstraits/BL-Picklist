@@ -2703,24 +2703,52 @@
     });
   }
 
+  function categoriesFromList(categories) {
+    var map = {};
+    (categories || []).forEach(function (c) {
+      map[c.categoryId] = { name: c.categoryName, parentId: c.parentId };
+    });
+    return map;
+  }
+
+  // Never remembers an empty list: if BrickLink ever returned nothing (e.g.
+  // during maintenance) and that were cached, every category lookup — the
+  // Manage Inventory themes, the Sort page's theme codes — would stay blank
+  // until the cache was cleared by hand.
   function getCategories() {
     if (categoriesById) return Promise.resolve(categoriesById);
     try {
       var cached = window.localStorage.getItem(CATEGORIES_CACHE_KEY);
       if (cached) {
-        categoriesById = JSON.parse(cached);
-        return Promise.resolve(categoriesById);
+        var parsed = JSON.parse(cached);
+        if (parsed && Object.keys(parsed).length) {
+          categoriesById = parsed;
+          return Promise.resolve(categoriesById);
+        }
       }
     } catch (e) { /* ignore, fall through to fetch */ }
 
     return fetchJSON("/api/categories").then(function (categories) {
-      var map = {};
-      (categories || []).forEach(function (c) {
-        map[c.categoryId] = { name: c.categoryName, parentId: c.parentId };
-      });
+      var map = categoriesFromList(categories);
       categoriesById = map;
-      try { window.localStorage.setItem(CATEGORIES_CACHE_KEY, JSON.stringify(map)); } catch (e) {}
+      if (Object.keys(map).length) {
+        try { window.localStorage.setItem(CATEGORIES_CACHE_KEY, JSON.stringify(map)); } catch (e) {}
+      }
       return map;
+    });
+  }
+
+  // Re-asks the server, bypassing what's remembered — for when a category
+  // the page needs isn't in the list it has (a stale copy).
+  function refreshCategories() {
+    return fetchJSON("/api/categories").then(function (categories) {
+      var map = categoriesFromList(categories);
+      if (Object.keys(map).length) {
+        categoriesById = map;
+        topCategoryCache = {};
+        try { window.localStorage.setItem(CATEGORIES_CACHE_KEY, JSON.stringify(map)); } catch (e) {}
+      }
+      return categoriesById || map;
     });
   }
 
@@ -9644,6 +9672,40 @@
     }
     return SORT_FALLBACK_THEME;
   }
+  var sortCategoriesRefreshed = false; // at most one forced refresh per page load
+
+  // Works out a set's BrickLink category path (kept on the card so it can be
+  // shown) and, unless Ryan has set the code himself, the theme code from it.
+  // If the category isn't in the list this page has — a stale remembered
+  // copy — the list is re-fetched once before giving up and using GE.
+  function applySortThemeGuess(e) {
+    return getCategories().then(function (cats) {
+      if (cats[e.categoryId] || sortCategoriesRefreshed) return cats;
+      sortCategoriesRefreshed = true;
+      return refreshCategories();
+    }).then(function (cats) {
+      var names = sortCategoryPath(e.categoryId, cats);
+      e.categoryPath = names.join(" › ");
+      if (e.themeAuto) e.theme = sortGuessTheme(names);
+    });
+  }
+
+  // Entries already on the list that still have an automatic code get it
+  // worked out again when the page opens (they may have been added while the
+  // category list was unavailable).
+  function reguessSortThemes() {
+    var todo = (sortList || []).filter(function (e) { return e.categoryId && (e.themeAuto || !e.categoryPath); });
+    if (!todo.length) return;
+    var before = todo.map(function (e) { return e.theme + "|" + e.categoryPath; });
+    todo.reduce(function (chain, e) { return chain.then(function () { return applySortThemeGuess(e); }); }, Promise.resolve())
+      .then(function () {
+        var changed = todo.some(function (e, i) { return (e.theme + "|" + e.categoryPath) !== before[i]; });
+        if (!changed) return;
+        saveSortList();
+        renderSortList();
+      }).catch(function () { /* leave the codes as they are */ });
+  }
+
   function sortNextCopyNo(setNo) {
     var max = 0;
     sortList.forEach(function (x) { if (x.setNo.toLowerCase() === setNo.toLowerCase() && x.copyNo > max) max = x.copyNo; });
@@ -9932,9 +9994,8 @@
       // Fill in the theme code from the set's BrickLink category — unless
       // Ryan has already set one himself. A failed category load just
       // leaves the GE fallback.
-      var themeStep = e.themeAuto && e.categoryId
-        ? getCategories().then(function (cats) {
-            if (e.themeAuto) e.theme = sortGuessTheme(sortCategoryPath(e.categoryId, cats));
+      var themeStep = e.categoryId
+        ? applySortThemeGuess(e).then(function () {
             sortList.forEach(function (x) { patchSortCard(x.id); });
           }).catch(function () { /* keep the fallback */ })
         : Promise.resolve();
@@ -10140,6 +10201,10 @@
       + '</div>';
   }
 
+  function sortCategoryHintText(e) {
+    return e.categoryPath ? "BrickLink category: " + escapeHtml(e.categoryPath) : "";
+  }
+
   function sortFigsHtml(e) {
     var figs = (e.figs || []).slice().sort(function (x, y) { return sortFigUnitValue(y) - sortFigUnitValue(x); });
     if (figs.length) return '<div class="manage-inventory-hint">Figs — tap the ones you have</div>' + figs.map(sortFigRowHtml).join("");
@@ -10166,6 +10231,7 @@
         + sortNumberField("Box (0–10, 0 = none)", "box", e.box, 0, 10, "1")
         + sortNumberField("Manual (0–10, 0 = none)", "manual", e.manual, 0, 10, "1")
         + '</div>'
+        + '<div class="sort-flag sort-cat-hint">' + sortCategoryHintText(e) + '</div>'
         + '<div class="sort-figs">' + sortFigsHtml(e) + '</div>'
         + '<div class="sort-math">' + sortMathHtml(e) + '</div>'
         + '</div>';
@@ -10194,6 +10260,12 @@
     if (head) head.innerHTML = sortHeadBodyHtml(e);
     var math = card.querySelector(".sort-math");
     if (math) math.innerHTML = sortMathHtml(e);
+    // The theme box (and its category note) follow an automatic guess as it
+    // lands — but never while it's being typed in.
+    var themeInput = card.querySelector('[data-sortf="theme"]');
+    if (themeInput && document.activeElement !== themeInput) themeInput.value = e.theme || "";
+    var catHint = card.querySelector(".sort-cat-hint");
+    if (catHint) catHint.innerHTML = sortCategoryHintText(e);
     var figsEl = card.querySelector(".sort-figs");
     if (figsEl && withFigs) {
       figsEl.innerHTML = sortFigsHtml(e);
@@ -10261,6 +10333,7 @@
         + '<div class="sort-save-status" id="sortSaveStatus">' + escapeHtml(sortSaveStatus) + '</div>'
         + '<div id="sortListWrap"></div>';
       renderSortList();
+      reguessSortThemes();
     }).catch(function () {
       if (currentView !== "sort-list") return;
       sortListView.innerHTML = '<div id="sortListWrap"></div>';

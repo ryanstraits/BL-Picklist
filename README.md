@@ -670,7 +670,13 @@ Token Secret as sensitive as an API key that can move money.
   copy number and a theme code guessed from its BrickLink category path
   (`SORT_THEME_RULES`/`SORT_CITY_RULES`, best guesses from BrickLink's
   category names), falling back to `GE` — and once a code is typed by
-  hand it's never overwritten by the guess. The same set can be on the
+  hand it's never overwritten by the guess. The card shows the BrickLink
+  category the guess came from; the Theme box follows the guess as it lands;
+  entries still on an automatic code are re-guessed when the page opens; a
+  category the page's remembered list doesn't know triggers one fresh fetch;
+  and an empty category list from BrickLink is never remembered (it used to
+  be, which would have left every guess on `GE` and Manage Inventory's
+  themes blank until the device's copy was cleared). The same set can be on the
   list more than once. A
   card warns if another set already has the same ID. Every rate and
   assumption (the three $/lb figures, skip threshold,
