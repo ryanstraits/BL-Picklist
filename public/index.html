@@ -9983,6 +9983,14 @@
     routes.forEach(function (r) {
       r.profit = r.net - paid;
     });
+    // The set as it stands today vs. complete with every missing fig bought
+    // (whether or not the skip threshold would actually buy them).
+    var asIsNet = brickAdj + ownedValue;
+    var fullNet = completeValue - missingBuy;
+    var scenario = function (net) {
+      return { net: net, profit: net - paid, roi: paidKnown && paid > 0 ? (net - paid) / paid : null };
+    };
+    var nowCase = scenario(asIsNet), completeCase = scenario(fullNet);
     // Ties go to the earlier route (sell as set, then part out).
     var best = routes.reduce(function (top, r) { return r.profit > top.profit ? r : top; }, routes[0]);
 
@@ -9998,7 +10006,7 @@
     if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No set weight — bulk $0.");
 
     return {
-      routes: routes, best: best, paid: paid, paidKnown: paidKnown,
+      routes: routes, best: best, paid: paid, paidKnown: paidKnown, now: nowCase, complete: completeCase,
       profit: best.profit, roi: paidKnown && paid > 0 ? best.profit / paid : null,
       value: best.net,
       flags: flags, hasData: hasData,
@@ -10213,6 +10221,13 @@
       var figBits = [];
       if (a.parts.missingCount > 0) figBits.push('Figs to buy <b>' + sortMoney(a.parts.missingBuy) + '</b>');
       if (a.parts.ownedCount > 0) figBits.push('Figs on hand <b>' + sortMoney(a.parts.ownedValue) + '</b>');
+      var caseBit = function (label, c) {
+        return '<span>' + label + ' <b class="' + (a.paidKnown && c.profit < 0 ? 'sort-neg' : '') + '">'
+          + (a.paidKnown ? sortMoney(c.profit) + (c.roi === null ? '' : ' · ' + Math.round(c.roi * 100) + '%') : sortMoney(c.net)) + '</b></span>';
+      };
+      var gapLine = a.parts.missingCount > 0
+        ? '<div class="sort-summary">' + caseBit('As is', a.now) + caseBit('Complete', a.complete) + '<span>' + (a.paidKnown ? '(profit · ROI)' : '(value)') + '</span></div>'
+        : '';
       summary = '<div class="sort-summary">'
         + (expanded ? '<span><b>' + escapeHtml(a.best.label) + '</b></span>' : '')
         + '<span>Value <b>' + sortMoney(a.value) + '</b></span>'
@@ -10220,6 +10235,7 @@
         + '<span>Profit <b class="' + (a.profit < 0 ? 'sort-neg' : 'sort-pos') + '">' + (a.paidKnown ? sortMoney(a.profit) : "—") + '</b></span>'
         + '<span>ROI <b>' + roiTxt + '</b></span>'
         + '</div>'
+        + gapLine
         + (!expanded && figBits.length ? '<div class="sort-summary">' + figBits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '')
         + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '')
         + (expanded ? a.flags.map(function (f) { return '<div class="sort-flag">' + escapeHtml(f) + '</div>'; }).join("") : "");

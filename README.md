@@ -711,7 +711,10 @@ Token Secret as sensitive as an API key that can move money.
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
-  A card in the list shows only the essentials (verdict chip, Value, Profit,
+  For a set with missing figs, the card also shows "As is" (the set
+  sold today, without buying anything) next to "Complete" (every missing fig
+  bought and added), each as profit · ROI — or just value until Paid is entered.
+  The main Value/Profit/ROI follow the chosen route. A card in the list shows only the essentials (verdict chip, Value, Profit,
   ROI, and "Figs to buy" / "Figs on hand" dollar amounts); the route name, Paid,
   the cost to buy the missing figs, the value of the figs you have and the other
   notes show in the edit view. The per-set math is a line-by-line breakdown, and the long "how it's
