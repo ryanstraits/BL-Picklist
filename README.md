@@ -684,7 +684,13 @@ Token Secret as sensitive as an API key that can move money.
   in the page's "Rates & assumptions" block. Each fig row also says whether
   that fig is already in Ryan's own BrickLink inventory and at what price(s)
   (same matching and wording as Lookup: quantity on hand, each distinct listed
-  price, any stock room), or "Not in your inventory". The list and settings are
+  price, any stock room), or "Not in your inventory". The cost of filling a
+  missing fig is, per spot, the cheaper of buying one (the plain average of its
+  25 cheapest current US used listings, from `price-guide`) and using one of
+  Ryan's own: a live listing costs the price it would have sold for (the sale
+  given up — never what he paid), a stock room copy costs nothing since it
+  isn't on the market. One "Refresh prices" button at the top of the list
+  re-fetches every set, one at a time, from clean prices. The list and settings are
   stored in the same Blobs store as everything else under the pick-state
   keys `sortList` and `sortSettings`; a failed load never falls back to an
   empty list, since the next save would then overwrite the real one.
