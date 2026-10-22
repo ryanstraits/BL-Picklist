@@ -9548,11 +9548,11 @@
   //     quality and box/manual, buying whatever minifigs are missing — unless
   //     they'd cost more than the skip-threshold share of the set's value, in
   //     which case it's sold without them.
-  //   - Figs + bulk: the figs you have sold individually (never worth less
+  //   - Part out: the figs you have sold individually (never worth less
   //     than their weight at the fig-parts $/lb), plus the leftover non-fig
   //     weight to bulk — mostly general parts, with a per-fig allowance of
   //     loose accessories priced at the fig-parts $/lb.
-  // Each set also carries a Decision (sell as set / figs + bulk), which the
+  // Each set also carries a Decision (sell as set / part out), which the
   // lists at the bottom of the page are built from.
   // Everything adjustable lives in sortSettings. Selling fees and time spent
   // are deliberately not modeled — fees apply to every route, and this is a
@@ -9596,7 +9596,7 @@
   var SORT_DECISIONS = [
     { key: "", label: "Decision…" },
     { key: "set", label: "Sell as set" },
-    { key: "part", label: "Figs + bulk" },
+    { key: "part", label: "Part out" },
     { key: "hold", label: "Save for later" },
   ];
   var GRAMS_PER_LB = 453.592;
@@ -9973,7 +9973,7 @@
     var generalG = remainderG - figPartsG;
     var bulkParts = lb(generalG) * st.genRate + lb(figPartsG) * st.figRate;
     var partRoute = {
-      key: "part", label: "Figs + bulk", value: partOutFigs + bulkParts, cost: 0,
+      key: "part", label: "Part out", value: partOutFigs + bulkParts, cost: 0,
       net: partOutFigs + bulkParts,
     };
 
@@ -9983,15 +9983,16 @@
     routes.forEach(function (r) {
       r.profit = r.net - paid;
     });
-    // Ties go to the earlier route (sell as set, then figs + bulk).
+    // Ties go to the earlier route (sell as set, then part out).
     var best = routes.reduce(function (top, r) { return r.profit > top.profit ? r : top; }, routes[0]);
 
     var hasData = setValue > 0 || figs.some(function (f) { return sortFigUnitValue(f) > 0; });
     var flags = [];
     if (e.status === "ready" && !hasData) flags.push("No price data.");
     if (!paidKnown) flags.push("Add Paid for profit & ROI.");
-    if (missingCount > 0 && !buyMissing) flags.push("Missing figs " + Math.round(shareMissing * 100) + "% of set (limit " + st.skipPct + "%) — skip.");
-    if (missingCount > 0 && buyMissing) flags.push("Complete figs: " + sortMoney(missingBuy) + " (" + Math.round(shareMissing * 100) + "% of set)" + (ownLiveUsed + ownFreeUsed ? " · " + (ownLiveUsed + ownFreeUsed) + " from your stock" : "") + ".");
+    if (missingCount > 0 && !buyMissing) flags.push("Cost to buy the " + missingCount + " missing fig" + (missingCount === 1 ? "" : "s") + ": " + sortMoney(missingBuy) + " — " + Math.round(shareMissing * 100) + "% of the set’s value (limit " + st.skipPct + "%), so not bought.");
+    if (missingCount > 0 && buyMissing) flags.push("Cost to buy the " + missingCount + " missing fig" + (missingCount === 1 ? "" : "s") + ": " + sortMoney(missingBuy) + " (" + Math.round(shareMissing * 100) + "% of the set’s value)" + (ownLiveUsed + ownFreeUsed ? ", using " + (ownLiveUsed + ownFreeUsed) + " of your own" : "") + ".");
+    if (ownedCount > 0) flags.push("Value of the " + ownedCount + " fig" + (ownedCount === 1 ? "" : "s") + " you have: " + sortMoney(ownedValue) + " if sold singly.");
     if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? "" : "s") + ": no price.");
     if (ownedValue > brickAdj && ownedCount > 0) flags.push("Figs > Set");
     if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No set weight — bulk $0.");
@@ -10002,7 +10003,7 @@
       value: best.net,
       flags: flags, hasData: hasData,
       parts: { setValue: setValue, figsAll: figsAll, brickFull: brickFull, brickAdj: brickAdj, qualityF: qualityF, premium: premium,
-        ownedValue: ownedValue, missingBuy: missingBuy, missingValue: missingValue, remainderG: remainderG, generalG: generalG, figPartsG: figPartsG, bulkParts: bulkParts },
+        ownedValue: ownedValue, ownedCount: ownedCount, missingCount: missingCount, missingBuy: missingBuy, missingValue: missingValue, remainderG: remainderG, generalG: generalG, figPartsG: figPartsG, bulkParts: bulkParts },
     };
   }
 
@@ -10195,7 +10196,7 @@
     if (e.status === "error") return '<span class="item-type-tag sort-verdict sort-verdict-warn">Error</span>';
     if (!a.hasData) return '<span class="item-type-tag sort-verdict sort-verdict-warn">Needs data</span>';
     var cls = a.best.key === "set" ? "sort-verdict-sell" : "sort-verdict-part";
-    return '<span class="item-type-tag sort-verdict ' + cls + '">' + escapeHtml(a.best.key === "set" ? "Sell as set" : "Figs + bulk") + '</span>';
+    return '<span class="item-type-tag sort-verdict ' + cls + '">' + escapeHtml(a.best.key === "set" ? "Sell as set" : "Part out") + '</span>';
   }
 
   function sortHeadBodyHtml(e) {
@@ -10207,15 +10208,21 @@
       summary = '<div class="sort-summary sort-neg">' + escapeHtml(e.error || "Couldn’t load this set.") + '</div>';
     } else {
       var roiTxt = a.roi === null ? "—" : Math.round(a.roi * 100) + "%";
+      // The list shows the bare numbers; the full wording is for the edit view.
+      var expanded = !!sortExpanded[e.id];
+      var figBits = [];
+      if (a.parts.missingCount > 0) figBits.push('Figs to buy <b>' + sortMoney(a.parts.missingBuy) + '</b>');
+      if (a.parts.ownedCount > 0) figBits.push('Figs on hand <b>' + sortMoney(a.parts.ownedValue) + '</b>');
       summary = '<div class="sort-summary">'
-        + '<span><b>' + escapeHtml(a.best.label) + '</b></span>'
+        + (expanded ? '<span><b>' + escapeHtml(a.best.label) + '</b></span>' : '')
         + '<span>Value <b>' + sortMoney(a.value) + '</b></span>'
-        + '<span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span>'
+        + (expanded ? '<span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span>' : '')
         + '<span>Profit <b class="' + (a.profit < 0 ? 'sort-neg' : 'sort-pos') + '">' + (a.paidKnown ? sortMoney(a.profit) : "—") + '</b></span>'
         + '<span>ROI <b>' + roiTxt + '</b></span>'
         + '</div>'
+        + (!expanded && figBits.length ? '<div class="sort-summary">' + figBits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '')
         + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '')
-        + a.flags.map(function (f) { return '<div class="sort-flag">' + escapeHtml(f) + '</div>'; }).join("");
+        + (expanded ? a.flags.map(function (f) { return '<div class="sort-flag">' + escapeHtml(f) + '</div>'; }).join("") : "");
     }
     return '<div class="item-line1">'
       + '<span class="item-no mono">' + escapeHtml(sortIdComplete(e) ? sortEntryId(e) : e.setNo) + '</span>'
@@ -10224,7 +10231,7 @@
       + '<div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
       + '<button type="button" class="sort-lookup-link" data-act="lookup" data-id="' + escapeHtml(e.id) + '">Look up set ›</button>'
       + (sortIdClash(e) ? '<div class="sort-flag sort-neg">Duplicate ID ' + escapeHtml(sortEntryId(e)) + '</div>' : '')
-      + (!sortIdComplete(e) ? '<div class="sort-flag">Add copy # & theme for its ID.</div>' : '')
+      + (!sortIdComplete(e) && sortExpanded[e.id] ? '<div class="sort-flag">Add copy # & theme for its ID.</div>' : '')
       + summary;
   }
 
@@ -10826,7 +10833,7 @@
       + '<p>Profit = sells for − fig cost − paid.</p>'
       + '<p>Rest of set = the set’s value minus its figs’ value, then adjusted for completeness, condition and box/manual.</p>'
       + '<p>Fig cost: each missing fig costs the cheaper of buying one (average of the 25 cheapest US used listings) or using one of yours — a live listing costs the sale you give up, a stock room copy is free.</p>'
-      + '<p>Figs + bulk: figs sold singly (never worth less than their weight at the fig-parts rate), plus the leftover weight to bulk — general parts at the general rate, and the loose-accessories allowance per fig at the fig-parts rate.</p>'
+      + '<p>Part out: figs sold singly (never worth less than their weight at the fig-parts rate), plus the leftover weight to bulk — general parts at the general rate, and the loose-accessories allowance per fig at the fig-parts rate.</p>'
       + '<p>No fees or time are included.</p></div>'
       + '</details>';
   }

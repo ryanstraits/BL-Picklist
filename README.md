@@ -655,7 +655,7 @@ Token Secret as sensitive as an API key that can move money.
   (0 = not present), and for each fig how many he has and their
   condition. The card then compares two routes — sell as a set (buying
   missing figs unless they'd cost more than the skip threshold's share of
-  the set's value, in which case it's sold without them) and figs + bulk
+  the set's value, in which case it's sold without them) and part out
   (figs sold singly, never worth less than their weight at the fig-parts
   $/lb, plus the leftover non-fig weight to bulk: general parts at the
   general $/lb, and a "loose accessories per fig" allowance, 4 g by default,
@@ -697,7 +697,7 @@ Token Secret as sensitive as an API key that can move money.
   empty list, since the next save would then overwrite the real one.
   Defaults (skip 35%, box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
-  Each card also has a **Decision** dropdown (Sell as set / Figs + bulk /
+  Each card also has a **Decision** dropdown (Sell as set / Part out /
   Save for later — hold a partial set until a missing fig turns up in a future
   lot; held sets get a "Saving for later" list of what each is missing and
   don't feed the buy/pull lists) —
@@ -711,7 +711,10 @@ Token Secret as sensitive as an API key that can move money.
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
-  The per-set math is a line-by-line breakdown, and the long "how it's
+  A card in the list shows only the essentials (verdict chip, Value, Profit,
+  ROI, and "Figs to buy" / "Figs on hand" dollar amounts); the route name, Paid,
+  the cost to buy the missing figs, the value of the figs you have and the other
+  notes show in the edit view. The per-set math is a line-by-line breakdown, and the long "how it's
   figured" explanation lives in the Rates & assumptions block. A fig row's underlined "In your inventory" line is a link into Manage Inventory
   searched on that fig, with a "Sort List" back button. Two buttons act on
   the lists, both behind a confirmation: *Move live ones to stock room…*
@@ -723,7 +726,7 @@ Token Secret as sensitive as an API key that can move money.
   (`inventory-create`). It refuses while Manage Inventory has unsaved edits
   (the inventory is reloaded afterwards) and reports each lot's outcome,
   including a lowered lot whose stock room listing failed. *Send figs to Add
-  Inventory…* puts the checked-off figs of the Figs + bulk sets into Add
+  Inventory…* puts the checked-off figs of the Part out sets into Add
   Inventory as Used minifig rows (priced from the fig's market value) to
   review and submit there — nothing reaches BrickLink until then, and figs
   already handed over aren't added twice.
