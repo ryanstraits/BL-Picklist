@@ -697,7 +697,10 @@ Token Secret as sensitive as an API key that can move money.
   empty list, since the next save would then overwrite the real one.
   Defaults (skip 35%, box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
-  Each card also has a **Decision** dropdown (Sell as set / Figs + bulk) —
+  Each card also has a **Decision** dropdown (Sell as set / Figs + bulk /
+  Save for later — hold a partial set until a missing fig turns up in a future
+  lot; held sets get a "Saving for later" list of what each is missing and
+  don't feed the buy/pull lists) —
   Ryan's call, separate from the app's recommendation chip — and the page
   ends with lists built from those decisions: *Ready to sell* (Sell as set,
   every fig checked off), *Figs to buy* (every missing fig across the
@@ -708,7 +711,8 @@ Token Secret as sensitive as an API key that can move money.
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
-  A fig row's "In your inventory" line is a link into Manage Inventory
+  The per-set math is a line-by-line breakdown, and the long "how it's
+  figured" explanation lives in the Rates & assumptions block. A fig row's underlined "In your inventory" line is a link into Manage Inventory
   searched on that fig, with a "Sort List" back button. Two buttons act on
   the lists, both behind a confirmation: *Move live ones to stock room…*
   (pick Stock Room A/B/C) lists exactly what will change first — a live
