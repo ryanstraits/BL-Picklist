@@ -10308,7 +10308,8 @@
         + (expanded ? '<span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span>' : '')
         + '<span>Profit <b class="' + (a.profit < 0 ? 'sort-neg' : 'sort-pos') + '">' + (a.paidKnown ? sortMoney(a.profit) : "—") + '</b></span>'
         + '<span>ROI <b>' + roiTxt + '</b></span>'
-        + (sortRankKey === "quick" ? '<span>Turn <b>' + Math.round(sortQuickTurn(e).score) + '</b></span>' : '')
+        + (sortRankKey === "quick" ? '<span>Turn <b>' + Math.round(sortQuickTurn(e).score) + '</b>'
+          + (sortNum(e.manual) === 0 ? ' · <b class="sort-neg">no manual</b>' : (e.decision === "hold" ? ' · <b>saved for later</b>' : '')) + '</span>' : '')
         + '</div>'
         + gapLine
         + (!expanded && figBits.length ? '<div class="sort-summary">' + figBits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '')
