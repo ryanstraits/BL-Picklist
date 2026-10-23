@@ -711,7 +711,12 @@ Token Secret as sensitive as an API key that can move money.
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
-  Under each card's verdict badge a counter shows figs checked off out of figs
+  A tally card at the top of the page totals the Complete sets (count and value),
+  the Part out sets (count and value) and, from those, the figs to sell and the
+  bulk (lbs and value). Each set counts under its Decision, or under the app's
+  suggestion until one is picked; Save for later sets and sets with no prices yet
+  are left out (and noted). The list sections below carry running tallies in their
+  headings too (e.g. "Ready to sell (2 · $600.00)"). Under each card's verdict badge a counter shows figs checked off out of figs
   needed (e.g. "2/3 figs"), green once they're all accounted for. Each missing fig also has a "Your cost to buy, each" box (the estimate is its
   placeholder): a price typed there is kept on that set's fig only, replaces the
   estimate for every missing copy of it in that set, and means those copies are
