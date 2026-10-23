@@ -690,6 +690,9 @@
   .sort-breakdown-line b { color: var(--text); }
   .sort-explain { margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
   .sort-explain p { margin: 4px 0 0; }
+  .sort-fig-buy { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 12.5px; color: var(--text-secondary); }
+  .sort-fig-buy input { width: 90px; font-family: inherit; font-size: 13px; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  .sort-fig-all .sort-fig-buy { display: none; }
   .sort-fig-stock-link { text-decoration: underline; text-underline-offset: 2px; display: block; padding: 2px 0; border: 0; background: none; font-family: inherit; font-size: inherit; text-align: left; cursor: pointer; }
   .sort-fig-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
   .sort-checks { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -9893,6 +9896,9 @@
   // he gives up — his price, not what he paid), and a stock room copy costs
   // nothing since it isn't on the market. Stock room copies go first.
   function sortMissingFigCost(f, miss, unit) {
+    // A price Ryan typed in for this set (a listing he found) replaces the
+    // estimate and means he's buying those copies — none of his own get used.
+    if (f.buyCost > 0) return { total: miss * f.buyCost, ownLive: 0, ownFree: 0 };
     var buy = f.stockAvg25 > 0 ? f.stockAvg25 : (f.stockMin > 0 ? f.stockMin : unit);
     var own = sortOwnFigUnits(f.itemNo);
     var total = 0, usedLive = 0, usedFree = 0;
@@ -10094,7 +10100,7 @@
         var prev = old[x.itemNo] || {};
         byNo[x.itemNo] = {
           itemNo: x.itemNo, name: decodeHtmlEntities(x.name || ""), qty: x.quantity || 1,
-          have: prev.have || 0, cond: prev.cond || "good",
+          have: prev.have || 0, cond: prev.cond || "good", buyCost: prev.buyCost > 0 ? prev.buyCost : null,
           soldAvg: 0, soldCount: 0, stockMin: 0, stockAvg25: 0, stockN: 0, weightG: 0,
         };
       });
@@ -10308,6 +10314,11 @@
     return out;
   }
 
+  // The estimate used for a missing fig when no price has been typed in.
+  function sortFigBuyEstimate(f) {
+    return f.stockAvg25 > 0 ? f.stockAvg25 : (f.stockMin > 0 ? f.stockMin : sortFigUnitValue(f));
+  }
+
   function sortFigRowHtml(f) {
     var qty = f.qty || 1;
     var unit = sortFigUnitValue(f);
@@ -10322,6 +10333,8 @@
       + '<div class="item-name">' + escapeHtml(f.name || "") + '</div>'
       + '<div class="item-color">' + escapeHtml(priceTxt) + '</div>'
       + sortFigStockHtml(f)
+      + '<div class="sort-fig-buy"><label>Your cost to buy, each ($)</label>'
+      + '<input type="number" inputmode="decimal" min="0" step="0.01" data-fig="' + escapeHtml(f.itemNo) + '" data-figf="buyCost" placeholder="est. ' + sortMoney(sortFigBuyEstimate(f)).replace("$", "") + '" value="' + (f.buyCost > 0 ? escapeHtml(f.buyCost) : '') + '"></div>'
       + '<div class="sort-fig-controls">'
       + '<div class="sort-checks">' + sortFigChecksHtml(f) + '</div>'
       + '<select class="sort-fig-cond" data-fig="' + escapeHtml(f.itemNo) + '" data-figf="cond" aria-label="Condition">'
@@ -10427,7 +10440,7 @@
     var plan = { ready: [], waiting: 0, buy: [], pull: [], bulk: [], hold: [], decided: 0 };
     var buyMap = {}, pullMap = {}, pools = {};
     function bump(map, f, label) {
-      var row = map[f.itemNo] || (map[f.itemNo] = { itemNo: f.itemNo, name: f.name || "", qty: 0, free: 0, live: [], price: 0, sets: {} });
+      var row = map[f.itemNo] || (map[f.itemNo] = { itemNo: f.itemNo, name: f.name || "", qty: 0, free: 0, live: [], price: 0, total: 0, sets: {} });
       row.sets[label] = (row.sets[label] || 0) + 1;
       return row;
     }
@@ -10458,6 +10471,12 @@
           var buyPrice = f.stockAvg25 > 0 ? f.stockAvg25 : (f.stockMin > 0 ? f.stockMin : unit);
           var pool = pools[f.itemNo] || (pools[f.itemNo] = { own: sortOwnFigUnits(f.itemNo), free: 0, live: 0 });
           for (var i = 0; i < miss; i++) {
+            if (f.buyCost > 0) {
+              var own = bump(buyMap, f, label);
+              own.qty++;
+              own.total += f.buyCost;
+              continue;
+            }
             if (pool.free < pool.own.free) {
               pool.free++;
               bump(pullMap, f, label).free++;
@@ -10470,7 +10489,7 @@
             } else {
               var b = bump(buyMap, f, label);
               b.qty++;
-              b.price = buyPrice;
+              b.total += buyPrice;
             }
           }
         });
@@ -10497,6 +10516,7 @@
       return Object.keys(map).map(function (k) { return map[k]; }).sort(function (x, y) { return x.itemNo < y.itemNo ? -1 : x.itemNo > y.itemNo ? 1 : 0; });
     }
     plan.buy = toList(buyMap);
+    plan.buy.forEach(function (r) { r.price = r.qty ? r.total / r.qty : 0; });
     plan.pull = toList(pullMap);
     return plan;
   }
@@ -10508,7 +10528,7 @@
   }
 
   function sortBuyTotal(plan) {
-    return plan.buy.reduce(function (sum, r) { return sum + r.qty * r.price; }, 0);
+    return plan.buy.reduce(function (sum, r) { return sum + r.total; }, 0);
   }
 
   // The same lists as plain text, for the email button.
@@ -10584,7 +10604,7 @@
     if (plan.buy.length) {
       html += plan.buy.map(function (r) {
         return sortOutRow('<span class="mono">' + escapeHtml(r.itemNo) + '</span> ×' + r.qty + ' ' + escapeHtml(r.name),
-          r.price > 0 ? sortMoney(r.qty * r.price) : "no price", (r.price > 0 ? '~' + sortMoney(r.price) + ' ea · ' : '') + 'for ' + escapeHtml(sortSetsText(r.sets)));
+          r.price > 0 ? sortMoney(r.total) : "no price", (r.price > 0 ? '~' + sortMoney(r.price) + ' ea · ' : '') + 'for ' + escapeHtml(sortSetsText(r.sets)));
       }).join("");
       var added = sortBuyAddedSig === sortBuySig(plan);
       html += '<button type="button" class="reset-btn sort-out-btn" id="sortBuyWantedBtn"' + (added ? ' disabled' : '') + '>'
@@ -11007,7 +11027,13 @@
       } else if (el.getAttribute("data-figf")) {
         var fig = (e.figs || []).filter(function (f) { return f.itemNo === el.getAttribute("data-fig"); })[0];
         if (!fig) return;
-        fig.cond = el.value;
+        if (el.getAttribute("data-figf") === "buyCost") {
+          var cost = parseFloat(el.value);
+          fig.buyCost = cost > 0 ? Math.round(cost * 100) / 100 : null;
+          el.value = fig.buyCost === null ? "" : fig.buyCost;
+        } else {
+          fig.cond = el.value;
+        }
       } else {
         return;
       }

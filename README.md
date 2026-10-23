@@ -711,7 +711,12 @@ Token Secret as sensitive as an API key that can move money.
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
-  For a set with missing figs, the card also shows "As is" (the set
+  Each missing fig also has a "Your cost to buy, each" box (the estimate is its
+  placeholder): a price typed there is kept on that set's fig only, replaces the
+  estimate for every missing copy of it in that set, and means those copies are
+  being bought — none of your own are pulled for them. It survives Refresh
+  prices and feeds the per-set math and the Figs to buy list. For a set with
+  missing figs, the card also shows "As is" (the set
   sold today, without buying anything) next to "Complete" (every missing fig
   bought and added), each as profit · ROI — or just value until Paid is entered.
   The main Value/Profit/ROI follow the chosen route. A card in the list shows only the essentials (verdict chip, Value, Profit,
