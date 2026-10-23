@@ -10020,7 +10020,7 @@
     if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? "" : "s") + ": no price.");
     if (ownedValue > brickAdj && ownedCount > 0) flags.push("Figs > Set");
     if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No set weight — bulk $0.");
-    if (sortNum(e.manual) === 0) flags.push("No manual — you likely won’t sell it as a set (ranks last under Quick turn).");
+    if (sortNum(e.manual) === 0) flags.push("No manual — you likely won’t sell it as a set.");
 
     return {
       routes: routes, best: best, paid: paid, paidKnown: paidKnown, now: nowCase, complete: completeCase,
@@ -10040,19 +10040,18 @@
   }
 
   // How fast a set should get from the pile to sold, 0–100 (higher = quicker):
-  //   30  completeness (nothing to hunt down)
-  //   30  share of its figs on hand (nothing to buy or wait for)
+  //   25  completeness (nothing to hunt down)
+  //   25  share of its figs on hand (nothing to buy or wait for)
   //   20  fewer pieces (less to sort, count and photograph) — log scale from
   //       50 pieces (full marks) to 3,000 (none). The piece count comes from
   //       BrickLink's parts list; a set not refreshed since that was added
   //       falls back to its weight (about 0.55 g a piece), and with neither
   //       gets half marks.
+  //   10  manual (Ryan won't sell sets without one, so none costs all 10)
   //   10  quality (cleaner = less cleaning)
   //    5  box
   //    5  demand — how many sold lately
-  // A set with no manual isn't one Ryan would sell as a set, and a set he's
-  // chosen to save for later isn't a quick turn by definition, so those two
-  // sink to the bottom (no manual last). Value breaks near-ties.
+  // The ranking is by this score alone, highest first; value only breaks ties.
   function sortPieceCount(e) {
     if (e.pieces > 0) return e.pieces;
     return e.setWeightG > 0 ? e.setWeightG / 0.55 : 0;
@@ -10067,15 +10066,14 @@
     var pieces = sortPieceCount(e);
     var pieceScore = pieces > 0 ? sortClamp(1 - Math.log(pieces / 50) / Math.log(3000 / 50), 0, 1) : 0.5;
     var parts = {
-      completeness: 30 * completeness, figs: 30 * figShare, pieces: 20 * pieceScore,
+      completeness: 25 * completeness, figs: 25 * figShare, pieces: 20 * pieceScore,
+      manual: 10 * (sortClamp(sortNum(e.manual), 0, 10) / 10),
       quality: 10 * (sortClamp(sortNum(e.quality), 0, 10) / 10), box: 5 * (sortClamp(sortNum(e.box), 0, 10) / 10),
       demand: 5 * sortClamp((e.setSoldCount || 0) / 20, 0, 1),
     };
-    var score = parts.completeness + parts.figs + parts.pieces + parts.quality + parts.box + parts.demand;
+    var score = parts.completeness + parts.figs + parts.pieces + parts.manual + parts.quality + parts.box + parts.demand;
     var a = analyzeSortEntry(e, sortSettings);
     var rank = score + sortClamp(a.value, 0, 10000) / 1e6;
-    if (e.decision === "hold") rank -= 500;
-    if (sortNum(e.manual) === 0) rank -= 1000;
     return { score: score, rank: rank, pieces: pieces, parts: parts, figs: have + " of " + need };
   }
 
@@ -10308,8 +10306,7 @@
         + (expanded ? '<span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span>' : '')
         + '<span>Profit <b class="' + (a.profit < 0 ? 'sort-neg' : 'sort-pos') + '">' + (a.paidKnown ? sortMoney(a.profit) : "—") + '</b></span>'
         + '<span>ROI <b>' + roiTxt + '</b></span>'
-        + (sortRankKey === "quick" ? '<span>Turn <b>' + Math.round(sortQuickTurn(e).score) + '</b>'
-          + (sortNum(e.manual) === 0 ? ' · <b class="sort-neg">no manual</b>' : (e.decision === "hold" ? ' · <b>saved for later</b>' : '')) + '</span>' : '')
+        + (sortRankKey === "quick" ? '<span>QT Score <b>' + Math.round(sortQuickTurn(e).score) + '</b></span>' : '')
         + '</div>'
         + gapLine
         + (!expanded && figBits.length ? '<div class="sort-summary">' + figBits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '')
@@ -10336,15 +10333,14 @@
     var q = sortQuickTurn(e), p = q.parts;
     var pts = function (v, of) { return v.toFixed(1) + '/' + of; };
     return '<div class="sort-breakdown">'
-      + sortBreakdownLine('<b>Quick turn</b>', Math.round(q.score) + '/100')
-      + sortBreakdownLine('Completeness', pts(p.completeness, 30))
-      + sortBreakdownLine('Figs on hand (' + q.figs + ')', pts(p.figs, 30))
+      + sortBreakdownLine('<b>QT Score</b>', Math.round(q.score) + '/100')
+      + sortBreakdownLine('Completeness', pts(p.completeness, 25))
+      + sortBreakdownLine('Figs on hand (' + q.figs + ')', pts(p.figs, 25))
       + sortBreakdownLine('Pieces (' + (q.pieces > 0 ? Math.round(q.pieces) : 'unknown') + ')', pts(p.pieces, 20))
+      + sortBreakdownLine('Manual', pts(p.manual, 10))
       + sortBreakdownLine('Quality', pts(p.quality, 10))
       + sortBreakdownLine('Box', pts(p.box, 5))
       + sortBreakdownLine('Demand (' + (e.setSoldCount || 0) + ' sold)', pts(p.demand, 5))
-      + (sortNum(e.manual) === 0 ? sortBreakdownLine('No manual', 'ranks last') : '')
-      + (e.decision === "hold" ? sortBreakdownLine('Save for later', 'ranks low') : '')
       + '</div>';
   }
 
