@@ -10062,17 +10062,21 @@
     var figs = e.figs || [];
     var need = 0, have = 0;
     figs.forEach(function (f) { var q = f.qty || 1; need += q; have += sortClamp(f.have || 0, 0, q); });
-    var figShare = need ? have / need : 1;
+    // A set whose figs never loaded isn't "nothing to find" — neutral, not full marks.
+    var figShare = need ? have / need : (e.status === "ready" ? 1 : 0.5);
     var pieces = sortPieceCount(e);
     var pieceScore = pieces > 0 ? sortClamp(1 - Math.log(pieces / 50) / Math.log(3000 / 50), 0, 1) : 0.5;
-    var score = 30 * completeness + 30 * figShare + 20 * pieceScore
-      + 10 * (sortClamp(sortNum(e.quality), 0, 10) / 10) + 5 * (sortClamp(sortNum(e.box), 0, 10) / 10)
-      + 5 * sortClamp((e.setSoldCount || 0) / 20, 0, 1);
+    var parts = {
+      completeness: 30 * completeness, figs: 30 * figShare, pieces: 20 * pieceScore,
+      quality: 10 * (sortClamp(sortNum(e.quality), 0, 10) / 10), box: 5 * (sortClamp(sortNum(e.box), 0, 10) / 10),
+      demand: 5 * sortClamp((e.setSoldCount || 0) / 20, 0, 1),
+    };
+    var score = parts.completeness + parts.figs + parts.pieces + parts.quality + parts.box + parts.demand;
     var a = analyzeSortEntry(e, sortSettings);
     var rank = score + sortClamp(a.value, 0, 10000) / 1e6;
     if (e.decision === "hold") rank -= 500;
     if (sortNum(e.manual) === 0) rank -= 1000;
-    return { score: score, rank: rank, pieces: pieces };
+    return { score: score, rank: rank, pieces: pieces, parts: parts, figs: have + " of " + need };
   }
 
   function sortedSortList() {
@@ -10326,6 +10330,23 @@
     return '<div class="sort-breakdown-line"><span>' + label + '</span><b>' + value + '</b></div>';
   }
 
+  // Where the Quick turn score comes from, point by point.
+  function sortQuickBreakdownHtml(e) {
+    var q = sortQuickTurn(e), p = q.parts;
+    var pts = function (v, of) { return v.toFixed(1) + '/' + of; };
+    return '<div class="sort-breakdown">'
+      + sortBreakdownLine('<b>Quick turn</b>', Math.round(q.score) + '/100')
+      + sortBreakdownLine('Completeness', pts(p.completeness, 30))
+      + sortBreakdownLine('Figs on hand (' + q.figs + ')', pts(p.figs, 30))
+      + sortBreakdownLine('Pieces (' + (q.pieces > 0 ? Math.round(q.pieces) : 'unknown') + ')', pts(p.pieces, 20))
+      + sortBreakdownLine('Quality', pts(p.quality, 10))
+      + sortBreakdownLine('Box', pts(p.box, 5))
+      + sortBreakdownLine('Demand (' + (e.setSoldCount || 0) + ' sold)', pts(p.demand, 5))
+      + (sortNum(e.manual) === 0 ? sortBreakdownLine('No manual', 'ranks last') : '')
+      + (e.decision === "hold" ? sortBreakdownLine('Save for later', 'ranks low') : '')
+      + '</div>';
+  }
+
   function sortMathHtml(e) {
     var a = analyzeSortEntry(e, sortSettings);
     var p = a.parts;
@@ -10345,7 +10366,8 @@
       + sortBreakdownLine('Condition factor', '×' + p.qualityF.toFixed(2))
       + sortBreakdownLine('Box/manual factor', '×' + p.premium.toFixed(2))
       + sortBreakdownLine('Rest, adjusted', sortMoney(p.brickAdj))
-      + '</div>';
+      + '</div>'
+      + sortQuickBreakdownHtml(e);
   }
 
   // Whether this fig is already in Ryan's own BrickLink inventory, and at
