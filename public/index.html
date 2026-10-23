@@ -9602,6 +9602,7 @@
     { key: "roi", label: "ROI" },
     { key: "profit", label: "Profit" },
     { key: "value", label: "Total value" },
+    { key: "quick", label: "Quick turn" },
   ];
   // What Ryan has settled on for a set — the lists at the bottom of the page
   // are built from these, not from the app's own recommendation.
@@ -10019,6 +10020,7 @@
     if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? "" : "s") + ": no price.");
     if (ownedValue > brickAdj && ownedCount > 0) flags.push("Figs > Set");
     if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No set weight — bulk $0.");
+    if (sortNum(e.manual) === 0) flags.push("No manual — you likely won’t sell it as a set (ranks last under Quick turn).");
 
     return {
       routes: routes, best: best, paid: paid, paidKnown: paidKnown, now: nowCase, complete: completeCase,
@@ -10037,10 +10039,48 @@
     return 0;
   }
 
+  // How fast a set should get from the pile to sold, 0–100 (higher = quicker):
+  //   30  completeness (nothing to hunt down)
+  //   30  share of its figs on hand (nothing to buy or wait for)
+  //   20  fewer pieces (less to sort, count and photograph) — log scale from
+  //       50 pieces (full marks) to 3,000 (none). The piece count comes from
+  //       BrickLink's parts list; a set not refreshed since that was added
+  //       falls back to its weight (about 0.55 g a piece), and with neither
+  //       gets half marks.
+  //   10  quality (cleaner = less cleaning)
+  //    5  box
+  //    5  demand — how many sold lately
+  // A set with no manual isn't one Ryan would sell as a set, and a set he's
+  // chosen to save for later isn't a quick turn by definition, so those two
+  // sink to the bottom (no manual last). Value breaks near-ties.
+  function sortPieceCount(e) {
+    if (e.pieces > 0) return e.pieces;
+    return e.setWeightG > 0 ? e.setWeightG / 0.55 : 0;
+  }
+  function sortQuickTurn(e) {
+    var completeness = sortClamp(sortNum(e.completeness), 0, 100) / 100;
+    var figs = e.figs || [];
+    var need = 0, have = 0;
+    figs.forEach(function (f) { var q = f.qty || 1; need += q; have += sortClamp(f.have || 0, 0, q); });
+    var figShare = need ? have / need : 1;
+    var pieces = sortPieceCount(e);
+    var pieceScore = pieces > 0 ? sortClamp(1 - Math.log(pieces / 50) / Math.log(3000 / 50), 0, 1) : 0.5;
+    var score = 30 * completeness + 30 * figShare + 20 * pieceScore
+      + 10 * (sortClamp(sortNum(e.quality), 0, 10) / 10) + 5 * (sortClamp(sortNum(e.box), 0, 10) / 10)
+      + 5 * sortClamp((e.setSoldCount || 0) / 20, 0, 1);
+    var a = analyzeSortEntry(e, sortSettings);
+    var rank = score + sortClamp(a.value, 0, 10000) / 1e6;
+    if (e.decision === "hold") rank -= 500;
+    if (sortNum(e.manual) === 0) rank -= 1000;
+    return { score: score, rank: rank, pieces: pieces };
+  }
+
   function sortedSortList() {
     var arr = sortList.slice();
     if (sortRankKey === "newest") return arr;
-    var scored = arr.map(function (e) { return { e: e, v: sortRankValue(analyzeSortEntry(e, sortSettings), sortRankKey) }; });
+    var scored = arr.map(function (e) {
+      return { e: e, v: sortRankKey === "quick" ? sortQuickTurn(e).rank : sortRankValue(analyzeSortEntry(e, sortSettings), sortRankKey) };
+    });
     scored.sort(function (x, y) { return y.v - x.v; });
     return scored.map(function (s) { return s.e; });
   }
@@ -10103,7 +10143,9 @@
       var old = {};
       (e.figs || []).forEach(function (f) { old[f.itemNo] = f; });
       var byNo = {};
+      var pieces = 0;
       ((data && data.entries) || []).forEach(function (x) {
+        if (x.type === "PART" && !x.isAlternate && !x.isCounterpart) pieces += x.quantity || 0;
         if (x.type !== "MINIFIG" || x.isAlternate || x.isCounterpart) return;
         if (byNo[x.itemNo]) { byNo[x.itemNo].qty += x.quantity || 1; return; }
         var prev = old[x.itemNo] || {};
@@ -10114,6 +10156,7 @@
         };
       });
       e.figs = Object.keys(byNo).map(function (k) { return byNo[k]; });
+      if (pieces > 0) e.pieces = pieces;
       tick();
 
       var tasks = [];
@@ -10261,6 +10304,7 @@
         + (expanded ? '<span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span>' : '')
         + '<span>Profit <b class="' + (a.profit < 0 ? 'sort-neg' : 'sort-pos') + '">' + (a.paidKnown ? sortMoney(a.profit) : "—") + '</b></span>'
         + '<span>ROI <b>' + roiTxt + '</b></span>'
+        + (sortRankKey === "quick" ? '<span>Turn <b>' + Math.round(sortQuickTurn(e).score) + '</b></span>' : '')
         + '</div>'
         + gapLine
         + (!expanded && figBits.length ? '<div class="sort-summary">' + figBits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '')

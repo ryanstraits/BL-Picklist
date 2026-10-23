@@ -711,7 +711,15 @@ Token Secret as sensitive as an API key that can move money.
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
-  A tally card at the top of the page totals the Complete sets (count and value),
+  The ranking dropdown's **Quick turn** scores each set 0–100 for how fast it
+  should get from the pile to sold: completeness 30, share of figs on hand 30,
+  fewer pieces 20 (log scale, 50 pieces = full marks, 3,000 = none; the count is
+  the sum of the set's parts from `item-subsets`, falling back to weight ÷ 0.55 g
+  for sets not refreshed since that was added), quality 10, box 5 and demand 5
+  (recent sales of the set). A set with no manual (0) sinks to the bottom — Ryan
+  doesn't sell those as sets — and a set marked Save for later sits just above
+  those; value only breaks near-ties. The score shows on each card as "Turn N"
+  while that ranking is selected. A tally card at the top of the page totals the Complete sets (count and value),
   the Part out sets (count and value) and, from those, the figs to sell and the
   bulk (lbs and value). Each set counts under its Decision, or under the app's
   suggestion until one is picked; Save for later sets and sets with no prices yet
