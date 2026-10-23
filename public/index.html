@@ -685,6 +685,9 @@
   .sort-refresh-all { font-size: 12.5px; padding: 6px 10px; }
   .sort-fig-stock { margin-top: 2px; }
   .sort-fig-stock.have { color: var(--success); font-weight: 600; }
+  .sort-right-stack { flex-direction: column; align-items: flex-end; gap: 3px; }
+  .sort-fig-count { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+  .sort-fig-count.all { color: var(--success); }
   .sort-breakdown { margin-top: 8px; font-size: 12.5px; }
   .sort-breakdown-line { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
   .sort-breakdown-line b { color: var(--text); }
@@ -10213,6 +10216,18 @@
     return '<span class="item-type-tag sort-verdict ' + cls + '">' + escapeHtml(a.best.key === "set" ? "Sell as set" : "Part out") + '</span>';
   }
 
+  // Figs checked off out of figs needed, right under the verdict badge.
+  function sortFigCountHtml(e) {
+    var need = 0, have = 0;
+    (e.figs || []).forEach(function (f) {
+      var qty = f.qty || 1;
+      need += qty;
+      have += sortClamp(f.have || 0, 0, qty);
+    });
+    if (!need) return "";
+    return '<span class="sort-fig-count' + (have >= need ? ' all' : '') + '">' + have + '/' + need + ' figs</span>';
+  }
+
   function sortHeadBodyHtml(e) {
     var a = analyzeSortEntry(e, sortSettings);
     var summary;
@@ -10248,7 +10263,7 @@
     }
     return '<div class="item-line1">'
       + '<span class="item-no mono">' + escapeHtml(sortIdComplete(e) ? sortEntryId(e) : e.setNo) + '</span>'
-      + '<span class="item-line1-right">' + sortVerdictHtml(e, a) + '</span>'
+      + '<span class="item-line1-right sort-right-stack">' + sortVerdictHtml(e, a) + sortFigCountHtml(e) + '</span>'
       + '</div>'
       + '<div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
       + '<button type="button" class="sort-lookup-link" data-act="lookup" data-id="' + escapeHtml(e.id) + '">Look up set ›</button>'
