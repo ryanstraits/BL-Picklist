@@ -743,7 +743,7 @@
     color: var(--danger);
     border-color: var(--danger);
   }
-  .item-price-was { font-size: 12px; color: var(--text-secondary); }
+  .item-sale-line { display: flex; align-items: center; gap: 7px; margin-top: 3px; font-size: 12px; color: var(--text-secondary); }
   .item-price {
     font-size: 12.5px;
     font-weight: 600;
@@ -3760,11 +3760,19 @@
       if (!(listed > 0)) return "";
       if (final > 0 && final < listed - 0.0005) {
         var pct = Math.round((1 - final / listed) * 100);
-        return '<span class="item-type-tag sale-tag">' + (pct > 0 ? pct + '% off' : 'sale') + '</span>'
-          + '<s class="item-price-was mono">' + escapeHtml(formatCurrency(listed, currency)) + '</s>'
-          + '<span class="item-price mono">' + escapeHtml(formatCurrency(final, currency)) + '</span>';
+        return '<span class="item-price mono">' + escapeHtml(formatCurrency(final, currency)) + '</span>';
       }
       return '<span class="item-price mono">' + escapeHtml(formatCurrency(listed, currency)) + '</span>';
+    }
+
+    // The sale details go on their own line under the item number, so the
+    // top line (number, type, price) keeps its width beside the checkmark.
+    function orderItemSaleLineHtml(item, currency) {
+      var listed = parseFloat(item.unitPrice), final = parseFloat(item.unitPriceFinal);
+      if (!(listed > 0 && final > 0 && final < listed - 0.0005)) return "";
+      var pct = Math.round((1 - final / listed) * 100);
+      return '<div class="item-sale-line"><span class="item-type-tag sale-tag">' + (pct > 0 ? pct + '% off' : 'sale') + '</span>'
+        + '<span>was <s class="mono">' + escapeHtml(formatCurrency(listed, currency)) + '</s></span></div>';
     }
 
     var rows = items.map(function (item, idx) {
@@ -3784,6 +3792,7 @@
         + orderItemPriceHtml(item, order.currencyCode)
         + '</span>'
         + '</div>'
+        + orderItemSaleLineHtml(item, order.currencyCode)
         + (!readOnly && isMulti ? itemProgressRowHtml(progress) : '')
         + '<div class="item-name">' + escapeHtml(item.name) + '</div>'
         + (isRealColorName(item.colorName) ? '<div class="item-color">' + escapeHtml(item.colorName) + '</div>' : '')

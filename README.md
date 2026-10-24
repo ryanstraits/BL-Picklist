@@ -754,8 +754,9 @@ Token Secret as sensitive as an API key that can move money.
   already handed over aren't added twice.
 - **Sale prices on orders** — an item line in an order shows what the buyer
   pays when BrickLink's `unit_price_final` for the line is below its listed
-  `unit_price` (a sale percentage or discount): a "N% off" tag, the listed
-  price struck through, and the final price. Otherwise just the price.
+  `unit_price` (a sale percentage or discount): the final price on the
+  top line, and a "N% off · was $X" line beneath it (kept off the top line so it
+  never runs into the pick checkmark). Otherwise just the price.
   `order-items` now passes `unitPriceFinal` through. Not yet checked against a
   live discounted order from this sandbox.
 - **Inventory quantity writes (fixed Oct 20, 2026)** — on BrickLink's Update
