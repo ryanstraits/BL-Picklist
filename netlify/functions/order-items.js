@@ -32,6 +32,9 @@ exports.handler = requireAuth(async (event) => {
           qty: entry.quantity,
           newOrUsed: entry.new_or_used,
           unitPrice: entry.unit_price,
+          // After any discount on the line (a sale percentage, tiered
+          // pricing) — equal to unit_price when there was none.
+          unitPriceFinal: entry.unit_price_final,
           description: entry.description || '',
           remarks: entry.remarks || '',
           weight: entry.weight,

@@ -752,6 +752,12 @@ Token Secret as sensitive as an API key that can move money.
   Inventory as Used minifig rows (priced from the fig's market value) to
   review and submit there — nothing reaches BrickLink until then, and figs
   already handed over aren't added twice.
+- **Sale prices on orders** — an item line in an order shows what the buyer
+  pays when BrickLink's `unit_price_final` for the line is below its listed
+  `unit_price` (a sale percentage or discount): a "N% off" tag, the listed
+  price struck through, and the final price. Otherwise just the price.
+  `order-items` now passes `unitPriceFinal` through. Not yet checked against a
+  live discounted order from this sandbox.
 - **Inventory quantity writes (fixed Oct 20, 2026)** — on BrickLink's Update
   Inventory call, `quantity` is a *difference to add* (negative to
   subtract), not the new total; both client libraries say so. From Oct 9
