@@ -11559,7 +11559,8 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password: password }),
     }).then(function (res) {
-      if (!res.ok) throw new Error("wrong");
+      if (res.status === 401) throw new Error("wrong");
+      if (!res.ok) throw new Error("server " + res.status);
       return res.json();
     }).then(function (data) {
       // Setting the cookie here ourselves, not relying on the response's
@@ -11574,8 +11575,12 @@
         + (window.location.protocol === "https:" ? "; Secure" : "");
       hideLoginGate();
       startApp();
-    }).catch(function () {
-      loginGateError.textContent = "Incorrect password. Try again.";
+    }).catch(function (err) {
+      // Only a real 401 means the password was wrong — anything else is the
+      // server or the connection, and saying "incorrect" would send you
+      // chasing the wrong problem.
+      loginGateError.textContent = err && err.message === "wrong" ? "Incorrect password. Try again."
+        : "Couldn’t check the password (" + ((err && err.message) || "network error") + "). Try again.";
       loginGateError.classList.remove("hidden");
       loginGatePassword.value = "";
       loginGatePassword.focus();
