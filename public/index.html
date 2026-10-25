@@ -9636,6 +9636,7 @@
     { key: "set", label: "Sell as set" },
     { key: "part", label: "Part out" },
     { key: "hold", label: "Save for later" },
+    { key: "keep", label: "Add to collection" },
   ];
   var GRAMS_PER_LB = 453.592;
   // Ryan's two-letter theme codes, as used in his spreadsheet (code → the
@@ -10546,7 +10547,7 @@
   }
 
   function sortPlan() {
-    var plan = { ready: [], waiting: 0, buy: [], pull: [], bulk: [], hold: [], decided: 0 };
+    var plan = { ready: [], waiting: 0, buy: [], pull: [], bulk: [], hold: [], keep: [], decided: 0 };
     var buyMap = {}, pullMap = {}, pools = {};
     function bump(map, f, label) {
       var row = map[f.itemNo] || (map[f.itemNo] = { itemNo: f.itemNo, name: f.name || "", qty: 0, free: 0, live: [], price: 0, total: 0, sets: {} });
@@ -10554,7 +10555,16 @@
       return row;
     }
     (sortList || []).forEach(function (e) {
-      if (e.decision !== "set" && e.decision !== "part" && e.decision !== "hold") return;
+      if (e.decision !== "set" && e.decision !== "part" && e.decision !== "hold" && e.decision !== "keep") return;
+      if (e.decision === "keep") {
+        // Staying in Ryan's own collection — complete or not, one copy or
+        // several. Not for sale, so it feeds none of the sell lists.
+        var need = 0, got = 0;
+        (e.figs || []).forEach(function (f) { var q = f.qty || 1; need += q; got += sortClamp(f.have || 0, 0, q); });
+        plan.decided++;
+        plan.keep.push({ label: sortSetLabel(e), name: e.name || "", got: got, need: need, paid: e.paid === null || e.paid === undefined || e.paid === "" ? null : sortNum(e.paid) });
+        return;
+      }
       var usable = e.status === "ready" || (e.figs && e.figs.length);
       if (e.status === "loading" || !usable) return;
       plan.decided++;
@@ -10666,6 +10676,11 @@
       b.figs.forEach(function (f) { out.push("   list: " + f.itemNo + " x" + f.qty + " " + f.name + " (" + f.cond + ")"); });
     });
     if (plan.bulk.length) out.push("TOTAL BULK: general parts " + sortLbs(gen) + ", fig parts " + sortLbs(fp));
+    if (plan.keep.length) {
+      out.push("");
+      out.push("IN YOUR COLLECTION (" + plan.keep.length + ")");
+      plan.keep.forEach(function (k) { out.push(k.label + " " + k.name + (k.need ? " - " + k.got + "/" + k.need + " figs" : "")); });
+    }
     if (plan.hold.length) {
       out.push("");
       out.push("SAVING FOR LATER (" + plan.hold.length + ")");
@@ -10746,6 +10761,12 @@
         + figLines + '</div>';
     }).join("") + '<div class="sort-out-row"><div class="sort-out-main"><span>Total to bulk</span><b>' + sortLbs(gen) + ' general · ' + sortLbs(fp) + ' fig parts</b></div></div>'
       : '<div class="sort-out-sub">None.</div>';
+    if (plan.keep.length) {
+      var paidTotal = plan.keep.reduce(function (n, k) { return n + (k.paid || 0); }, 0);
+      html += '<h3 class="sort-out-title">In your collection (' + plan.keep.length + (paidTotal > 0 ? ' · ' + sortMoney(paidTotal) + ' paid' : '') + ')</h3>' + plan.keep.map(function (k) {
+        return sortOutRow('<span class="mono">' + escapeHtml(k.label) + '</span> ' + escapeHtml(k.name), k.need ? k.got + '/' + k.need + ' figs' : '', k.paid !== null ? 'paid ' + sortMoney(k.paid) : '');
+      }).join("");
+    }
     if (plan.hold.length) {
       html += '<h3 class="sort-out-title">Saving for later (' + plan.hold.length + ')</h3>' + plan.hold.map(function (h) {
         return sortOutRow('<span class="mono">' + escapeHtml(h.label) + '</span> ' + escapeHtml(h.name), "",
@@ -10764,8 +10785,9 @@
   // until it is — what the app suggests. Sets still fetching, failed, or with
   // no price data yet aren't counted.
   function sortTally() {
-    var t = { sets: { n: 0, decided: 0, value: 0 }, part: { n: 0, decided: 0 }, figs: { n: 0, value: 0 }, bulk: { lbs: 0, value: 0 }, hold: 0, skipped: 0 };
+    var t = { sets: { n: 0, decided: 0, value: 0 }, part: { n: 0, decided: 0 }, figs: { n: 0, value: 0 }, bulk: { lbs: 0, value: 0 }, hold: 0, keep: 0, skipped: 0 };
     (sortList || []).forEach(function (e) {
+      if (e.decision === "keep") { t.keep++; return; }
       if (e.status === "loading" || (e.status === "error" && !(e.figs && e.figs.length))) { t.skipped++; return; }
       if (e.decision === "hold") { t.hold++; return; }
       var a = analyzeSortEntry(e, sortSettings);
@@ -10793,6 +10815,7 @@
     };
     var decidedTxt = function (d, n) { return d + ' of ' + n + ' decided'; };
     var foot = [];
+    if (t.keep) foot.push(t.keep + ' in your collection');
     if (t.hold) foot.push(t.hold + ' saved for later');
     if (t.skipped) foot.push(t.skipped + ' not counted yet (no prices)');
     return '<div class="sort-tally">'
@@ -11182,7 +11205,7 @@
           e.themeAuto = false; // a hand-picked code is never overwritten by the category guess
           el.value = e.theme;
         } else if (field === "decision") {
-          e.decision = el.value === "set" || el.value === "part" || el.value === "hold" ? el.value : "";
+          e.decision = el.value === "set" || el.value === "part" || el.value === "hold" || el.value === "keep" ? el.value : "";
         } else if (field === "completeness") {
           e.completeness = sortClamp(Math.round(sortNum(el.value)), 0, 100);
         } else {

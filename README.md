@@ -700,7 +700,10 @@ Token Secret as sensitive as an API key that can move money.
   Each card also has a **Decision** dropdown (Sell as set / Part out /
   Save for later — hold a partial set until a missing fig turns up in a future
   lot; held sets get a "Saving for later" list of what each is missing and
-  don't feed the buy/pull lists) —
+  don't feed the buy/pull lists — / Add to collection — keep the set for yourself,
+  complete or not, one copy or several; those get an "In your collection" list
+  (figs on hand out of needed, what was paid, total paid in the heading) and a
+  count in the tally card, and feed none of the sell lists or totals) —
   Ryan's call, separate from the app's recommendation chip — and the page
   ends with lists built from those decisions: *Ready to sell* (Sell as set,
   every fig checked off), *Figs to buy* (every missing fig across the
