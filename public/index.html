@@ -10209,21 +10209,23 @@
         return sortPriceFetch("SET", e.setNo, "sold").then(function (p) {
           e.setSoldAvg = Number(p.qtyAvgPrice || p.avgPrice) || 0;
           e.setSoldCount = p.unitQuantity || 0;
+          e.setSoldQty = p.totalQuantity || 0;
         }).catch(function () { warnings++; }).then(tick);
       });
       tasks.push(function () {
         return sortPriceFetch("SET", e.setNo, "stock").then(function (p) {
           e.setStockAvg = Number(p.avgPrice) || 0;
+          e.setStockQty = p.totalQuantity || 0;
         }).catch(function () { warnings++; }).then(tick);
       });
       e.figs.forEach(function (f) {
         var cached = sortFigCache[f.itemNo];
         if (cached) {
-          f.soldAvg = cached.soldAvg; f.soldCount = cached.soldCount; f.stockMin = cached.stockMin; f.stockAvg25 = cached.stockAvg25; f.stockN = cached.stockN; f.weightG = cached.weightG;
+          f.soldAvg = cached.soldAvg; f.soldCount = cached.soldCount; f.soldQty = cached.soldQty; f.stockQty = cached.stockQty; f.stockMin = cached.stockMin; f.stockAvg25 = cached.stockAvg25; f.stockN = cached.stockN; f.weightG = cached.weightG;
           if (!f.name && cached.name) f.name = cached.name;
           return;
         }
-        var c = sortFigCache[f.itemNo] = { name: "", weightG: 0, soldAvg: 0, soldCount: 0, stockMin: 0, stockAvg25: 0, stockN: 0 };
+        var c = sortFigCache[f.itemNo] = { name: "", weightG: 0, soldAvg: 0, soldCount: 0, soldQty: 0, stockQty: 0, stockMin: 0, stockAvg25: 0, stockN: 0 };
         tasks.push(function () {
           return fetchJSON("/api/item-lookup?type=MINIFIG&no=" + encodeURIComponent(f.itemNo)).then(function (r) {
             c.weightG = (r.item && r.item.weightG) || 0;
@@ -10234,7 +10236,8 @@
           return sortPriceFetch("MINIFIG", f.itemNo, "sold").then(function (p) {
             c.soldAvg = Number(p.qtyAvgPrice || p.avgPrice) || 0;
             c.soldCount = p.unitQuantity || 0;
-          }).catch(function () { warnings++; }).then(function () { f.soldAvg = c.soldAvg; f.soldCount = c.soldCount; tick(); });
+            c.soldQty = p.totalQuantity || 0;
+          }).catch(function () { warnings++; }).then(function () { f.soldAvg = c.soldAvg; f.soldCount = c.soldCount; f.soldQty = c.soldQty; tick(); });
         });
         tasks.push(function () {
           return sortPriceFetch("MINIFIG", f.itemNo, "stock").then(function (p) {
@@ -10244,8 +10247,9 @@
             // realistically cost to buy one.
             var prices = (p.listings || []).map(function (l) { return Number(l.unitPrice); }).filter(function (n) { return n > 0; });
             c.stockN = prices.length;
+            c.stockQty = p.totalQuantity || 0;
             c.stockAvg25 = prices.length ? prices.reduce(function (a, b) { return a + b; }, 0) / prices.length : 0;
-          }).catch(function () { warnings++; }).then(function () { f.stockMin = c.stockMin; f.stockAvg25 = c.stockAvg25; f.stockN = c.stockN; tick(); });
+          }).catch(function () { warnings++; }).then(function () { f.stockMin = c.stockMin; f.stockAvg25 = c.stockAvg25; f.stockN = c.stockN; f.stockQty = c.stockQty; tick(); });
         });
       });
       e.progress.total = e.progress.done + tasks.length;
@@ -10351,6 +10355,7 @@
         + (sortRankKey === "quick" ? '<span>QT Score <b>' + Math.round(sortQuickTurn(e).score) + '</b></span>' : '')
         + '</div>'
         + gapLine
+        + sortDemandLine(e)
         + (!expanded && figBits.length ? '<div class="sort-summary">' + figBits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '')
         + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '')
         + (expanded ? a.flags.map(function (f) { return '<div class="sort-flag">' + escapeHtml(f) + '</div>'; }).join("") : "");
@@ -10382,7 +10387,7 @@
       + sortBreakdownLine('Manual', pts(p.manual, 10))
       + sortBreakdownLine('Quality', pts(p.quality, 10))
       + sortBreakdownLine('Box', pts(p.box, 5))
-      + sortBreakdownLine('Demand (' + (e.setSoldCount || 0) + ' sold)', pts(p.demand, 5))
+      + sortBreakdownLine('Demand (' + (e.setSoldCount || 0) + ' sales)', pts(p.demand, 5))
       + '</div>';
   }
 
@@ -10399,7 +10404,8 @@
     }).join("");
     return '<table class="sort-math-table"><thead><tr><th>Route</th><th>Sells for</th><th>Fig cost</th><th>Profit</th></tr></thead><tbody>' + rows + '</tbody></table>'
       + '<div class="sort-breakdown">'
-      + sortBreakdownLine('Set value', sortMoney(p.setValue) + (e.setSoldCount ? ' (' + e.setSoldCount + ' sold)' : ''))
+      + sortBreakdownLine('Set value', sortMoney(p.setValue) + (e.setSoldCount ? ' (' + e.setSoldCount + ' sales)' : ''))
+      + (e.setSoldQty > 0 || e.setStockQty > 0 ? sortBreakdownLine('Set demand (6 mo)', (e.setSoldQty || 0) + ' sold · ' + (e.setStockQty || 0) + ' listed (US)') : '')
       + sortBreakdownLine('Figs', sortMoney(p.figsAll))
       + sortBreakdownLine('Rest of set', sortMoney(p.brickFull))
       + sortBreakdownLine('Condition factor', '×' + p.qualityF.toFixed(2))
@@ -10445,11 +10451,31 @@
     return f.stockAvg25 > 0 ? f.stockAvg25 : (f.stockMin > 0 ? f.stockMin : sortFigUnitValue(f));
   }
 
+  // How many of a fig sold over BrickLink's price-guide window (about six
+  // months): pieces if reported, else the number of sales.
+  function sortFigSold(f) {
+    return f.soldQty > 0 ? f.soldQty : (f.soldCount || 0);
+  }
+
+  // One line of demand numbers, set vs figs, to weigh selling complete
+  // against parting out.
+  function sortDemandLine(e) {
+    var bits = [];
+    var setSold = e.setSoldQty > 0 ? e.setSoldQty : (e.setSoldCount || 0);
+    if (setSold > 0) bits.push('set <b>' + setSold + '</b>');
+    var figs = (e.figs || []).map(sortFigSold);
+    if (figs.some(function (n) { return n > 0; })) {
+      var avg = Math.round(figs.reduce(function (a, b) { return a + b; }, 0) / figs.length);
+      bits.push('figs avg <b>' + avg + '</b>, low <b>' + Math.min.apply(null, figs) + '</b>');
+    }
+    return bits.length ? '<div class="sort-summary"><span>Sold (6 mo):</span>' + bits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '';
+  }
+
   function sortFigRowHtml(f) {
     var qty = f.qty || 1;
     var unit = sortFigUnitValue(f);
     var priceTxt = unit > 0
-      ? (f.soldAvg > 0 ? 'sold avg ' + sortMoney(f.soldAvg) + (f.soldCount ? ' (' + f.soldCount + ')' : '') : 'no sales')
+      ? (f.soldAvg > 0 ? 'sold avg ' + sortMoney(f.soldAvg) : 'no sales')
         + (f.stockAvg25 > 0 ? ' · low-' + f.stockN + ' avg ' + sortMoney(f.stockAvg25) : (f.stockMin > 0 ? ' · cheapest ' + sortMoney(f.stockMin) : ''))
       : 'no price data';
     return '<div class="item-row sort-fig-row' + ((f.have || 0) >= qty ? ' sort-fig-all' : '') + '" data-fig="' + escapeHtml(f.itemNo) + '">'
@@ -10458,6 +10484,10 @@
       + '<div class="item-line1"><span class="item-no mono">' + escapeHtml(f.itemNo) + '</span><span class="item-line1-right">×' + qty + '</span></div>'
       + '<div class="item-name">' + escapeHtml(f.name || "") + '</div>'
       + '<div class="item-color">' + escapeHtml(priceTxt) + '</div>'
+      + (sortFigSold(f) > 0 || f.stockQty > 0
+        ? '<div class="item-color">' + escapeHtml('Demand: ' + sortFigSold(f) + ' sold (6 mo)' + (f.soldCount && f.soldQty && f.soldCount !== f.soldQty ? ' in ' + f.soldCount + ' sales' : '')
+          + (f.stockQty > 0 ? ' · ' + f.stockQty + ' listed (US)' : '')) + '</div>'
+        : '')
       + sortFigStockHtml(f)
       + '<div class="sort-fig-buy"><label>Your cost to buy, each ($)</label>'
       + '<input type="number" inputmode="decimal" min="0" step="0.01" data-fig="' + escapeHtml(f.itemNo) + '" data-figf="buyCost" placeholder="est. ' + sortMoney(sortFigBuyEstimate(f)).replace("$", "") + '" value="' + (f.buyCost > 0 ? escapeHtml(f.buyCost) : '') + '"></div>'

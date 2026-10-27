@@ -714,7 +714,13 @@ Token Secret as sensitive as an API key that can move money.
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
-  The dropdown's **Set number** option lists sets lowest number first
+  Demand numbers help weigh selling complete against parting out: each fig
+  row shows "Demand: N sold (6 mo) in M sales · K listed (US)" and the set's edit
+  view shows its own; every card also gets a "Sold (6 mo): set N · figs avg X,
+  low Y" line (the low figure is the slowest fig). They come from the price
+  guide's sold window (`totalQuantity` pieces and `unitQuantity` sales) and the
+  US stock guide (`totalQuantity` listed), and appear once a set's prices are
+  refreshed. The dropdown's **Set number** option lists sets lowest number first
   (numerically, so 9999 comes before 10179), copies of one set in copy order. The ranking dropdown's **Quick turn** ranks sets by their **QT Score**, 0–100,
   highest first (value only breaks ties): completeness 25, share of figs on hand
   25, fewer pieces 20 (log scale, 50 pieces = full marks, 3,000 = none; the count
