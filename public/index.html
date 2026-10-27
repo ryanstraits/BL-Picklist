@@ -2627,6 +2627,13 @@
   // price-guide value, so the field itself (not just formatCurrency's
   // 2-decimal display-only output, which is for rounded dollar totals,
   // not a per-item price) never shows that extra zero.
+  // A mailto: body's line breaks are meant to be CRLF (%0D%0A, RFC 6068). A
+  // bare LF (%0A) is dropped by some mail apps — the Gmail iPhone app ran a
+  // whole fig log together onto one line — so every body goes through this.
+  function mailtoBody(text) {
+    return encodeURIComponent(String(text).replace(/\r?\n/g, "\r\n"));
+  }
+
   function formatPriceInput(value) {
     if (value === null || value === undefined || value === "") return "";
     var num = Number(value);
@@ -5432,7 +5439,7 @@
     });
     var subject = "Fig inventory log - " + dateStr + " (" + rows.length + ")";
     var body = lines.join("\n\n") + "\n\nDate entered: " + dateStr;
-    return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + mailtoBody(body);
   }
 
   function figLogBannerHtml() {
@@ -9361,7 +9368,7 @@
   function wantedListBankEmailHref() {
     var xml = buildWantedListBankXml();
     var subject = "BrickLink Wanted List - " + new Date().toLocaleDateString();
-    return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(xml);
+    return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + mailtoBody(xml);
   }
 
   function wantedListBankRowHtml(key, entry, colorsMap) {
@@ -10693,7 +10700,7 @@
 
   function sortPlanEmailHref(plan) {
     var subject = "Sort List - " + new Date().toLocaleDateString();
-    return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(sortPlanText(plan));
+    return "mailto:thabrickstud@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + mailtoBody(sortPlanText(plan));
   }
 
   var SORT_STOCK_ROOMS = ["A", "B", "C"];
