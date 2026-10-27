@@ -38,7 +38,10 @@ exports.handler = requireAuth(async (event) => {
       guide_type: sold ? 'sold' : 'stock',
       new_or_used: newOrUsed,
     });
-    if (!sold) query.set('country_code', 'US');
+    // scope=all drops the US filter on the stock guide — used for total
+    // supply (everything listed anywhere) when comparing against sales,
+    // which are always market-wide.
+    if (!sold && params.scope !== 'all') query.set('country_code', 'US');
     if (colorId) query.set('color_id', colorId);
 
     const data = await blGet(`/items/${encodeURIComponent(itemType)}/${encodeURIComponent(itemNo)}/price?${query.toString()}`);

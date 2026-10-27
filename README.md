@@ -714,13 +714,21 @@ Token Secret as sensitive as an API key that can move money.
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
-  Demand numbers help weigh selling complete against parting out: each fig
-  row shows "Demand: N sold (6 mo) in M sales · K listed (US)" and the set's edit
-  view shows its own; every card also gets a "Sold (6 mo): set N · figs avg X,
-  low Y" line (the low figure is the slowest fig). They come from the price
-  guide's sold window (`totalQuantity` pieces and `unitQuantity` sales) and the
-  US stock guide (`totalQuantity` listed), and appear once a set's prices are
-  refreshed. The dropdown's **Set number** option lists sets lowest number first
+  A **Demand** number (0–100) sits on the front of each card and can be ranked
+  by (the dropdown's "Demand"). It harmonizes Ryan's two spreadsheet measures
+  onto one scale, both of the form x / (x + 1): for the set, sold / (sold +
+  listed) — pieces sold in the price guide's window (about six months) against
+  everything listed worldwide (`price-guide?scope=all`); BrickLink's API has no
+  want/own counts, so this sell-through stands in for wanted / (wanted + owned).
+  For a fig, his rarity index age / sets-it-comes-in (age = years since
+  `year_released`, at least 1; the set count comes from the minifig's supersets
+  via `item-lookup?sets=1`), squashed the same way. The card's number blends the two
+  weighted by dollars — the rest of the set against its figs. The edit view shows
+  the pieces: each fig's rarity, sold/listed, and a Demand block in the math. Numbers
+  appear once a set's prices are refreshed. The card's front is deliberately just
+  ID, name, verdict chip, fig counter, Value / Profit / ROI, the Demand pill and the
+  Decision/Edit row; the route, Paid, as-is vs complete, fig money, "Sold (6 mo)" line,
+  notes, Look up set and Remove all show once the card is opened. The dropdown's **Set number** option lists sets lowest number first
   (numerically, so 9999 comes before 10179), copies of one set in copy order. The ranking dropdown's **Quick turn** ranks sets by their **QT Score**, 0–100,
   highest first (value only breaks ties): completeness 25, share of figs on hand
   25, fewer pieces 20 (log scale, 50 pieces = full marks, 3,000 = none; the count

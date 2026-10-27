@@ -688,6 +688,10 @@
   .sort-right-stack { flex-direction: column; align-items: flex-end; gap: 3px; }
   .sort-fig-count { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
   .sort-fig-count.all { color: var(--success); }
+  .sort-demand { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-secondary); }
+  .sort-demand.high { color: var(--success); border-color: var(--success); }
+  .sort-demand.mid { color: var(--info); border-color: var(--info); }
+  .sort-detail { margin-top: 6px; }
   .sort-breakdown { margin-top: 8px; font-size: 12.5px; }
   .sort-breakdown-line { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
   .sort-breakdown-line b { color: var(--text); }
@@ -9636,6 +9640,7 @@
     { key: "value", label: "Total value" },
     { key: "quick", label: "Quick turn" },
     { key: "setno", label: "Set number" },
+    { key: "demand", label: "Demand" },
   ];
   // What Ryan has settled on for a set — the lists at the bottom of the page
   // are built from these, not from the app's own recommendation.
@@ -10123,7 +10128,11 @@
       });
     }
     var scored = arr.map(function (e) {
-      return { e: e, v: sortRankKey === "quick" ? sortQuickTurn(e).rank : sortRankValue(analyzeSortEntry(e, sortSettings), sortRankKey) };
+      var v;
+      if (sortRankKey === "quick") v = sortQuickTurn(e).rank;
+      else if (sortRankKey === "demand") { var d = sortDemand(e); v = d ? d.score : -1; }
+      else v = sortRankValue(analyzeSortEntry(e, sortSettings), sortRankKey);
+      return { e: e, v: v };
     });
     scored.sort(function (x, y) { return y.v - x.v; });
     return scored.map(function (s) { return s.e; });
@@ -10151,7 +10160,8 @@
   }
 
   function sortPriceFetch(type, no, guide) {
-    return fetchJSON("/api/price-guide?type=" + type + "&no=" + encodeURIComponent(no) + "&condition=U" + (guide === "sold" ? "&guide=sold" : ""));
+    return fetchJSON("/api/price-guide?type=" + type + "&no=" + encodeURIComponent(no) + "&condition=U"
+      + (guide === "sold" ? "&guide=sold" : "") + (guide === "stock-all" ? "&scope=all" : ""));
   }
 
   function sortFindEntry(id) {
@@ -10212,6 +10222,12 @@
           e.setSoldQty = p.totalQuantity || 0;
         }).catch(function () { warnings++; }).then(tick);
       });
+      // Everything listed worldwide, to set against what sold (also worldwide).
+      tasks.push(function () {
+        return sortPriceFetch("SET", e.setNo, "stock-all").then(function (p) {
+          e.setListedAll = p.totalQuantity || 0;
+        }).catch(function () { warnings++; }).then(tick);
+      });
       tasks.push(function () {
         return sortPriceFetch("SET", e.setNo, "stock").then(function (p) {
           e.setStockAvg = Number(p.avgPrice) || 0;
@@ -10221,16 +10237,18 @@
       e.figs.forEach(function (f) {
         var cached = sortFigCache[f.itemNo];
         if (cached) {
-          f.soldAvg = cached.soldAvg; f.soldCount = cached.soldCount; f.soldQty = cached.soldQty; f.stockQty = cached.stockQty; f.stockMin = cached.stockMin; f.stockAvg25 = cached.stockAvg25; f.stockN = cached.stockN; f.weightG = cached.weightG;
+          f.soldAvg = cached.soldAvg; f.soldCount = cached.soldCount; f.soldQty = cached.soldQty; f.stockQty = cached.stockQty; f.yearReleased = cached.yearReleased; f.setCount = cached.setCount; f.stockMin = cached.stockMin; f.stockAvg25 = cached.stockAvg25; f.stockN = cached.stockN; f.weightG = cached.weightG;
           if (!f.name && cached.name) f.name = cached.name;
           return;
         }
-        var c = sortFigCache[f.itemNo] = { name: "", weightG: 0, soldAvg: 0, soldCount: 0, soldQty: 0, stockQty: 0, stockMin: 0, stockAvg25: 0, stockN: 0 };
+        var c = sortFigCache[f.itemNo] = { name: "", weightG: 0, soldAvg: 0, soldCount: 0, soldQty: 0, stockQty: 0, yearReleased: 0, setCount: null, stockMin: 0, stockAvg25: 0, stockN: 0 };
         tasks.push(function () {
-          return fetchJSON("/api/item-lookup?type=MINIFIG&no=" + encodeURIComponent(f.itemNo)).then(function (r) {
+          return fetchJSON("/api/item-lookup?type=MINIFIG&sets=1&no=" + encodeURIComponent(f.itemNo)).then(function (r) {
             c.weightG = (r.item && r.item.weightG) || 0;
+            c.yearReleased = (r.item && r.item.yearReleased) || 0;
+            c.setCount = r.item && r.item.setCount > 0 ? r.item.setCount : null;
             if (r.item && r.item.name) c.name = decodeHtmlEntities(r.item.name);
-          }).catch(function () { warnings++; }).then(function () { f.weightG = c.weightG; if (!f.name) f.name = c.name; tick(); });
+          }).catch(function () { warnings++; }).then(function () { f.weightG = c.weightG; f.yearReleased = c.yearReleased; f.setCount = c.setCount; if (!f.name) f.name = c.name; tick(); });
         });
         tasks.push(function () {
           return sortPriceFetch("MINIFIG", f.itemNo, "sold").then(function (p) {
@@ -10346,26 +10364,33 @@
       var gapLine = a.parts.missingCount > 0
         ? '<div class="sort-summary">' + caseBit('As is', a.now) + caseBit('Complete', a.complete) + '<span>' + (a.paidKnown ? '(profit · ROI)' : '(value)') + '</span></div>'
         : '';
+      // Front of the card: just the numbers that decide where a set sits.
+      // Everything else (route, paid, as-is vs complete, fig money, demand
+      // detail, notes) shows once the card is opened for editing.
       summary = '<div class="sort-summary">'
-        + (expanded ? '<span><b>' + escapeHtml(a.best.label) + '</b></span>' : '')
         + '<span>Value <b>' + sortMoney(a.value) + '</b></span>'
-        + (expanded ? '<span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span>' : '')
         + '<span>Profit <b class="' + (a.profit < 0 ? 'sort-neg' : 'sort-pos') + '">' + (a.paidKnown ? sortMoney(a.profit) : "—") + '</b></span>'
         + '<span>ROI <b>' + roiTxt + '</b></span>'
-        + (sortRankKey === "quick" ? '<span>QT Score <b>' + Math.round(sortQuickTurn(e).score) + '</b></span>' : '')
         + '</div>'
-        + gapLine
-        + sortDemandLine(e)
-        + (!expanded && figBits.length ? '<div class="sort-summary">' + figBits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '')
+        + '<div class="sort-summary">' + sortDemandPillHtml(e)
+        + (sortRankKey === "quick" ? '<span>QT Score <b>' + Math.round(sortQuickTurn(e).score) + '</b></span>' : '') + '</div>'
         + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '')
-        + (expanded ? a.flags.map(function (f) { return '<div class="sort-flag">' + escapeHtml(f) + '</div>'; }).join("") : "");
+        + (expanded
+          ? '<div class="sort-detail">'
+            + '<div class="sort-summary"><span><b>' + escapeHtml(a.best.label) + '</b></span><span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span></div>'
+            + gapLine
+            + (figBits.length ? '<div class="sort-summary">' + figBits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '')
+            + sortDemandLine(e)
+            + a.flags.map(function (f) { return '<div class="sort-flag">' + escapeHtml(f) + '</div>'; }).join("")
+            + '</div>'
+          : "");
     }
     return '<div class="item-line1">'
       + '<span class="item-no mono">' + escapeHtml(sortIdComplete(e) ? sortEntryId(e) : e.setNo) + '</span>'
       + '<span class="item-line1-right sort-right-stack">' + sortVerdictHtml(e, a) + sortFigCountHtml(e) + '</span>'
       + '</div>'
       + '<div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
-      + '<button type="button" class="sort-lookup-link" data-act="lookup" data-id="' + escapeHtml(e.id) + '">Look up set ›</button>'
+      + (sortExpanded[e.id] ? '<button type="button" class="sort-lookup-link" data-act="lookup" data-id="' + escapeHtml(e.id) + '">Look up set ›</button>' : '')
       + (sortIdClash(e) ? '<div class="sort-flag sort-neg">Duplicate ID ' + escapeHtml(sortEntryId(e)) + '</div>' : '')
       + (!sortIdComplete(e) && sortExpanded[e.id] ? '<div class="sort-flag">Add copy # & theme for its ID.</div>' : '')
       + summary;
@@ -10373,6 +10398,19 @@
 
   function sortBreakdownLine(label, value) {
     return '<div class="sort-breakdown-line"><span>' + label + '</span><b>' + value + '</b></div>';
+  }
+
+  function sortDemandBreakdownHtml(e) {
+    var d = sortDemand(e);
+    if (!d) return "";
+    var sold = e.setSoldQty > 0 ? e.setSoldQty : (e.setSoldCount || 0);
+    var listed = e.setListedAll > 0 ? e.setListedAll : (e.setStockQty || 0);
+    return '<div class="sort-breakdown">'
+      + sortBreakdownLine('<b>Demand</b>', Math.round(d.score) + '/100')
+      + (d.setD !== null ? sortBreakdownLine('Set: ' + sold + ' sold vs ' + listed + ' listed', Math.round(d.setD)) : '')
+      + (d.figD !== null ? sortBreakdownLine('Figs: rarity, by value', Math.round(d.figD)) : '')
+      + (d.setD !== null && d.figD !== null ? sortBreakdownLine('Blend weights (rest / figs)', sortMoney(d.wSet) + ' / ' + sortMoney(d.wFig)) : '')
+      + '</div>';
   }
 
   // Where the Quick turn score comes from, point by point.
@@ -10412,6 +10450,7 @@
       + sortBreakdownLine('Box/manual factor', '×' + p.premium.toFixed(2))
       + sortBreakdownLine('Rest, adjusted', sortMoney(p.brickAdj))
       + '</div>'
+      + sortDemandBreakdownHtml(e)
       + sortQuickBreakdownHtml(e);
   }
 
@@ -10451,6 +10490,57 @@
     return f.stockAvg25 > 0 ? f.stockAvg25 : (f.stockMin > 0 ? f.stockMin : sortFigUnitValue(f));
   }
 
+  // ---- Demand (0–100, higher = more in demand) ----
+  // One scale for sets and figs, both of the form x / (x + 1) — the same
+  // shape as Ryan's spreadsheet's wanted / (wanted + owned):
+  //   Set: sold / (sold + listed) — what sold in the price-guide window
+  //        against everything listed for sale now (BrickLink's API has no
+  //        want/own counts, so sell-through stands in for them).
+  //   Fig: his rarity index, age / sets-it-comes-in, squashed the same way
+  //        (age = years since release, at least 1).
+  // A card's number blends the two, weighted by how much of the set's value
+  // each is — the rest of the set vs. its figs.
+  function sortSetDemand(e) {
+    var sold = e.setSoldQty > 0 ? e.setSoldQty : (e.setSoldCount || 0);
+    var listed = e.setListedAll > 0 ? e.setListedAll : (e.setStockQty || 0);
+    if (!(sold + listed > 0)) return null;
+    return 100 * sold / (sold + listed);
+  }
+  function sortFigRarity(f) {
+    if (!(f.yearReleased > 0) || !(f.setCount > 0)) return null;
+    var age = Math.max(1, new Date().getFullYear() - f.yearReleased);
+    var x = age / f.setCount;
+    return 100 * x / (x + 1);
+  }
+  function sortDemand(e) {
+    if (e.status !== "ready") return null;
+    var setD = sortSetDemand(e);
+    var figD = null, wSum = 0, dSum = 0, figsValue = 0;
+    (e.figs || []).forEach(function (f) {
+      var r = sortFigRarity(f);
+      if (r === null) return;
+      var w = sortFigUnitValue(f) * (f.qty || 1);
+      figsValue += w;
+      wSum += w || 1; dSum += r * (w || 1);
+    });
+    if (wSum > 0) figD = dSum / wSum;
+    if (setD === null && figD === null) return null;
+    var a = analyzeSortEntry(e, sortSettings);
+    var wSet = a.parts.brickFull, wFig = a.parts.figsAll;
+    var score;
+    if (setD === null) score = figD;
+    else if (figD === null) score = setD;
+    else if (wSet + wFig > 0) score = (setD * wSet + figD * wFig) / (wSet + wFig);
+    else score = (setD + figD) / 2;
+    return { score: score, setD: setD, figD: figD, wSet: wSet, wFig: wFig };
+  }
+  function sortDemandPillHtml(e) {
+    var d = sortDemand(e);
+    if (!d) return "";
+    var n = Math.round(d.score);
+    return '<span class="sort-demand ' + (n >= 60 ? 'high' : n >= 35 ? 'mid' : 'low') + '">Demand ' + n + '</span>';
+  }
+
   // How many of a fig sold over BrickLink's price-guide window (about six
   // months): pieces if reported, else the number of sales.
   function sortFigSold(f) {
@@ -10487,6 +10577,9 @@
       + (sortFigSold(f) > 0 || f.stockQty > 0
         ? '<div class="item-color">' + escapeHtml('Demand: ' + sortFigSold(f) + ' sold (6 mo)' + (f.soldCount && f.soldQty && f.soldCount !== f.soldQty ? ' in ' + f.soldCount + ' sales' : '')
           + (f.stockQty > 0 ? ' · ' + f.stockQty + ' listed (US)' : '')) + '</div>'
+        : '')
+      + (sortFigRarity(f) !== null
+        ? '<div class="item-color">' + escapeHtml('Rarity ' + Math.round(sortFigRarity(f)) + ' (' + Math.max(1, new Date().getFullYear() - f.yearReleased) + ' yrs, in ' + f.setCount + ' set' + (f.setCount === 1 ? '' : 's') + ')') + '</div>'
         : '')
       + sortFigStockHtml(f)
       + '<div class="sort-fig-buy"><label>Your cost to buy, each ($)</label>'
@@ -10547,7 +10640,7 @@
       + (failed ? '' : '<select class="manage-inventory-sort-select sort-decision" data-sortf="decision" aria-label="Decision">'
         + SORT_DECISIONS.map(function (d) { return '<option value="' + d.key + '"' + ((e.decision || "") === d.key ? ' selected' : '') + '>' + escapeHtml(d.label) + '</option>'; }).join("")
         + '</select>')
-      + '<button type="button" class="delete-row-btn" data-act="remove" data-id="' + escapeHtml(e.id) + '">Remove</button>'
+      + (expanded || failed ? '<button type="button" class="delete-row-btn" data-act="remove" data-id="' + escapeHtml(e.id) + '">Remove</button>' : '')
       + '</div>'
       + '</div>';
   }
