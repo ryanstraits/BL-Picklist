@@ -714,7 +714,12 @@ Token Secret as sensitive as an API key that can move money.
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,
   with a total). "Email these lists" opens a plain-text email of all four.
-  A **Demand** number (0–100) sits on the front of each card and can be ranked
+  Demand also leans the recommendation: a route's value is scaled by up to
+  ±"Demand tips the pick by" % (setting, 20 by default, 0 = ignore demand) —
+  set demand for Sell as set, the rarity of the figs you actually have (checked
+  off) for the fig part of Part out, bulk untouched, unknown = neutral — and the
+  higher-scoring route is the pick. Value, profit and ROI stay the real numbers;
+  when demand changes the pick, the edit view says so. A **Demand** number (0–100) sits on the front of each card and can be ranked
   by (the dropdown's "Demand"). It harmonizes Ryan's two spreadsheet measures
   onto one scale, both of the form x / (x + 1): for the set, sold / (sold +
   listed) — pieces sold in the price guide's window (about six months) against

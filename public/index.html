@@ -9620,6 +9620,7 @@
     condGood: 100,          // % of a fig's market value by condition
     condFair: 80,
     condPoor: 60,
+    demandWeightPct: 20,    // how far demand can tip a route's value: ±this % at the extremes (0 = ignore demand)
   };
   var SORT_SETTING_FIELDS = [
     { key: "genRate", label: "General parts", suffix: "$/lb", step: "0.01" },
@@ -9632,6 +9633,7 @@
     { key: "condGood", label: "Fig worth, Good", suffix: "%", step: "1" },
     { key: "condFair", label: "Fig worth, Fair", suffix: "%", step: "1" },
     { key: "condPoor", label: "Fig worth, Poor", suffix: "%", step: "1" },
+    { key: "demandWeightPct", label: "Demand tips the pick by up to", suffix: "% of a route’s value", step: "1" },
   ];
   var SORT_RANKS = [
     { key: "newest", label: "Newest first" },
@@ -10046,8 +10048,26 @@
       return { net: net, profit: net - paid, roi: paidKnown && paid > 0 ? (net - paid) / paid : null };
     };
     var nowCase = scenario(asIsNet), completeCase = scenario(fullNet);
+    // The pick leans toward the route with the stronger demand: a route's
+    // value is scaled by up to ±demandWeightPct% (set demand for selling
+    // complete; the rarity of the figs you actually have for the fig part
+    // of parting out, bulk untouched). Unknown demand is neutral (50). The
+    // numbers shown stay the real ones — this only decides which route wins.
+    var wPct = (st.demandWeightPct || 0) / 100;
+    var lean = function (d) { return 1 + wPct * ((d === null ? 50 : d) - 50) / 50; };
+    var ownRar = 0, ownW = 0;
+    figs.forEach(function (f) {
+      var have = sortClamp(f.have || 0, 0, f.qty || 1), r = sortFigRarity(f);
+      if (!have || r === null) return;
+      var w = (sortFigUnitValue(f) * have) || 1;
+      ownRar += r * w; ownW += w;
+    });
+    var setDem = sortSetDemand(e), figDem = ownW > 0 ? ownRar / ownW : null;
+    setRoute.score = setRoute.net * lean(setDem) - paid;
+    partRoute.score = partRoute.figsValue * lean(figDem) + partRoute.bulkValue - paid;
     // Ties go to the earlier route (sell as set, then part out).
-    var best = routes.reduce(function (top, r) { return r.profit > top.profit ? r : top; }, routes[0]);
+    var best = routes.reduce(function (top, r) { return r.score > top.score ? r : top; }, routes[0]);
+    var plainBest = routes.reduce(function (top, r) { return r.profit > top.profit ? r : top; }, routes[0]);
 
     var hasData = setValue > 0 || figs.some(function (f) { return sortFigUnitValue(f) > 0; });
     var flags = [];
@@ -10059,6 +10079,9 @@
     if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? "" : "s") + ": no price.");
     if (ownedValue > brickAdj && ownedCount > 0) flags.push("Figs > Set");
     if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No set weight — bulk $0.");
+    if (best !== plainBest) {
+      flags.push("Demand tips this to " + best.label + " (set demand " + (setDem === null ? "unknown" : Math.round(setDem)) + " vs. rarity of the figs you have " + (figDem === null ? "unknown" : Math.round(figDem)) + "); on profit alone it would be " + plainBest.label + ".");
+    }
     if (sortNum(e.manual) === 0) flags.push("No manual — you likely won’t sell it as a set.");
 
     return {
