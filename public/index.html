@@ -9635,6 +9635,7 @@
     { key: "profit", label: "Profit" },
     { key: "value", label: "Total value" },
     { key: "quick", label: "Quick turn" },
+    { key: "setno", label: "Set number" },
   ];
   // What Ryan has settled on for a set — the lists at the bottom of the page
   // are built from these, not from the app's own recommendation.
@@ -10113,6 +10114,14 @@
   function sortedSortList() {
     var arr = sortList.slice();
     if (sortRankKey === "newest") return arr;
+    if (sortRankKey === "setno") {
+      // Lowest set number first (numerically, so 9999 comes before 10000),
+      // and copies of the same set in copy order.
+      return arr.sort(function (x, y) {
+        return x.setNo.localeCompare(y.setNo, undefined, { numeric: true, sensitivity: "base" })
+          || (sortNum(x.copyNo) - sortNum(y.copyNo));
+      });
+    }
     var scored = arr.map(function (e) {
       return { e: e, v: sortRankKey === "quick" ? sortQuickTurn(e).rank : sortRankValue(analyzeSortEntry(e, sortSettings), sortRankKey) };
     });
@@ -11013,7 +11022,7 @@
     wrap.innerHTML = '<div class="inventory-summary-row"><span>' + sortList.length + ' set' + (sortList.length === 1 ? '' : 's') + '</span>'
       + '<span class="sort-list-tools"><button type="button" class="reset-btn sort-refresh-all" id="sortRefreshAllBtn">Refresh prices</button>'
       + '<select class="manage-inventory-sort-select" id="sortRankSelect">'
-      + SORT_RANKS.map(function (r) { return '<option value="' + r.key + '"' + (r.key === sortRankKey ? ' selected' : '') + '>' + (r.key === "newest" ? r.label : "Rank by " + r.label) + '</option>'; }).join("")
+      + SORT_RANKS.map(function (r) { return '<option value="' + r.key + '"' + (r.key === sortRankKey ? ' selected' : '') + '>' + (r.key === "newest" || r.key === "setno" ? r.label : "Rank by " + r.label) + '</option>'; }).join("")
       + '</select></span></div>'
       + sortedSortList().map(sortCardHtml).join("");
     wireThumbLinks(wrap);
