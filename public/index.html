@@ -688,6 +688,18 @@
   .sort-right-stack { flex-direction: column; align-items: flex-end; gap: 3px; }
   .sort-fig-count { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
   .sort-fig-count.all { color: var(--success); }
+  .sort-feature { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); }
+  .sort-feature-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-secondary); }
+  .sort-feature-num { font-size: 28px; font-weight: 800; line-height: 1.1; }
+  .sort-feature-num.sort-demand-high { color: var(--success); }
+  .sort-feature-num.sort-demand-mid { color: var(--info); }
+  .sort-feature-sub { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
+  .sort-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+  .sort-tile { padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); }
+  .sort-tile-label { font-size: 10.5px; color: var(--text-secondary); }
+  .sort-tile-val { font-size: 15px; font-weight: 700; }
+  .sort-tile-val.sort-demand-high { color: var(--success); }
+  .sort-tile-val.sort-demand-mid { color: var(--info); }
   .sort-demand { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-secondary); }
   .sort-demand.high { color: var(--success); border-color: var(--success); }
   .sort-demand.mid { color: var(--info); border-color: var(--info); }
@@ -10366,6 +10378,67 @@
     return '<span class="sort-fig-count' + (have >= need ? ' all' : '') + '">' + have + '/' + need + ' figs</span>';
   }
 
+  // ---- Card front ----
+  // A featured tile for whatever the list is ranked by (with a few short
+  // words on why), and the other numbers as a grid of small tiles beneath.
+  var SORT_FEATURE_FOR_RANK = { roi: "roi", profit: "profit", quick: "qt", demand: "demand", value: "value", newest: "value", setno: "value" };
+  var SORT_TILE_ORDER = ["value", "profit", "roi", "demand", "qt"];
+
+  function sortDemandWord(n, hi, lo) { return n >= 60 ? hi : n >= 35 ? "steady" : lo; }
+
+  // Short phrases, not sentences.
+  function sortFeatureSub(e, a, key) {
+    var lines = [];
+    if (key === "demand") {
+      var d = sortDemand(e);
+      if (!d) return ["No data yet"];
+      if (d.setD !== null) {
+        var sold = e.setSoldQty > 0 ? e.setSoldQty : (e.setSoldCount || 0);
+        var listed = e.setListedAll > 0 ? e.setListedAll : (e.setStockQty || 0);
+        lines.push("Set " + sortDemandWord(d.setD, "hot", "slow") + " · " + sold + " sold / " + listed + " listed");
+      }
+      if (d.figD !== null) lines.push("Figs " + sortDemandWord(d.figD, "rare", "common") + " · rarity " + Math.round(d.figD));
+    } else if (key === "roi") {
+      lines.push(a.paidKnown ? "Profit " + sortMoney(a.profit) + " · paid " + sortMoney(a.paid) : "Add Paid");
+      if (a.parts.missingCount > 0 && a.paidKnown && a.now.roi !== null && a.complete.roi !== null) {
+        lines.push("As is " + Math.round(a.now.roi * 100) + "% → complete " + Math.round(a.complete.roi * 100) + "%");
+      }
+    } else if (key === "profit") {
+      lines.push(a.paidKnown ? "ROI " + (a.roi === null ? "—" : Math.round(a.roi * 100) + "%") + " · paid " + sortMoney(a.paid) : "Add Paid");
+      lines.push(a.best.label);
+    } else if (key === "qt") {
+      var q = sortQuickTurn(e);
+      lines.push(Math.round(sortClamp(sortNum(e.completeness), 0, 100)) + "% complete · figs " + q.figs.replace(" of ", "/"));
+      lines.push("Manual " + sortClamp(sortNum(e.manual), 0, 10) + "/10" + (q.pieces > 0 ? " · " + Math.round(q.pieces) + " pcs" : ""));
+    } else {
+      lines.push(a.best.label);
+      if (a.parts.missingCount > 0) lines.push(a.parts.missingCount + " fig" + (a.parts.missingCount === 1 ? "" : "s") + " to buy · " + sortMoney(a.parts.missingBuy));
+    }
+    return lines;
+  }
+
+  function sortFrontHtml(e, a) {
+    var roiTxt = a.roi === null ? "—" : Math.round(a.roi * 100) + "%";
+    var d = sortDemand(e);
+    var dn = d ? Math.round(d.score) : null;
+    var metrics = {
+      value: { label: "Value", text: sortMoney(a.value), cls: "" },
+      profit: { label: "Profit", text: a.paidKnown ? sortMoney(a.profit) : "—", cls: !a.paidKnown ? "" : a.profit < 0 ? "sort-neg" : "sort-pos" },
+      roi: { label: "ROI", text: roiTxt, cls: a.roi === null ? "" : a.roi < 0 ? "sort-neg" : "sort-pos" },
+      demand: { label: "Demand", text: dn === null ? "—" : String(dn), cls: dn === null ? "" : dn >= 60 ? "sort-demand-high" : dn >= 35 ? "sort-demand-mid" : "" },
+      qt: { label: "QT Score", text: String(Math.round(sortQuickTurn(e).score)), cls: "" },
+    };
+    var key = SORT_FEATURE_FOR_RANK[sortRankKey] || "value";
+    var m = metrics[key];
+    return '<div class="sort-feature"><div class="sort-feature-label">' + m.label + '</div>'
+      + '<div class="sort-feature-num ' + m.cls + '">' + m.text + '</div>'
+      + sortFeatureSub(e, a, key).map(function (l) { return '<div class="sort-feature-sub">' + escapeHtml(l) + '</div>'; }).join("")
+      + '</div>'
+      + '<div class="sort-tiles">' + SORT_TILE_ORDER.filter(function (k) { return k !== key; }).map(function (k) {
+        return '<div class="sort-tile"><div class="sort-tile-label">' + metrics[k].label + '</div><div class="sort-tile-val ' + metrics[k].cls + '">' + metrics[k].text + '</div></div>';
+      }).join("") + '</div>';
+  }
+
   function sortHeadBodyHtml(e) {
     var a = analyzeSortEntry(e, sortSettings);
     var summary;
@@ -10390,13 +10463,7 @@
       // Front of the card: just the numbers that decide where a set sits.
       // Everything else (route, paid, as-is vs complete, fig money, demand
       // detail, notes) shows once the card is opened for editing.
-      summary = '<div class="sort-summary">'
-        + '<span>Value <b>' + sortMoney(a.value) + '</b></span>'
-        + '<span>Profit <b class="' + (a.profit < 0 ? 'sort-neg' : 'sort-pos') + '">' + (a.paidKnown ? sortMoney(a.profit) : "—") + '</b></span>'
-        + '<span>ROI <b>' + roiTxt + '</b></span>'
-        + '</div>'
-        + '<div class="sort-summary">' + sortDemandPillHtml(e)
-        + (sortRankKey === "quick" ? '<span>QT Score <b>' + Math.round(sortQuickTurn(e).score) + '</b></span>' : '') + '</div>'
+      summary = sortFrontHtml(e, a)
         + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '')
         + (expanded
           ? '<div class="sort-detail">'
