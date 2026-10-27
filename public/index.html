@@ -688,6 +688,7 @@
   .sort-right-stack { flex-direction: column; align-items: flex-end; gap: 3px; }
   .sort-fig-count { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
   .sort-fig-count.all { color: var(--success); }
+  .sort-desc { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
   .sort-feature { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); }
   .sort-feature-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-secondary); }
   .sort-feature-num { font-size: 28px; font-weight: 800; line-height: 1.1; }
@@ -10479,6 +10480,7 @@
       + '<span class="item-no mono">' + escapeHtml(sortIdComplete(e) ? sortEntryId(e) : e.setNo) + '</span>'
       + '<span class="item-line1-right sort-right-stack">' + sortVerdictHtml(e, a) + sortFigCountHtml(e) + '</span>'
       + '</div>'
+      + (e.categoryPath ? '<div class="sort-desc">' + escapeHtml(e.categoryPath) + '</div>' : '')
       + '<div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
       + (sortExpanded[e.id] ? '<button type="button" class="sort-lookup-link" data-act="lookup" data-id="' + escapeHtml(e.id) + '">Look up set ›</button>' : '')
       + (sortIdClash(e) ? '<div class="sort-flag sort-neg">Duplicate ID ' + escapeHtml(sortEntryId(e)) + '</div>' : '')

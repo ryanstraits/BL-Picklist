@@ -730,7 +730,8 @@ Token Secret as sensitive as an API key that can move money.
   via `item-lookup?sets=1`), squashed the same way. The card's number blends the two
   weighted by dollars — the rest of the set against its figs. The edit view shows
   the pieces: each fig's rarity, sold/listed, and a Demand block in the math. Numbers
-  appear once a set's prices are refreshed. The card's front is a grid: ID, name, verdict chip and fig counter, then a
+  appear once a set's prices are refreshed. The card's front is a grid: ID, then the set's BrickLink category path
+  (e.g. "Star Wars › Episode 7") in small type, name, verdict chip and fig counter, then a
   large **featured tile** for whatever the list is ranked by (Demand, ROI, Profit,
   QT Score; Value for the other rankings) with a couple of short phrases beneath it
   — for Demand "Set slow · 42 sold / 100 listed" and "Figs rare · rarity 61", for
