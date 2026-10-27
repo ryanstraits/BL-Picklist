@@ -681,7 +681,14 @@
     font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--info); cursor: pointer;
   }
   .sort-fig-row.sort-fig-all { background: var(--success-bg); }
-  .sort-list-tools { display: flex; align-items: center; gap: 8px; }
+  .sort-list-tools { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+  .sort-card.compact { align-items: center; padding-top: 8px; padding-bottom: 8px; }
+  .sort-card.compact .item-name { font-size: 14px; }
+  .sort-compact-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
+  .sort-compact-info { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--text-secondary); }
+  .sort-compact-info b { color: var(--text); }
+  .sort-compact-main { font-weight: 700; }
+  .sort-caret { flex: none; width: 34px; height: 30px; padding: 0; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
   .sort-refresh-all { font-size: 12.5px; padding: 6px 10px; }
   .sort-fig-stock { margin-top: 2px; }
   .sort-fig-stock.have { color: var(--success); font-weight: 600; }
@@ -9722,7 +9729,8 @@
   var sortLoadPromise = null;
   var sortLoadError = null;
   var sortRankKey = "newest";
-  var sortExpanded = {}; // id -> true
+  var sortExpanded = {}; // id -> true (open for editing)
+  var sortOpen = {};     // id -> true (full card view; the default is a short one)
   var sortSaveTimer = null;
   var sortSavePending = false; // an edit is waiting out the short save delay
   var sortSaveStatus = "";
@@ -10418,17 +10426,40 @@
     return lines;
   }
 
-  function sortFrontHtml(e, a) {
+  function sortMetrics(e, a) {
     var roiTxt = a.roi === null ? "—" : Math.round(a.roi * 100) + "%";
     var d = sortDemand(e);
     var dn = d ? Math.round(d.score) : null;
-    var metrics = {
+    return {
       value: { label: "Value", text: sortMoney(a.value), cls: "" },
       profit: { label: "Profit", text: a.paidKnown ? sortMoney(a.profit) : "—", cls: !a.paidKnown ? "" : a.profit < 0 ? "sort-neg" : "sort-pos" },
       roi: { label: "ROI", text: roiTxt, cls: a.roi === null ? "" : a.roi < 0 ? "sort-neg" : "sort-pos" },
       demand: { label: "Demand", text: dn === null ? "—" : String(dn), cls: dn === null ? "" : dn >= 60 ? "sort-demand-high" : dn >= 35 ? "sort-demand-mid" : "" },
       qt: { label: "QT Score", text: String(Math.round(sortQuickTurn(e).score)), cls: "" },
     };
+  }
+
+  // The short card: the ranked metric plus two more, and the caret that opens
+  // the full card.
+  function sortIsCompact(e) {
+    var failed = e.status === "error" && !(e.figs && e.figs.length);
+    return !failed && !sortOpen[e.id] && !sortExpanded[e.id];
+  }
+  function sortCompactHtml(e, a) {
+    var metrics = sortMetrics(e, a);
+    var key = SORT_FEATURE_FOR_RANK[sortRankKey] || "value";
+    var keys = [key].concat(SORT_TILE_ORDER.filter(function (k) { return k !== key; }).slice(0, 2));
+    return '<div class="sort-compact-row"><span class="sort-compact-info">'
+      + keys.map(function (k, i) {
+        var m = metrics[k];
+        return '<span class="' + (i === 0 ? 'sort-compact-main ' : '') + m.cls + '">' + (k === "qt" ? "QT" : m.label) + ' <b>' + m.text + '</b></span>';
+      }).join("")
+      + '</span>'
+      + '<button type="button" class="sort-caret" data-act="open" data-id="' + escapeHtml(e.id) + '" aria-label="Show full card">▾</button></div>';
+  }
+
+  function sortFrontHtml(e, a) {
+    var metrics = sortMetrics(e, a);
     var key = SORT_FEATURE_FOR_RANK[sortRankKey] || "value";
     var m = metrics[key];
     return '<div class="sort-feature"><div class="sort-feature-label">' + m.label + '</div>'
@@ -10464,7 +10495,7 @@
       // Front of the card: just the numbers that decide where a set sits.
       // Everything else (route, paid, as-is vs complete, fig money, demand
       // detail, notes) shows once the card is opened for editing.
-      summary = sortFrontHtml(e, a)
+      summary = (sortIsCompact(e) ? sortCompactHtml(e, a) : sortFrontHtml(e, a))
         + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '')
         + (expanded
           ? '<div class="sort-detail">'
@@ -10723,17 +10754,18 @@
         + '<div class="sort-math">' + sortMathHtml(e) + '</div>'
         + '</div>';
     }
-    return '<div class="item-row sort-card" data-id="' + escapeHtml(e.id) + '">'
+    return '<div class="item-row sort-card' + (sortIsCompact(e) ? ' compact' : '') + '" data-id="' + escapeHtml(e.id) + '">'
       + '<div class="item-thumb">' + thumbHtml({ type: "SET", itemNo: e.setNo, colorId: 0, newOrUsed: "U" }) + '</div>'
       + '<div class="item-body sort-head-body">' + sortHeadBodyHtml(e) + '</div>'
       + body
-      + '<div class="sort-card-actions">'
+      + (sortIsCompact(e) ? '' : '<div class="sort-card-actions">'
+      + (failed || expanded ? '' : '<button type="button" class="sort-caret" data-act="open" data-id="' + escapeHtml(e.id) + '" aria-label="Show less">▴</button>')
       + (failed ? '' : '<button type="button" class="reset-btn" data-act="toggle" data-id="' + escapeHtml(e.id) + '">' + (expanded ? "Save" : "Edit") + '</button>')
       + (failed ? '' : '<select class="manage-inventory-sort-select sort-decision" data-sortf="decision" aria-label="Decision">'
         + SORT_DECISIONS.map(function (d) { return '<option value="' + d.key + '"' + ((e.decision || "") === d.key ? ' selected' : '') + '>' + escapeHtml(d.label) + '</option>'; }).join("")
         + '</select>')
       + (expanded || failed ? '<button type="button" class="delete-row-btn" data-act="remove" data-id="' + escapeHtml(e.id) + '">Remove</button>' : '')
-      + '</div>'
+      + '</div>')
       + '</div>';
   }
 
@@ -11235,7 +11267,9 @@
       return;
     }
     wrap.innerHTML = '<div class="inventory-summary-row"><span>' + sortList.length + ' set' + (sortList.length === 1 ? '' : 's') + '</span>'
-      + '<span class="sort-list-tools"><button type="button" class="reset-btn sort-refresh-all" id="sortRefreshAllBtn">Refresh prices</button>'
+      + '<span class="sort-list-tools"><button type="button" class="reset-btn sort-refresh-all" id="sortExpandAllBtn">'
+      + (sortList.every(function (x) { return sortOpen[x.id] || sortExpanded[x.id]; }) ? 'Collapse all' : 'Expand all') + '</button>'
+      + '<button type="button" class="reset-btn sort-refresh-all" id="sortRefreshAllBtn">Refresh prices</button>'
       + '<select class="manage-inventory-sort-select" id="sortRankSelect">'
       + SORT_RANKS.map(function (r) { return '<option value="' + r.key + '"' + (r.key === sortRankKey ? ' selected' : '') + '>' + (r.key === "newest" || r.key === "setno" ? r.label : "Rank by " + r.label) + '</option>'; }).join("")
       + '</select></span></div>'
@@ -11364,6 +11398,12 @@
       if (!t) return;
       if (t.id === "sortAddBtn") { handleSortAdd(); return; }
       if (t.id === "sortRefreshAllBtn") { refreshAllSortPrices(); return; }
+      if (t.id === "sortExpandAllBtn") {
+        var allOpen = sortList.every(function (x) { return sortOpen[x.id] || sortExpanded[x.id]; });
+        sortList.forEach(function (x) { if (allOpen) delete sortOpen[x.id]; else sortOpen[x.id] = true; });
+        renderSortList();
+        return;
+      }
       if (t.id === "sortBuyWantedBtn") { handleSortBuyWanted(); return; }
       if (t.id === "sortMoveBtn") { handleSortMoveToStock(); return; }
       if (t.id === "sortToInventoryBtn") { handleSortToInventory(); return; }
@@ -11392,6 +11432,11 @@
         goToSetFigLookup();
         return;
       }
+      if (act === "open") {
+        sortOpen[e.id] = !sortOpen[e.id];
+        renderSortList();
+        return;
+      }
       if (act === "toggle") {
         if (sortExpanded[e.id]) flushSortList(); // Save: write immediately, then close the card
         sortExpanded[e.id] = !sortExpanded[e.id];
@@ -11401,6 +11446,7 @@
         if (!window.confirm("Remove " + (sortIdComplete(e) ? sortEntryId(e) : e.setNo) + (e.name ? " " + e.name : "") + " from your sort list?")) return;
         sortList = sortList.filter(function (x) { return x.id !== e.id; });
         delete sortExpanded[e.id];
+        delete sortOpen[e.id];
         saveSortList();
         renderSortList();
       }
@@ -11682,6 +11728,7 @@
       orderLookupQuery: orderLookupQuery,
       sortRank: sortRankKey,
       sortExpanded: Object.keys(sortExpanded).filter(function (id) { return sortExpanded[id]; }),
+      sortOpen: Object.keys(sortOpen).filter(function (id) { return sortOpen[id]; }),
     };
   }
 
@@ -11733,6 +11780,7 @@
     if (typeof snap.orderLookupQuery === "string") orderLookupQuery = snap.orderLookupQuery;
     if (SORT_RANKS.some(function (r) { return r.key === snap.sortRank; })) sortRankKey = snap.sortRank;
     (snap.sortExpanded || []).forEach(function (id) { sortExpanded[id] = true; });
+    (snap.sortOpen || []).forEach(function (id) { sortOpen[id] = true; });
 
     var after = function () { restoreScrollPosition(snap.scrollY); };
     switch (snap.view) {
