@@ -697,7 +697,8 @@ Token Secret as sensitive as an API key that can move money.
   empty list, since the next save would then overwrite the real one.
   Defaults (skip 35%, box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
-  Each card also has a **Decision** dropdown (Sell as set / Part out /
+  Once a Decision is picked, the card's verdict chip turns solid and shows it (the
+  app's own suggestion stays an outline). Each card also has a **Decision** dropdown (Sell as set / Part out /
   Save for later — hold a partial set until a missing fig turns up in a future
   lot; held sets get a "Saving for later" list of what each is missing and
   don't feed the buy/pull lists — / Add to collection — keep the set for yourself,

@@ -747,6 +747,10 @@
   .sort-flag { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
   .sort-verdict-sell { color: var(--success); border-color: var(--success); }
   .sort-verdict-part { color: var(--info); border-color: var(--info); }
+  .sort-verdict-decided { color: #fff; font-weight: 700; }
+  .sort-verdict-decided.sort-verdict-sell { background: var(--success); }
+  .sort-verdict-decided.sort-verdict-part { background: var(--info); }
+  .sort-verdict-decided.sort-verdict-hold { background: var(--text-secondary); border-color: var(--text-secondary); }
   .sort-verdict-warn { color: var(--warning); border-color: var(--warning); }
   .sort-verdict-wait { color: var(--text-secondary); font-style: italic; }
   .sort-math-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
@@ -10393,6 +10397,10 @@
   function sortVerdictHtml(e, a) {
     if (e.status === "loading") return '<span class="item-type-tag sort-verdict sort-verdict-wait">Fetching…</span>';
     if (e.status === "error") return '<span class="item-type-tag sort-verdict sort-verdict-warn">Error</span>';
+    // A decision Ryan has made shows as a solid chip in its own words; the
+    // app's suggestion stays an outline.
+    var decided = SORT_DECISIONS.filter(function (d) { return d.key && d.key === e.decision; })[0];
+    if (decided) return '<span class="item-type-tag sort-verdict sort-verdict-decided ' + (e.decision === "set" ? "sort-verdict-sell" : e.decision === "part" ? "sort-verdict-part" : "sort-verdict-hold") + '">' + escapeHtml(decided.label) + '</span>';
     if (!a.hasData) return '<span class="item-type-tag sort-verdict sort-verdict-warn">Needs data</span>';
     var cls = a.best.key === "set" ? "sort-verdict-sell" : "sort-verdict-part";
     return '<span class="item-type-tag sort-verdict ' + cls + '">' + escapeHtml(a.best.key === "set" ? "Sell as set" : "Part out") + '</span>';
