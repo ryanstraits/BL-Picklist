@@ -689,6 +689,7 @@
   .sort-list-tools { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
   .sort-card { align-items: flex-start; }
   .sort-card .item-line1 { align-items: center; }
+  .sort-card .item-no { font-size: 14.5px; font-weight: 600; }
   .sort-compact-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
   .sort-compact-info { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--text-secondary); }
   .sort-compact-info b { color: var(--text); }
@@ -11291,12 +11292,12 @@
     }
     var allOpen = sortList.every(function (x) { return sortOpen[x.id] || sortExpanded[x.id]; });
     wrap.innerHTML = '<div class="sort-list-header">'
+      + '<button type="button" class="reset-btn sort-refresh-all" id="sortExpandAllBtn">' + (allOpen ? 'Collapse all' : 'Expand all') + '</button>'
+      + '<button type="button" class="reset-btn sort-refresh-all" id="sortRefreshAllBtn">Refresh prices</button>'
       + '<span class="sort-list-count">' + sortList.length + ' set' + (sortList.length === 1 ? '' : 's') + '</span>'
       + '<select class="manage-inventory-sort-select" id="sortRankSelect">'
       + SORT_RANKS.map(function (r) { return '<option value="' + r.key + '"' + (r.key === sortRankKey ? ' selected' : '') + '>' + (r.key === "newest" || r.key === "setno" ? r.label : "Rank by " + r.label) + '</option>'; }).join("")
       + '</select>'
-      + '<button type="button" class="reset-btn sort-refresh-all" id="sortExpandAllBtn">' + (allOpen ? 'Collapse all' : 'Expand all') + '</button>'
-      + '<button type="button" class="reset-btn sort-refresh-all" id="sortRefreshAllBtn">Refresh prices</button>'
       + '</div>'
       + sortedSortList().map(sortCardHtml).join("");
     wireThumbLinks(wrap);
