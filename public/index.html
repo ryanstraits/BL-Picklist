@@ -681,11 +681,14 @@
     font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--info); cursor: pointer;
   }
   .sort-fig-row.sort-fig-all { background: var(--success-bg); }
+  .sort-list-header { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center; margin: 14px 0 10px; }
+  .sort-list-count { font-size: 13.5px; font-weight: 600; color: var(--text-secondary); }
+  .sort-list-header select, .sort-list-header button { width: 100%; box-sizing: border-box; }
+  .sort-name-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .sort-name-row .item-name { flex: 1; min-width: 0; }
   .sort-list-tools { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-  .sort-card.compact { align-items: flex-start; padding-top: 8px; padding-bottom: 8px; }
-  .sort-card.compact .sort-right-stack { flex-direction: row; align-items: center; gap: 8px; }
-  .sort-card.compact .item-line1 { align-items: center; }
-  .sort-card.compact .item-name { font-size: 14px; }
+  .sort-card { align-items: flex-start; }
+  .sort-card .item-line1 { align-items: center; }
   .sort-compact-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
   .sort-compact-info { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--text-secondary); }
   .sort-compact-info b { color: var(--text); }
@@ -694,7 +697,7 @@
   .sort-refresh-all { font-size: 12.5px; padding: 6px 10px; }
   .sort-fig-stock { margin-top: 2px; }
   .sort-fig-stock.have { color: var(--success); font-weight: 600; }
-  .sort-right-stack { flex-direction: column; align-items: flex-end; gap: 3px; }
+  .sort-right-stack { flex-direction: row; align-items: center; gap: 8px; }
   .sort-fig-count { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
   .sort-fig-count.all { color: var(--success); }
   .sort-desc { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
@@ -10210,6 +10213,23 @@
       + (guide === "sold" ? "&guide=sold" : "") + (guide === "stock-all" ? "&scope=all" : ""));
   }
 
+  // Re-draws the list without the page jumping: whatever card `id` is (or,
+  // with no id, the first card on screen) stays at the same height on the
+  // screen while cards above or below it change size.
+  function sortKeepAnchored(id, redraw) {
+    var card = id ? sortListView.querySelector('.sort-card[data-id="' + id + '"]') : null;
+    if (!card && !id) {
+      var cards = sortListView.querySelectorAll(".sort-card");
+      for (var i = 0; i < cards.length; i++) { if (cards[i].getBoundingClientRect().bottom > 170) { card = cards[i]; break; } }
+    }
+    var anchorId = card ? card.getAttribute("data-id") : null;
+    var before = card ? card.getBoundingClientRect().top : 0;
+    redraw();
+    if (!anchorId) return;
+    var after = sortListView.querySelector('.sort-card[data-id="' + anchorId + '"]');
+    if (after) window.scrollBy(0, after.getBoundingClientRect().top - before);
+  }
+
   function sortFindEntry(id) {
     return (sortList || []).filter(function (e) { return e.id === id; })[0] || null;
   }
@@ -10456,8 +10476,7 @@
         var m = metrics[k];
         return '<span class="' + (i === 0 ? 'sort-compact-main ' : '') + m.cls + '">' + (k === "qt" ? "QT" : m.label) + ' <b>' + m.text + '</b></span>';
       }).join("")
-      + '</span>'
-      + '<button type="button" class="sort-caret" data-act="open" data-id="' + escapeHtml(e.id) + '" aria-label="Show full card">▾</button></div>';
+      + '</span></div>';
   }
 
   function sortFrontHtml(e, a) {
@@ -10514,7 +10533,10 @@
       + '<span class="item-line1-right sort-right-stack">' + sortVerdictHtml(e, a) + sortFigCountHtml(e) + '</span>'
       + '</div>'
       + (e.categoryPath ? '<div class="sort-desc">' + escapeHtml(e.categoryPath) + '</div>' : '')
-      + '<div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
+      + '<div class="sort-name-row"><div class="item-name">' + escapeHtml(e.name || "(name loading…)") + '</div>'
+      + (sortExpanded[e.id] || (e.status === "error" && !(e.figs && e.figs.length)) ? ''
+        : '<button type="button" class="sort-caret" data-act="open" data-id="' + escapeHtml(e.id) + '" aria-label="' + (sortOpen[e.id] ? 'Show less' : 'Show full card') + '">' + (sortOpen[e.id] ? '▴' : '▾') + '</button>')
+      + '</div>'
       + (sortExpanded[e.id] ? '<button type="button" class="sort-lookup-link" data-act="lookup" data-id="' + escapeHtml(e.id) + '">Look up set ›</button>' : '')
       + (sortIdClash(e) ? '<div class="sort-flag sort-neg">Duplicate ID ' + escapeHtml(sortEntryId(e)) + '</div>' : '')
       + (!sortIdComplete(e) && sortExpanded[e.id] ? '<div class="sort-flag">Add copy # & theme for its ID.</div>' : '')
@@ -10766,7 +10788,6 @@
         + SORT_DECISIONS.map(function (d) { return '<option value="' + d.key + '"' + ((e.decision || "") === d.key ? ' selected' : '') + '>' + escapeHtml(d.label) + '</option>'; }).join("")
         + '</select>')
       + (expanded || failed ? '<button type="button" class="delete-row-btn" data-act="remove" data-id="' + escapeHtml(e.id) + '">Remove</button>' : '')
-      + (failed || expanded ? '' : '<button type="button" class="sort-caret" data-act="open" data-id="' + escapeHtml(e.id) + '" aria-label="Show less">▴</button>')
       + '</div>')
       + '</div>';
   }
@@ -11268,13 +11289,15 @@
       wrap.innerHTML = '<div class="set-fig-lookup-intro">Nothing here yet. Type a set number above, or tap “+ Add to sort list” on a set in Lookup.</div>';
       return;
     }
-    wrap.innerHTML = '<div class="inventory-summary-row"><span>' + sortList.length + ' set' + (sortList.length === 1 ? '' : 's') + '</span>'
-      + '<span class="sort-list-tools"><button type="button" class="reset-btn sort-refresh-all" id="sortExpandAllBtn">'
-      + (sortList.every(function (x) { return sortOpen[x.id] || sortExpanded[x.id]; }) ? 'Collapse all' : 'Expand all') + '</button>'
-      + '<button type="button" class="reset-btn sort-refresh-all" id="sortRefreshAllBtn">Refresh prices</button>'
+    var allOpen = sortList.every(function (x) { return sortOpen[x.id] || sortExpanded[x.id]; });
+    wrap.innerHTML = '<div class="sort-list-header">'
+      + '<span class="sort-list-count">' + sortList.length + ' set' + (sortList.length === 1 ? '' : 's') + '</span>'
       + '<select class="manage-inventory-sort-select" id="sortRankSelect">'
       + SORT_RANKS.map(function (r) { return '<option value="' + r.key + '"' + (r.key === sortRankKey ? ' selected' : '') + '>' + (r.key === "newest" || r.key === "setno" ? r.label : "Rank by " + r.label) + '</option>'; }).join("")
-      + '</select></span></div>'
+      + '</select>'
+      + '<button type="button" class="reset-btn sort-refresh-all" id="sortExpandAllBtn">' + (allOpen ? 'Collapse all' : 'Expand all') + '</button>'
+      + '<button type="button" class="reset-btn sort-refresh-all" id="sortRefreshAllBtn">Refresh prices</button>'
+      + '</div>'
       + sortedSortList().map(sortCardHtml).join("");
     wireThumbLinks(wrap);
     updateSortRefreshAllBtn();
@@ -11402,8 +11425,10 @@
       if (t.id === "sortRefreshAllBtn") { refreshAllSortPrices(); return; }
       if (t.id === "sortExpandAllBtn") {
         var allOpen = sortList.every(function (x) { return sortOpen[x.id] || sortExpanded[x.id]; });
-        sortList.forEach(function (x) { if (allOpen) delete sortOpen[x.id]; else sortOpen[x.id] = true; });
-        renderSortList();
+        sortKeepAnchored(null, function () {
+          sortList.forEach(function (x) { if (allOpen) delete sortOpen[x.id]; else sortOpen[x.id] = true; });
+          renderSortList();
+        });
         return;
       }
       if (t.id === "sortBuyWantedBtn") { handleSortBuyWanted(); return; }
@@ -11435,14 +11460,12 @@
         return;
       }
       if (act === "open") {
-        sortOpen[e.id] = !sortOpen[e.id];
-        renderSortList();
+        sortKeepAnchored(e.id, function () { sortOpen[e.id] = !sortOpen[e.id]; renderSortList(); });
         return;
       }
       if (act === "toggle") {
         if (sortExpanded[e.id]) flushSortList(); // Save: write immediately, then close the card
-        sortExpanded[e.id] = !sortExpanded[e.id];
-        renderSortList();
+        sortKeepAnchored(e.id, function () { sortExpanded[e.id] = !sortExpanded[e.id]; renderSortList(); });
         if (sortExpanded[e.id] && !manageInventoryRows) refreshSortFigStock();
       } else if (act === "remove") {
         if (!window.confirm("Remove " + (sortIdComplete(e) ? sortEntryId(e) : e.setNo) + (e.name ? " " + e.name : "") + " from your sort list?")) return;

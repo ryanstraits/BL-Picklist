@@ -732,9 +732,12 @@ Token Secret as sensitive as an API key that can move money.
   the pieces: each fig's rarity, sold/listed, and a Demand block in the math. Numbers
   appear once a set's prices are refreshed. Cards in the list are collapsed by default to about a third of the height —
   thumbnail, ID, category path, name, verdict chip and fig counter, and three numbers
-  (the one the list is ranked by, plus two more) — with a ▾ caret that opens the full
-  card below; ▴ closes it and "Expand all" / "Collapse all" at the top of the list does
-  every card at once. Edit still opens the edit view, and a newly added set starts in it.
+  (the one the list is ranked by, plus two more) — with a ▾ caret beside the name that
+  opens the full card (▴ in the same spot closes it; the header is laid out identically
+  in both views, and the page is re-anchored so the card you tapped doesn't move on
+  screen), and "Expand all" / "Collapse all" at the top of the list does every card
+  at once. The list header is a tidy two-row grid: set count and ranking dropdown,
+  then Expand all and Refresh prices. Edit still opens the edit view, and a newly added set starts in it.
   Which cards are open is remembered with the rest of the page state. The full card's front is a grid: ID, then the set's BrickLink category path
   (e.g. "Star Wars › Episode 7") in small type, name, verdict chip and fig counter, then a
   large **featured tile** for whatever the list is ranked by (Demand, ROI, Profit,
