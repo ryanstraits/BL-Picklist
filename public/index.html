@@ -682,7 +682,9 @@
   }
   .sort-fig-row.sort-fig-all { background: var(--success-bg); }
   .sort-list-tools { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-  .sort-card.compact { align-items: center; padding-top: 8px; padding-bottom: 8px; }
+  .sort-card.compact { align-items: flex-start; padding-top: 8px; padding-bottom: 8px; }
+  .sort-card.compact .sort-right-stack { flex-direction: row; align-items: center; gap: 8px; }
+  .sort-card.compact .item-line1 { align-items: center; }
   .sort-card.compact .item-name { font-size: 14px; }
   .sort-compact-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
   .sort-compact-info { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--text-secondary); }
@@ -10759,12 +10761,12 @@
       + '<div class="item-body sort-head-body">' + sortHeadBodyHtml(e) + '</div>'
       + body
       + (sortIsCompact(e) ? '' : '<div class="sort-card-actions">'
-      + (failed || expanded ? '' : '<button type="button" class="sort-caret" data-act="open" data-id="' + escapeHtml(e.id) + '" aria-label="Show less">▴</button>')
       + (failed ? '' : '<button type="button" class="reset-btn" data-act="toggle" data-id="' + escapeHtml(e.id) + '">' + (expanded ? "Save" : "Edit") + '</button>')
       + (failed ? '' : '<select class="manage-inventory-sort-select sort-decision" data-sortf="decision" aria-label="Decision">'
         + SORT_DECISIONS.map(function (d) { return '<option value="' + d.key + '"' + ((e.decision || "") === d.key ? ' selected' : '') + '>' + escapeHtml(d.label) + '</option>'; }).join("")
         + '</select>')
       + (expanded || failed ? '<button type="button" class="delete-row-btn" data-act="remove" data-id="' + escapeHtml(e.id) + '">Remove</button>' : '')
+      + (failed || expanded ? '' : '<button type="button" class="sort-caret" data-act="open" data-id="' + escapeHtml(e.id) + '" aria-label="Show less">▴</button>')
       + '</div>')
       + '</div>';
   }
