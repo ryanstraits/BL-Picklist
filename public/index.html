@@ -751,6 +751,8 @@
   .sort-verdict-decided.sort-verdict-sell { background: var(--success); }
   .sort-verdict-decided.sort-verdict-part { background: var(--info); }
   .sort-verdict-decided.sort-verdict-hold { background: var(--text-secondary); border-color: var(--text-secondary); }
+  .sort-verdict-asis { color: var(--warning); border-color: var(--warning); }
+  .sort-verdict-decided.sort-verdict-asis { background: var(--warning); border-color: var(--warning); }
   .sort-verdict-warn { color: var(--warning); border-color: var(--warning); }
   .sort-verdict-wait { color: var(--text-secondary); font-style: italic; }
   .sort-math-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
@@ -9622,7 +9624,7 @@
   // complete/clean it is, box + manual ratings and which of its minifigs you
   // actually have, and get a rough "what should I do with this" verdict with
   // the cost-benefit math behind it. Three routes are compared per set:
-  //   - Sell as set: the set's sold-price value, adjusted for completeness,
+  //   - Sell complete / Sell as-is: the set's sold-price value, adjusted for completeness,
   //     quality and box/manual, buying whatever minifigs are missing — unless
   //     they'd cost more than the skip-threshold share of the set's value, in
   //     which case it's sold without them.
@@ -9678,7 +9680,8 @@
   // are built from these, not from the app's own recommendation.
   var SORT_DECISIONS = [
     { key: "", label: "Decision…" },
-    { key: "set", label: "Sell as set" },
+    { key: "set", label: "Sell complete" },
+    { key: "asis", label: "Sell as-is" },
     { key: "part", label: "Part out" },
     { key: "hold", label: "Save for later" },
     { key: "keep", label: "Add to collection" },
@@ -10043,13 +10046,13 @@
     var setRoute;
     if (missingCount === 0 || buyMissing) {
       setRoute = {
-        key: "set", label: missingCount ? "Sell as set + buy figs" : "Sell as set",
+        key: "set", variant: "complete", label: "Sell complete",
         value: completeValue, cost: buyMissing ? missingBuy : 0,
         net: completeValue - (buyMissing ? missingBuy : 0),
       };
     } else {
       var asIs = brickAdj + ownedValue;
-      setRoute = { key: "set", label: "Sell set, skip missing figs", value: asIs, cost: 0, net: asIs };
+      setRoute = { key: "set", variant: "asis", label: "Sell as-is", value: asIs, cost: 0, net: asIs };
     }
 
     // Route 2 — figs listed singly, everything else to bulk. The set's
@@ -10400,10 +10403,10 @@
     // A decision Ryan has made shows as a solid chip in its own words; the
     // app's suggestion stays an outline.
     var decided = SORT_DECISIONS.filter(function (d) { return d.key && d.key === e.decision; })[0];
-    if (decided) return '<span class="item-type-tag sort-verdict sort-verdict-decided ' + (e.decision === "set" ? "sort-verdict-sell" : e.decision === "part" ? "sort-verdict-part" : "sort-verdict-hold") + '">' + escapeHtml(decided.label) + '</span>';
+    if (decided) return '<span class="item-type-tag sort-verdict sort-verdict-decided ' + (e.decision === "set" ? "sort-verdict-sell" : e.decision === "asis" ? "sort-verdict-asis" : e.decision === "part" ? "sort-verdict-part" : "sort-verdict-hold") + '">' + escapeHtml(decided.label) + '</span>';
     if (!a.hasData) return '<span class="item-type-tag sort-verdict sort-verdict-warn">Needs data</span>';
-    var cls = a.best.key === "set" ? "sort-verdict-sell" : "sort-verdict-part";
-    return '<span class="item-type-tag sort-verdict ' + cls + '">' + escapeHtml(a.best.key === "set" ? "Sell as set" : "Part out") + '</span>';
+    var cls = a.best.key === "set" ? (a.best.variant === "asis" ? "sort-verdict-asis" : "sort-verdict-sell") : "sort-verdict-part";
+    return '<span class="item-type-tag sort-verdict ' + cls + '">' + escapeHtml(a.best.key === "set" ? a.best.label : "Part out") + '</span>';
   }
 
   // Figs checked off out of figs needed, right under the verdict badge.
@@ -10850,7 +10853,7 @@
       return row;
     }
     (sortList || []).forEach(function (e) {
-      if (e.decision !== "set" && e.decision !== "part" && e.decision !== "hold" && e.decision !== "keep") return;
+      if (e.decision !== "set" && e.decision !== "asis" && e.decision !== "part" && e.decision !== "hold" && e.decision !== "keep") return;
       if (e.decision === "keep") {
         // Staying in Ryan's own collection — complete or not, one copy or
         // several. Not for sale, so it feeds none of the sell lists.
@@ -10874,6 +10877,10 @@
           if (miss) missing.push({ itemNo: f.itemNo, name: f.name || "", qty: miss });
         });
         plan.hold.push({ label: label, name: e.name || "", missing: missing });
+      } else if (e.decision === "asis") {
+        // Sold with the figs it has: ready now, nothing to buy or pull.
+        if (e.status === "ready") plan.ready.push({ label: label, name: e.name || "", value: a.now.net, paid: a.paidKnown ? a.paid : null, asis: a.parts.missingCount });
+        else plan.waiting++;
       } else if (e.decision === "set") {
         var incomplete = false;
         figs.forEach(function (f) {
@@ -10908,7 +10915,7 @@
           }
         });
         if (!incomplete && e.status === "ready") {
-          plan.ready.push({ label: label, name: e.name || "", value: a.routes[0].net, paid: a.paidKnown ? a.paid : null });
+          plan.ready.push({ label: label, name: e.name || "", value: a.complete.net, paid: a.paidKnown ? a.paid : null, asis: 0 });
         } else {
           plan.waiting++;
         }
@@ -10949,7 +10956,7 @@
   function sortPlanText(plan) {
     var out = [];
     out.push("READY TO SELL (" + plan.ready.length + ")");
-    plan.ready.forEach(function (r) { out.push(r.label + " " + r.name + " - est " + sortMoney(r.value)); });
+    plan.ready.forEach(function (r) { out.push(r.label + " " + r.name + " - est " + sortMoney(r.value) + (r.asis ? " (as-is, " + r.asis + " fig" + (r.asis === 1 ? "" : "s") + " missing)" : "")); });
     if (plan.waiting) out.push("(" + plan.waiting + " more waiting on figs)");
     out.push("");
     out.push("FIGS TO BUY (" + plan.buy.reduce(function (n, r) { return n + r.qty; }, 0) + ", est " + sortMoney(sortBuyTotal(plan)) + ")");
@@ -11014,9 +11021,9 @@
     html += '<h3 class="sort-out-title">Ready to sell (' + plan.ready.length + ' · ' + sortMoney(plan.ready.reduce(function (n, r) { return n + r.value; }, 0)) + ')</h3>';
     html += plan.ready.length ? plan.ready.map(function (r) {
       return sortOutRow('<span class="mono">' + escapeHtml(r.label) + '</span> ' + escapeHtml(r.name), sortMoney(r.value),
-        r.paid !== null ? 'paid ' + sortMoney(r.paid) : "");
+        (r.asis ? 'as-is, ' + r.asis + ' fig' + (r.asis === 1 ? '' : 's') + ' missing' : '') + (r.asis && r.paid !== null ? ' · ' : '') + (r.paid !== null ? 'paid ' + sortMoney(r.paid) : ""));
     }).join("") : '<div class="sort-out-sub">None yet.</div>';
-    if (plan.waiting) html += '<div class="sort-out-sub">' + plan.waiting + ' more “Sell as set” waiting on figs.</div>';
+    if (plan.waiting) html += '<div class="sort-out-sub">' + plan.waiting + ' more “Sell complete” waiting on figs.</div>';
     // Figs to buy
     var buyQty = plan.buy.reduce(function (n, r) { return n + r.qty; }, 0);
     html += '<h3 class="sort-out-title">Figs to buy (' + buyQty + ' · ' + sortMoney(sortBuyTotal(plan)) + ')</h3>';
@@ -11080,18 +11087,21 @@
   // until it is — what the app suggests. Sets still fetching, failed, or with
   // no price data yet aren't counted.
   function sortTally() {
-    var t = { sets: { n: 0, decided: 0, value: 0 }, part: { n: 0, decided: 0 }, figs: { n: 0, value: 0 }, bulk: { lbs: 0, value: 0 }, hold: 0, keep: 0, skipped: 0 };
+    var t = { complete: { n: 0, decided: 0, value: 0 }, asis: { n: 0, decided: 0, value: 0 }, part: { n: 0, decided: 0 }, figs: { n: 0, value: 0 }, bulk: { lbs: 0, value: 0 }, hold: 0, keep: 0, skipped: 0 };
     (sortList || []).forEach(function (e) {
       if (e.decision === "keep") { t.keep++; return; }
       if (e.status === "loading" || (e.status === "error" && !(e.figs && e.figs.length))) { t.skipped++; return; }
       if (e.decision === "hold") { t.hold++; return; }
       var a = analyzeSortEntry(e, sortSettings);
-      var decided = e.decision === "set" || e.decision === "part";
+      var decided = e.decision === "set" || e.decision === "asis" || e.decision === "part";
       if (!decided && !a.hasData) { t.skipped++; return; }
-      var key = decided ? e.decision : a.best.key;
+      var key = decided ? e.decision : (a.best.key === "set" ? (a.best.variant === "asis" ? "asis" : "set") : "part");
       if (key === "set") {
-        t.sets.n++; t.sets.value += a.routes[0].net;
-        if (decided) t.sets.decided++;
+        t.complete.n++; t.complete.value += a.complete.net;
+        if (decided) t.complete.decided++;
+      } else if (key === "asis") {
+        t.asis.n++; t.asis.value += a.now.net;
+        if (decided) t.asis.decided++;
       } else {
         var r = a.routes[1];
         t.part.n++; t.figs.n += a.parts.ownedCount; t.figs.value += r.figsValue; t.bulk.value += r.bulkValue;
@@ -11115,7 +11125,8 @@
     if (t.skipped) foot.push(t.skipped + ' not counted yet (no prices)');
     return '<div class="sort-tally">'
       + '<div class="sort-tally-grid">'
-      + cell('Complete sets', t.sets.n + ' · ' + sortMoney(t.sets.value), decidedTxt(t.sets.decided, t.sets.n))
+      + cell('Sell complete', t.complete.n + ' · ' + sortMoney(t.complete.value), decidedTxt(t.complete.decided, t.complete.n))
+      + cell('Sell as-is', t.asis.n + ' · ' + sortMoney(t.asis.value), decidedTxt(t.asis.decided, t.asis.n))
       + cell('Part out', t.part.n + ' set' + (t.part.n === 1 ? '' : 's') + ' · ' + sortMoney(t.figs.value + t.bulk.value), decidedTxt(t.part.decided, t.part.n))
       + cell('Figs to sell', t.figs.n + ' · ' + sortMoney(t.figs.value), 'from part-outs')
       + cell('Bulk', sortLbs(t.bulk.lbs) + ' · ' + sortMoney(t.bulk.value), 'from part-outs')
@@ -11516,7 +11527,7 @@
           e.themeAuto = false; // a hand-picked code is never overwritten by the category guess
           el.value = e.theme;
         } else if (field === "decision") {
-          e.decision = el.value === "set" || el.value === "part" || el.value === "hold" || el.value === "keep" ? el.value : "";
+          e.decision = el.value === "set" || el.value === "asis" || el.value === "part" || el.value === "hold" || el.value === "keep" ? el.value : "";
         } else if (field === "completeness") {
           e.completeness = sortClamp(Math.round(sortNum(el.value)), 0, 100);
         } else {

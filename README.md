@@ -653,9 +653,9 @@ Token Secret as sensitive as an API key that can move money.
   buy a missing fig). Per set Ryan enters what he paid, completeness
   (% of the non-fig pieces), quality 0-10, box 0-10 and manual 0-10
   (0 = not present), and for each fig how many he has and their
-  condition. The card then compares two routes — sell as a set (buying
+  condition. The card then compares two routes — sell the set ("Sell complete", buying
   missing figs unless they'd cost more than the skip threshold's share of
-  the set's value, in which case it's sold without them) and part out
+  the set's value, in which case it's "Sell as-is", with the figs on hand) and part out
   (figs sold singly, never worth less than their weight at the fig-parts
   $/lb, plus the leftover non-fig weight to bulk: general parts at the
   general $/lb, and a "loose accessories per fig" allowance, 4 g by default,
@@ -698,7 +698,7 @@ Token Secret as sensitive as an API key that can move money.
   Defaults (skip 35%, box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
   Once a Decision is picked, the card's verdict chip turns solid and shows it (the
-  app's own suggestion stays an outline). Each card also has a **Decision** dropdown (Sell as set / Part out /
+  app's own suggestion stays an outline). Each card also has a **Decision** dropdown (Sell complete / Sell as-is / Part out /
   Save for later — hold a partial set until a missing fig turns up in a future
   lot; held sets get a "Saving for later" list of what each is missing and
   don't feed the buy/pull lists — / Add to collection — keep the set for yourself,
@@ -706,7 +706,7 @@ Token Secret as sensitive as an API key that can move money.
   (figs on hand out of needed, what was paid, total paid in the heading) and a
   count in the tally card, and feed none of the sell lists or totals) —
   Ryan's call, separate from the app's recommendation chip — and the page
-  ends with lists built from those decisions: *Ready to sell* (Sell as set,
+  ends with lists built from those decisions: *Ready to sell* (Sell as-is sets with whatever figs they have, and Sell complete,
   every fig checked off), *Figs to buy* (every missing fig across the
   Sell-as-set sets, totaled, with the low-25 average price and which sets;
   "Add all to Wanted list" sends them to the Wanted list once), *Pull from
@@ -717,7 +717,7 @@ Token Secret as sensitive as an API key that can move money.
   with a total). "Email these lists" opens a plain-text email of all four.
   Demand also leans the recommendation: a route's value is scaled by up to
   ±"Demand tips the pick by" % (setting, 20 by default, 0 = ignore demand) —
-  set demand for Sell as set, the rarity of the figs you actually have (checked
+  set demand for the Sell complete / Sell as-is routes, the rarity of the figs you actually have (checked
   off) for the fig part of Part out, bulk untouched, unknown = neutral — and the
   higher-scoring route is the pick. Value, profit and ROI stay the real numbers;
   when demand changes the pick, the edit view says so. A **Demand** number (0–100) sits on the front of each card and can be ranked
@@ -756,7 +756,7 @@ Token Secret as sensitive as an API key that can move money.
   sell sets without one, so none costs all 10), quality 10, box 5 and demand 5
   (recent sales of the set). The score shows on each card as "QT Score N" while
   that ranking is selected, and the edit view breaks it down point by point (a
-  set whose figs haven't loaded gets neutral, not full, figs marks). A tally card at the top of the page totals the Complete sets (count and value),
+  set whose figs haven't loaded gets neutral, not full, figs marks). A tally card at the top of the page totals the Sell complete and Sell as-is sets (count and value each),
   the Part out sets (count and value) and, from those, the figs to sell and the
   bulk (lbs and value). Each set counts under its Decision, or under the app's
   suggestion until one is picked; Save for later sets and sets with no prices yet
