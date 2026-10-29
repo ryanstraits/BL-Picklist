@@ -3677,7 +3677,7 @@
     // "12 in inventory" used to look identical (both plain gray), easy to
     // read past on a long list.
     return '<div class="item-stock-count' + (count ? ' has-stock' : '') + '" data-item-no="' + escapeHtml(item.itemNo) + '" data-color-id="' + escapeHtml(item.colorId) + '">'
-      + (count !== "" ? count + ' in inventory' + (priceSummary ? ' (listed at ' + escapeHtml(priceSummary) + ')' : '') : '')
+      + (count !== "" ? count + ' left in inventory' + (priceSummary ? ' (listed at ' + escapeHtml(priceSummary) + ')' : '') : '')
       + '</div>';
   }
 
@@ -3695,7 +3695,7 @@
       var colorId = parseInt(el.getAttribute("data-color-id"), 10) || 0;
       var count = inventoryStockCount(itemNo, colorId);
       var priceSummary = count ? inventoryStockPriceSummary(itemNo, colorId) : "";
-      el.textContent = count + " in inventory" + (priceSummary ? " (listed at " + priceSummary + ")" : "");
+      el.textContent = count + " left in inventory" + (priceSummary ? " (listed at " + priceSummary + ")" : "");
       el.classList.toggle("has-stock", !!count);
     });
   }

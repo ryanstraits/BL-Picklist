@@ -1316,7 +1316,7 @@ Token Secret as sensitive as an API key that can move money.
 - **In-stock count on order items** — each item row on the order detail
   page (main list and Order Lookup alike, per the by-now-established "not
   picking-related, so not gated by readOnly" rule) shows how many more of
-  that exact item+color are currently sitting in inventory, e.g. "6 in
+  that exact item+color are currently sitting in inventory, e.g. "6 left in
   inventory" — Ryan wanted a quick way to gut-check remaining stock while
   reviewing an order, without adding a new page or a button that just
   detours to Manage Inventory's own search (both considered and passed
