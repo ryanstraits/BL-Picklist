@@ -3670,14 +3670,21 @@
   // load); otherwise an empty placeholder — same reserved-space-now,
   // filled-in-shortly-after approach as buyerRealNameHtml — patched by
   // patchItemStockCounts() below once the background fetch resolves.
-  function itemStockCountHtml(item) {
+  // "6 left in inventory" reads right on an order (what's still on the shelf
+  // after this sale); on Add Inventory, where you're about to add more, it's
+  // "6 already in inventory".
+  function stockCountWording(count, ctx) {
+    return count + (ctx === "add" ? " already in inventory" : " left in inventory");
+  }
+
+  function itemStockCountHtml(item, ctx) {
     var count = manageInventoryRows ? inventoryStockCount(item.itemNo, item.colorId) : "";
     var priceSummary = (count && manageInventoryRows) ? inventoryStockPriceSummary(item.itemNo, item.colorId) : "";
     // Already having some on hand is worth noticing — "0 in inventory" and
     // "12 in inventory" used to look identical (both plain gray), easy to
     // read past on a long list.
-    return '<div class="item-stock-count' + (count ? ' has-stock' : '') + '" data-item-no="' + escapeHtml(item.itemNo) + '" data-color-id="' + escapeHtml(item.colorId) + '">'
-      + (count !== "" ? count + ' left in inventory' + (priceSummary ? ' (listed at ' + escapeHtml(priceSummary) + ')' : '') : '')
+    return '<div class="item-stock-count' + (count ? ' has-stock' : '') + '" data-ctx="' + (ctx || '') + '" data-item-no="' + escapeHtml(item.itemNo) + '" data-color-id="' + escapeHtml(item.colorId) + '">'
+      + (count !== "" ? stockCountWording(count, ctx) + (priceSummary ? ' (listed at ' + escapeHtml(priceSummary) + ')' : '') : '')
       + '</div>';
   }
 
@@ -3695,7 +3702,7 @@
       var colorId = parseInt(el.getAttribute("data-color-id"), 10) || 0;
       var count = inventoryStockCount(itemNo, colorId);
       var priceSummary = count ? inventoryStockPriceSummary(itemNo, colorId) : "";
-      el.textContent = count + " left in inventory" + (priceSummary ? " (listed at " + priceSummary + ")" : "");
+      el.textContent = stockCountWording(count, el.getAttribute("data-ctx")) + (priceSummary ? " (listed at " + priceSummary + ")" : "");
       el.classList.toggle("has-stock", !!count);
     });
   }
@@ -5525,7 +5532,7 @@
         + '</div>'
         + '<div class="item-name">' + escapeHtml(row.name || "(name unknown)") + '</div>'
         + (isRealColorName(row.colorName) ? '<div class="item-color">' + escapeHtml(row.colorName) + '</div>' : '')
-        + itemStockCountHtml(row)
+        + itemStockCountHtml(row, "add")
         + '<div class="inventory-fields">'
         + '<div class="inventory-field"><label>Qty</label><input type="number" min="1" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="quantity" value="' + escapeHtml(row.quantity) + '"' + (locked ? ' disabled' : '') + '></div>'
         + '<div class="inventory-field"><label>Price</label><input type="text" inputmode="decimal" class="inv-input" data-key="' + escapeHtml(row.key) + '" data-field="unitPrice" value="' + escapeHtml(row.unitPrice) + '"' + (locked ? ' disabled' : '') + '></div>'

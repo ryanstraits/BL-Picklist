@@ -1317,7 +1317,7 @@ Token Secret as sensitive as an API key that can move money.
   page (main list and Order Lookup alike, per the by-now-established "not
   picking-related, so not gated by readOnly" rule) shows how many more of
   that exact item+color are currently sitting in inventory, e.g. "6 left in
-  inventory" — Ryan wanted a quick way to gut-check remaining stock while
+  inventory" (on Add Inventory the same line reads "6 already in inventory") — Ryan wanted a quick way to gut-check remaining stock while
   reviewing an order, without adding a new page or a button that just
   detours to Manage Inventory's own search (both considered and passed
   over once it turned out neither would actually cost anything extra —
