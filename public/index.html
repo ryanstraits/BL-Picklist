@@ -2246,7 +2246,20 @@
   // this is what actually survives a force-quit. Best-effort: on failure
   // (offline, etc.) the local write above still stands for this session,
   // and the next successful sync catches things up.
+  // Never writes until this page load has read the stored copy at least once
+  // (a device that starts empty — wiped cache, fresh browser — would
+  // otherwise overwrite the real thing with its near-empty one). Until then
+  // it asks for that read and returns; the sync pushes whatever local has
+  // that the stored copy lacks as soon as it succeeds.
+  var stateRemoteLoaded = false, stateRemoteRetrying = false;
   function pushRemoteState() {
+    if (!stateRemoteLoaded) {
+      if (!stateRemoteRetrying) {
+        stateRemoteRetrying = true;
+        syncStateFromRemote().then(function () { stateRemoteRetrying = false; });
+      }
+      return;
+    }
     postJSON("/api/pick-state", state).catch(function () { /* offline — ignore */ });
   }
 
@@ -2320,6 +2333,7 @@
           // already has everything, so the merge doesn't change local at
           // all but the remote still desperately needs that push.
           var remoteNeedsUpdate = JSON.stringify(merged) !== JSON.stringify(remote);
+          stateRemoteLoaded = true;
           state = merged;
           try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
           if (remoteNeedsUpdate) pushRemoteState();
@@ -2382,7 +2396,16 @@
     return merged;
   }
 
+  var orderActionsRemoteLoaded = false, orderActionsRetrying = false;
   function pushOrderActions() {
+    // Same rule as picks: no write before the stored copy has been read.
+    if (!orderActionsRemoteLoaded) {
+      if (!orderActionsRetrying) {
+        orderActionsRetrying = true;
+        syncOrderActionsFromRemote().then(function () { orderActionsRetrying = false; });
+      }
+      return;
+    }
     postJSON("/api/pick-state?key=actions", {
       driveThruSent: driveThruSent, feedbackSent: feedbackSent, pickupScheduled: pickupScheduled,
       boxChoice: boxChoice, spreadsheetLogged: spreadsheetLogged,
@@ -2405,6 +2428,7 @@
             || JSON.stringify(mergedPickup) !== JSON.stringify(remote.pickupScheduled || {})
             || JSON.stringify(mergedBoxChoice) !== JSON.stringify(remote.boxChoice || {})
             || JSON.stringify(mergedLogged) !== JSON.stringify(remote.spreadsheetLogged || {});
+          orderActionsRemoteLoaded = true;
           driveThruSent = mergedDriveThru;
           feedbackSent = mergedFeedback;
           pickupScheduled = mergedPickup;
@@ -8990,7 +9014,15 @@
   // is already what makes driveThruSent/feedbackSent survive a reload.
   // Best-effort: a failed push just means the next successful one (the
   // very next mutation, typically) catches it up.
+  var wantedBankRemoteLoaded = false, wantedBankRetrying = false;
   function pushWantedBankState() {
+    if (!wantedBankRemoteLoaded) {
+      if (!wantedBankRetrying) {
+        wantedBankRetrying = true;
+        syncWantedBankFromRemote().then(function () { wantedBankRetrying = false; });
+      }
+      return;
+    }
     postJSON("/api/pick-state?key=wantedListBank", wantedListBank).catch(function () { /* offline — ignore */ });
   }
 
@@ -9037,6 +9069,7 @@
         if (remote && typeof remote === "object") {
           var merged = mergeWantedBankEntries(wantedListBank, remote);
           var remoteNeedsUpdate = JSON.stringify(merged) !== JSON.stringify(remote);
+          wantedBankRemoteLoaded = true;
           wantedListBank = merged;
           updateWantedListBadge();
           if (remoteNeedsUpdate) pushWantedBankState();

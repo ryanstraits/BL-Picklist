@@ -796,6 +796,18 @@ Token Secret as sensitive as an API key that can move money.
   never runs into the pick checkmark). Otherwise just the price.
   `order-items` now passes `unitPriceFinal` through. Not yet checked against a
   live discounted order from this sandbox.
+- **Saved-state overwrite protection (Oct 31, 2026)** — after the order
+  actions (drive thru / feedback sent flags, box sizes, logged flags) were found
+  reset, the app no longer lets a device that hasn't read the stored copy write
+  over it: picks, order actions and the Wanted bank each refuse to push until
+  this page load has successfully read their stored copy (they retry the read
+  and push the merged result once it works), and the `actions` write is merged
+  into the stored copy server-side in `pick-state` (flag maps only grow; box
+  choice / logged flags take the incoming value per order) so a near-empty
+  write can't erase it. The original cause couldn't be proven — Netlify keeps
+  about an hour of logs and Blobs contents can't be read from the sandbox — but
+  this was the path that allowed it (e.g. a cleared phone cache followed by a
+  push before the stored copy loaded).
 - **Inventory quantity writes (fixed Oct 20, 2026)** — on BrickLink's Update
   Inventory call, `quantity` is a *difference to add* (negative to
   subtract), not the new total; both client libraries say so. From Oct 9

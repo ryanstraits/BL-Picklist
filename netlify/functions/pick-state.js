@@ -28,6 +28,27 @@ const ARRAY_KEYS = new Set(['activeSale', 'sortList']);
 // this function was added; the earlier getDeployStore() branching and
 // bad push-comparison logic were both real bugs, but neither was the
 // actual blocker.
+// Merges an incoming 'actions' write into the stored one: the flag maps are
+// unions of the truthy keys; boxChoice and spreadsheetLogged take the
+// incoming value for any key it mentions (so an explicit change, including
+// clearing a box or marking an order not logged, still goes through) and
+// keep the rest of what was stored.
+function mergeActions(existing, incoming) {
+  const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
+  const merged = { ...base, ...incoming };
+  for (const key of ['driveThruSent', 'feedbackSent', 'pickupScheduled']) {
+    const union = {};
+    for (const src of [base[key], incoming[key]]) {
+      if (src && typeof src === 'object') Object.keys(src).forEach((k) => { if (src[k]) union[k] = true; });
+    }
+    merged[key] = union;
+  }
+  for (const key of ['boxChoice', 'spreadsheetLogged']) {
+    merged[key] = { ...(base[key] || {}), ...(incoming[key] || {}) };
+  }
+  return merged;
+}
+
 exports.handler = requireAuth(async (event) => {
   connectLambda(event);
 
@@ -68,7 +89,18 @@ exports.handler = requireAuth(async (event) => {
     }
 
     try {
-      await store.setJSON(requestedKey, payload);
+      let toWrite = payload;
+      if (requestedKey === 'actions') {
+        // The order-action maps only ever grow (a drive thru, feedback or
+        // pickup is never "un-sent"), so a write is merged into what's
+        // stored instead of replacing it — a client that started with an
+        // empty local copy (a wiped phone cache, a fresh browser) and
+        // pushed before it had read the stored one used to overwrite the
+        // box sizes and sent-flags with its near-empty version.
+        const existing = await store.get(requestedKey, { type: 'json' }).catch(() => null);
+        toWrite = mergeActions(existing, payload);
+      }
+      await store.setJSON(requestedKey, toWrite);
       return json(200, { ok: true });
     } catch (err) {
       return errorResponse(err);
