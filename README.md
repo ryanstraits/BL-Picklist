@@ -796,6 +796,10 @@ Token Secret as sensitive as an API key that can move money.
   never runs into the pick checkmark). Otherwise just the price.
   `order-items` now passes `unitPriceFinal` through. Not yet checked against a
   live discounted order from this sandbox.
+- **Box sizes removed (Nov 1, 2026)** — the "Box used" picker on order pages and
+  the "Box choices logged" tally on Sales Stats are gone. The saved per-order
+  `boxChoice` data in the `actions` blob is left in place (and still synced), just
+  not shown anywhere.
 - **Mark all as logged** — when Order Lookup (browse view, not searching) has
   orders still counted as unlogged in the spreadsheet — from the full history or the
   open-orders list — a line at the top says how many and offers "Mark all as logged"
