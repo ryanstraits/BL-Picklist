@@ -796,6 +796,12 @@ Token Secret as sensitive as an API key that can move money.
   never runs into the pick checkmark). Otherwise just the price.
   `order-items` now passes `unitPriceFinal` through. Not yet checked against a
   live discounted order from this sandbox.
+- **Mark all as logged** — when Order Lookup (browse view, not searching) has
+  orders still counted as unlogged in the spreadsheet — from the full history or the
+  open-orders list — a line at the top says how many and offers "Mark all as logged"
+  (with a confirmation), which sets the explicit logged flag on every one. Built for
+  backfilling after the order-action flags were lost (see below); orders before
+  `SPREADSHEET_LOGGED_THRESHOLD` already count as logged without it.
 - **Saved-state overwrite protection (Oct 31, 2026)** — after the order
   actions (drive thru / feedback sent flags, box sizes, logged flags) were found
   reset, the app no longer lets a device that hasn't read the stored copy write
