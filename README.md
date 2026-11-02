@@ -732,8 +732,11 @@ Token Secret as sensitive as an API key that can move money.
   weighted by dollars — the rest of the set against its figs. The edit view shows
   the pieces: each fig's rarity, sold/listed, and a Demand block in the math. Numbers
   appear once a set's prices are refreshed. Cards in the list are collapsed by default to about a third of the height —
-  thumbnail, ID, category path, name, verdict chip and fig counter, and three numbers
-  (the one the list is ranked by, plus two more) — with a ▾ caret beside the name that
+  thumbnail, ID, category path, name, verdict chip and fig counter, and all five numbers
+  (Value, Profit, ROI, Demand, QT Score, always in that order, the ranked one bold),
+  each coloured green / yellow / red by `SORT_BANDS` (good at or above / okay at or
+  above, in the code: Value $40/$15, Profit $15/$5, ROI 100%/30%, Demand 60/35,
+  QT 70/50; the same colours on the full card's tiles) — with a ▾ caret beside the name that
   opens the full card (▴ in the same spot closes it; the header is laid out identically
   in both views, and the page is re-anchored so the card you tapped doesn't move on
   screen), and "Expand all" / "Collapse all" at the top of the list does every card

@@ -694,6 +694,9 @@
   .sort-compact-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
   .sort-compact-info { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--text-secondary); }
   .sort-compact-info b { color: var(--text); }
+  .sort-good, .sort-compact-info b.sort-good { color: var(--success); }
+  .sort-ok, .sort-compact-info b.sort-ok { color: var(--warning); }
+  .sort-bad, .sort-compact-info b.sort-bad { color: var(--danger); }
   .sort-compact-main { font-weight: 700; }
   .sort-caret { flex: none; width: 34px; height: 30px; padding: 0; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
   .sort-refresh-all { font-size: 12.5px; padding: 6px 10px; }
@@ -706,15 +709,11 @@
   .sort-feature { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); }
   .sort-feature-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-secondary); }
   .sort-feature-num { font-size: 28px; font-weight: 800; line-height: 1.1; }
-  .sort-feature-num.sort-demand-high { color: var(--success); }
-  .sort-feature-num.sort-demand-mid { color: var(--info); }
   .sort-feature-sub { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
   .sort-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
   .sort-tile { padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); }
   .sort-tile-label { font-size: 10.5px; color: var(--text-secondary); }
   .sort-tile-val { font-size: 15px; font-weight: 700; }
-  .sort-tile-val.sort-demand-high { color: var(--success); }
-  .sort-tile-val.sort-demand-mid { color: var(--info); }
   .sort-demand { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-secondary); }
   .sort-demand.high { color: var(--success); border-color: var(--success); }
   .sort-demand.mid { color: var(--info); border-color: var(--info); }
@@ -10326,16 +10325,33 @@
     return lines;
   }
 
+  // Where a number turns green / yellow / red: [good at or above, okay at or
+  // above]; below the second is red. Starting points, tuned to the range
+  // these sets typically land in.
+  var SORT_BANDS = {
+    value: [40, 15],     // $
+    profit: [15, 5],     // $
+    roi: [1, 0.3],       // 100% / 30%
+    demand: [60, 35],    // 0–100
+    qt: [70, 50],        // 0–100
+  };
+  function sortBand(key, n) {
+    if (n === null || n === undefined || isNaN(n)) return "";
+    var band = SORT_BANDS[key];
+    return n >= band[0] ? "sort-good" : n >= band[1] ? "sort-ok" : "sort-bad";
+  }
+
   function sortMetrics(e, a) {
     var roiTxt = a.roi === null ? "—" : Math.round(a.roi * 100) + "%";
     var d = sortDemand(e);
     var dn = d ? Math.round(d.score) : null;
+    var qt = Math.round(sortQuickTurn(e).score);
     return {
-      value: { label: "Value", text: sortMoney(a.value), cls: "" },
-      profit: { label: "Profit", text: a.paidKnown ? sortMoney(a.profit) : "—", cls: !a.paidKnown ? "" : a.profit < 0 ? "sort-neg" : "sort-pos" },
-      roi: { label: "ROI", text: roiTxt, cls: a.roi === null ? "" : a.roi < 0 ? "sort-neg" : "sort-pos" },
-      demand: { label: "Demand", text: dn === null ? "—" : String(dn), cls: dn === null ? "" : dn >= 60 ? "sort-demand-high" : dn >= 35 ? "sort-demand-mid" : "" },
-      qt: { label: "QT Score", text: String(Math.round(sortQuickTurn(e).score)), cls: "" },
+      value: { label: "Value", text: sortMoney(a.value), cls: sortBand("value", a.value) },
+      profit: { label: "Profit", text: a.paidKnown ? sortMoney(a.profit) : "—", cls: a.paidKnown ? sortBand("profit", a.profit) : "" },
+      roi: { label: "ROI", text: roiTxt, cls: sortBand("roi", a.roi) },
+      demand: { label: "Demand", text: dn === null ? "—" : String(dn), cls: sortBand("demand", dn) },
+      qt: { label: "QT Score", text: String(qt), cls: sortBand("qt", qt) },
     };
   }
 
@@ -10348,11 +10364,11 @@
   function sortCompactHtml(e, a) {
     var metrics = sortMetrics(e, a);
     var key = SORT_FEATURE_FOR_RANK[sortRankKey] || "value";
-    var keys = [key].concat(SORT_TILE_ORDER.filter(function (k) { return k !== key; }).slice(0, 2));
+    // All five numbers, always in the same order; the ranked one is bold.
     return '<div class="sort-compact-row"><span class="sort-compact-info">'
-      + keys.map(function (k, i) {
+      + SORT_TILE_ORDER.map(function (k) {
         var m = metrics[k];
-        return '<span class="' + (i === 0 ? 'sort-compact-main ' : '') + m.cls + '">' + (k === "qt" ? "QT" : m.label) + ' <b>' + m.text + '</b></span>';
+        return '<span class="' + (k === key ? 'sort-compact-main' : '') + '">' + (k === "qt" ? "QT" : m.label) + ' <b class="' + m.cls + '">' + m.text + '</b></span>';
       }).join("")
       + '</span></div>';
   }
