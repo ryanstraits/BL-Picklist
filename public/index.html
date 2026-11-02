@@ -9518,6 +9518,13 @@
     condFair: 80,
     condPoor: 60,
     demandWeightPct: 20,    // how far demand can tip a route's value: ±this % at the extremes (0 = ignore demand)
+    // Where a card's numbers turn green (at or above "Good") and yellow (at or
+    // above "OK"); below OK is red.
+    bandValueGood: 40, bandValueOk: 15,        // $
+    bandProfitGood: 15, bandProfitOk: 5,       // $
+    bandRoiGood: 100, bandRoiOk: 30,           // %
+    bandDemandGood: 60, bandDemandOk: 35,      // 0–100
+    bandQtGood: 70, bandQtOk: 50,              // 0–100
   };
   var SORT_SETTING_FIELDS = [
     { key: "genRate", label: "General parts", suffix: "$/lb", step: "0.01" },
@@ -9531,6 +9538,16 @@
     { key: "condFair", label: "Fig worth, Fair", suffix: "%", step: "1" },
     { key: "condPoor", label: "Fig worth, Poor", suffix: "%", step: "1" },
     { key: "demandWeightPct", label: "Demand tips the pick by up to", suffix: "% of a route’s value", step: "1" },
+    { key: "bandValueGood", label: "Value: green at", suffix: "$", step: "1" },
+    { key: "bandValueOk", label: "Value: yellow at", suffix: "$", step: "1" },
+    { key: "bandProfitGood", label: "Profit: green at", suffix: "$", step: "1" },
+    { key: "bandProfitOk", label: "Profit: yellow at", suffix: "$", step: "1" },
+    { key: "bandRoiGood", label: "ROI: green at", suffix: "%", step: "1" },
+    { key: "bandRoiOk", label: "ROI: yellow at", suffix: "%", step: "1" },
+    { key: "bandDemandGood", label: "Demand: green at", suffix: "0–100", step: "1" },
+    { key: "bandDemandOk", label: "Demand: yellow at", suffix: "0–100", step: "1" },
+    { key: "bandQtGood", label: "QT Score: green at", suffix: "0–100", step: "1" },
+    { key: "bandQtOk", label: "QT Score: yellow at", suffix: "0–100", step: "1" },
   ];
   var SORT_RANKS = [
     { key: "newest", label: "Newest first" },
@@ -10325,20 +10342,18 @@
     return lines;
   }
 
-  // Where a number turns green / yellow / red: [good at or above, okay at or
-  // above]; below the second is red. Starting points, tuned to the range
-  // these sets typically land in.
-  var SORT_BANDS = {
-    value: [40, 15],     // $
-    profit: [15, 5],     // $
-    roi: [1, 0.3],       // 100% / 30%
-    demand: [60, 35],    // 0–100
-    qt: [70, 50],        // 0–100
-  };
+  // Where a number turns green / yellow / red — the thresholds are the
+  // "band…" settings (Rates & assumptions): green at or above the first,
+  // yellow at or above the second, red below. ROI is compared as a percent.
   function sortBand(key, n) {
     if (n === null || n === undefined || isNaN(n)) return "";
-    var band = SORT_BANDS[key];
-    return n >= band[0] ? "sort-good" : n >= band[1] ? "sort-ok" : "sort-bad";
+    var name = "band" + key.charAt(0).toUpperCase() + key.slice(1);
+    var pick = function (suffix) {
+      var v = sortSettings && sortSettings[name + suffix];
+      return typeof v === "number" ? v : SORT_DEFAULTS[name + suffix];
+    };
+    var x = key === "roi" ? n * 100 : n;
+    return x >= pick("Good") ? "sort-good" : x >= pick("Ok") ? "sort-ok" : "sort-bad";
   }
 
   function sortMetrics(e, a) {
@@ -10761,7 +10776,7 @@
         plan.hold.push({ label: label, name: e.name || "", missing: missing });
       } else if (e.decision === "asis") {
         // Sold with the figs it has: ready now, nothing to buy or pull.
-        if (e.status === "ready") plan.ready.push({ label: label, name: e.name || "", value: a.now.net, paid: a.paidKnown ? a.paid : null, asis: a.parts.missingCount });
+        if (e.status === "ready") plan.ready.push({ qt: sortQuickTurn(e).score, label: label, name: e.name || "", value: a.now.net, paid: a.paidKnown ? a.paid : null, asis: a.parts.missingCount });
         else plan.waiting++;
       } else if (e.decision === "set") {
         var incomplete = false;
@@ -10797,7 +10812,7 @@
           }
         });
         if (!incomplete && e.status === "ready") {
-          plan.ready.push({ label: label, name: e.name || "", value: a.complete.net, paid: a.paidKnown ? a.paid : null, asis: 0 });
+          plan.ready.push({ qt: sortQuickTurn(e).score, label: label, name: e.name || "", value: a.complete.net, paid: a.paidKnown ? a.paid : null, asis: 0 });
         } else {
           plan.waiting++;
         }
@@ -10818,6 +10833,8 @@
     function toList(map) {
       return Object.keys(map).map(function (k) { return map[k]; }).sort(function (x, y) { return x.itemNo < y.itemNo ? -1 : x.itemNo > y.itemNo ? 1 : 0; });
     }
+    // Ready to sell goes quickest first.
+    plan.ready.sort(function (x, y) { return y.qt - x.qt; });
     plan.buy = toList(buyMap);
     plan.buy.forEach(function (r) { r.price = r.qty ? r.total / r.qty : 0; });
     plan.pull = toList(pullMap);
@@ -10838,7 +10855,7 @@
   function sortPlanText(plan) {
     var out = [];
     out.push("READY TO SELL (" + plan.ready.length + ")");
-    plan.ready.forEach(function (r) { out.push(r.label + " " + r.name + " - est " + sortMoney(r.value) + (r.asis ? " (as-is, " + r.asis + " fig" + (r.asis === 1 ? "" : "s") + " missing)" : "")); });
+    plan.ready.forEach(function (r) { out.push(r.label + " " + r.name + " - QT " + Math.round(r.qt) + " - est " + sortMoney(r.value) + (r.asis ? " (as-is, " + r.asis + " fig" + (r.asis === 1 ? "" : "s") + " missing)" : "")); });
     if (plan.waiting) out.push("(" + plan.waiting + " more waiting on figs)");
     out.push("");
     out.push("FIGS TO BUY (" + plan.buy.reduce(function (n, r) { return n + r.qty; }, 0) + ", est " + sortMoney(sortBuyTotal(plan)) + ")");
@@ -10903,7 +10920,9 @@
     html += '<h3 class="sort-out-title">Ready to sell (' + plan.ready.length + ' · ' + sortMoney(plan.ready.reduce(function (n, r) { return n + r.value; }, 0)) + ')</h3>';
     html += plan.ready.length ? plan.ready.map(function (r) {
       return sortOutRow('<span class="mono">' + escapeHtml(r.label) + '</span> ' + escapeHtml(r.name), sortMoney(r.value),
-        (r.asis ? 'as-is, ' + r.asis + ' fig' + (r.asis === 1 ? '' : 's') + ' missing' : '') + (r.asis && r.paid !== null ? ' · ' : '') + (r.paid !== null ? 'paid ' + sortMoney(r.paid) : ""));
+        ['<span class="' + sortBand("qt", r.qt) + '">QT ' + Math.round(r.qt) + '</span>',
+          r.asis ? 'as-is, ' + r.asis + ' fig' + (r.asis === 1 ? '' : 's') + ' missing' : '',
+          r.paid !== null ? 'paid ' + sortMoney(r.paid) : ''].filter(Boolean).join(' · '));
     }).join("") : '<div class="sort-out-sub">None yet.</div>';
     if (plan.waiting) html += '<div class="sort-out-sub">' + plan.waiting + ' more “Sell complete” waiting on figs.</div>';
     // Figs to buy

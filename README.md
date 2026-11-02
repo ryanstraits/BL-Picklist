@@ -706,7 +706,7 @@ Token Secret as sensitive as an API key that can move money.
   (figs on hand out of needed, what was paid, total paid in the heading) and a
   count in the tally card, and feed none of the sell lists or totals) —
   Ryan's call, separate from the app's recommendation chip — and the page
-  ends with lists built from those decisions: *Ready to sell* (Sell as-is sets with whatever figs they have, and Sell complete,
+  ends with lists built from those decisions: *Ready to sell* (quickest first, by QT Score, which each row shows; Sell as-is sets with whatever figs they have, and Sell complete,
   every fig checked off), *Figs to buy* (every missing fig across the
   Sell-as-set sets, totaled, with the low-25 average price and which sets;
   "Add all to Wanted list" sends them to the Wanted list once), *Pull from
@@ -734,9 +734,11 @@ Token Secret as sensitive as an API key that can move money.
   appear once a set's prices are refreshed. Cards in the list are collapsed by default to about a third of the height —
   thumbnail, ID, category path, name, verdict chip and fig counter, and all five numbers
   (Value, Profit, ROI, Demand, QT Score, always in that order, the ranked one bold),
-  each coloured green / yellow / red by `SORT_BANDS` (good at or above / okay at or
-  above, in the code: Value $40/$15, Profit $15/$5, ROI 100%/30%, Demand 60/35,
-  QT 70/50; the same colours on the full card's tiles) — with a ▾ caret beside the name that
+  each coloured green / yellow / red (green at or above the first threshold, yellow
+  at or above the second; the same colours on the full card's tiles). The ten
+  thresholds are editable in Rates & assumptions ("Value: green at", "Value: yellow
+  at", and so on; defaults Value $40/$15, Profit $15/$5, ROI 100%/30%, Demand 60/35,
+  QT 70/50) — with a ▾ caret beside the name that
   opens the full card (▴ in the same spot closes it; the header is laid out identically
   in both views, and the page is re-anchored so the card you tapped doesn't move on
   screen), and "Expand all" / "Collapse all" at the top of the list does every card
