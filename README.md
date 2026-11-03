@@ -709,8 +709,11 @@ Token Secret as sensitive as an API key that can move money.
   ends with lists built from those decisions: *Ready to sell* (quickest first, by QT Score, which each row shows; Sell as-is sets with whatever figs they have, and Sell complete,
   every fig checked off), *Figs to buy* (every missing fig across the
   Sell-as-set sets, totaled, with the low-25 average price and which sets;
-  "Add all to Wanted list" sends them to the Wanted list once), *Pull from
-  your inventory* (own copies that fill those gaps — a stock room copy first,
+  "Add all to Wanted list" sends them to the Wanted list once), *Manuals to
+  buy* (a manual per Sell complete set whose Manual rating is 0, with the average
+  of the 25 cheapest US listings of its `INSTRUCTION` item as the estimate;
+  "Add all to Wanted list" adds them as instruction items; also in the email),
+  *Pull from your inventory* (own copies that fill those gaps — a stock room copy first,
   then a live listing if it beats buying, with one pool of his copies shared
   across all sets), and *Sets going to bulk* (the figs checked off, to list
   individually, plus the leftover weight in lbs split general vs fig parts,

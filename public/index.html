@@ -10178,6 +10178,14 @@
           e.setSoldQty = p.totalQuantity || 0;
         }).catch(function () { warnings++; }).then(tick);
       });
+      // The set's instruction manual: what one costs to buy (average of the 25
+      // cheapest US listings). Optional — a failure just leaves no price.
+      tasks.push(function () {
+        return sortPriceFetch("INSTRUCTION", e.setNo, "stock").then(function (p) {
+          var prices = (p.listings || []).map(function (l) { return Number(l.unitPrice); }).filter(function (n) { return n > 0; });
+          e.manualPrice = prices.length ? prices.reduce(function (a, b) { return a + b; }, 0) / prices.length : 0;
+        }).catch(function () { /* no manual price, nothing to flag */ }).then(tick);
+      });
       // Everything listed worldwide, to set against what sold (also worldwide).
       tasks.push(function () {
         return sortPriceFetch("SET", e.setNo, "stock-all").then(function (p) {
@@ -10742,7 +10750,8 @@
   }
 
   function sortPlan() {
-    var plan = { ready: [], waiting: 0, buy: [], pull: [], bulk: [], hold: [], keep: [], decided: 0 };
+    var plan = { ready: [], waiting: 0, buy: [], manuals: [], pull: [], bulk: [], hold: [], keep: [], decided: 0 };
+    var manualMap = {};
     var buyMap = {}, pullMap = {}, pools = {};
     function bump(map, f, label) {
       var row = map[f.itemNo] || (map[f.itemNo] = { itemNo: f.itemNo, name: f.name || "", qty: 0, free: 0, live: [], price: 0, total: 0, sets: {} });
@@ -10779,6 +10788,12 @@
         if (e.status === "ready") plan.ready.push({ qt: sortQuickTurn(e).score, label: label, name: e.name || "", value: a.now.net, paid: a.paidKnown ? a.paid : null, asis: a.parts.missingCount });
         else plan.waiting++;
       } else if (e.decision === "set") {
+        // Selling complete includes the manual: one to buy per copy without one.
+        if (sortNum(e.manual) === 0) {
+          var mrow = manualMap[e.setNo] || (manualMap[e.setNo] = { setNo: e.setNo, name: e.name || "", qty: 0, price: e.manualPrice || 0, sets: {} });
+          mrow.qty++;
+          mrow.sets[label] = (mrow.sets[label] || 0) + 1;
+        }
         var incomplete = false;
         figs.forEach(function (f) {
           var qty = f.qty || 1;
@@ -10835,6 +10850,7 @@
     }
     // Ready to sell goes quickest first.
     plan.ready.sort(function (x, y) { return y.qt - x.qt; });
+    plan.manuals = Object.keys(manualMap).map(function (k) { return manualMap[k]; }).sort(function (x, y) { return x.setNo < y.setNo ? -1 : x.setNo > y.setNo ? 1 : 0; });
     plan.buy = toList(buyMap);
     plan.buy.forEach(function (r) { r.price = r.qty ? r.total / r.qty : 0; });
     plan.pull = toList(pullMap);
@@ -10861,6 +10877,11 @@
     out.push("FIGS TO BUY (" + plan.buy.reduce(function (n, r) { return n + r.qty; }, 0) + ", est " + sortMoney(sortBuyTotal(plan)) + ")");
     plan.buy.forEach(function (r) {
       out.push(r.itemNo + " x" + r.qty + " " + r.name + " - est " + sortMoney(r.price) + " ea - for " + sortSetsText(r.sets));
+    });
+    out.push("");
+    out.push("MANUALS TO BUY (" + plan.manuals.reduce(function (n, r) { return n + r.qty; }, 0) + ", est " + sortMoney(sortManualTotal(plan)) + ")");
+    plan.manuals.forEach(function (r) {
+      out.push(r.setNo + " x" + r.qty + " " + r.name + (r.price > 0 ? " - est " + sortMoney(r.price) + " ea" : "") + " - for " + sortSetsText(r.sets));
     });
     out.push("");
     out.push("PULL FROM YOUR INVENTORY");
@@ -10900,7 +10921,9 @@
   var SORT_STOCK_ROOMS = ["A", "B", "C"];
   var sortStockRoom = "A";
   var sortMoveBusy = false;
-  var sortBuyAddedSig = "";
+  var sortBuyAddedSig = "", sortManualAddedSig = "";
+  function sortManualTotal(plan) { return plan.manuals.reduce(function (sum, r) { return sum + r.qty * r.price; }, 0); }
+  function sortManualSig(plan) { return plan.manuals.map(function (r) { return r.setNo + ":" + r.qty; }).join(","); }
   function sortBuySig(plan) {
     return plan.buy.map(function (r) { return r.itemNo + ":" + r.qty; }).join(",");
   }
@@ -10937,6 +10960,18 @@
       html += '<button type="button" class="reset-btn sort-out-btn" id="sortBuyWantedBtn"' + (added ? ' disabled' : '') + '>'
         + (added ? 'Added to Wanted ✓' : 'Add all to Wanted list') + '</button>';
     } else html += '<div class="sort-out-sub">Nothing to buy.</div>';
+    // Manuals to buy
+    var manualQty = plan.manuals.reduce(function (n, r) { return n + r.qty; }, 0);
+    html += '<h3 class="sort-out-title">Manuals to buy (' + manualQty + (sortManualTotal(plan) > 0 ? ' · ' + sortMoney(sortManualTotal(plan)) : '') + ')</h3>';
+    if (plan.manuals.length) {
+      html += plan.manuals.map(function (r) {
+        return sortOutRow('<span class="mono">' + escapeHtml(r.setNo) + '</span>' + (r.qty > 1 ? ' ×' + r.qty : '') + ' ' + escapeHtml(r.name),
+          r.price > 0 ? sortMoney(r.qty * r.price) : "no price", (r.price > 0 ? '~' + sortMoney(r.price) + ' ea · ' : '') + 'for ' + escapeHtml(sortSetsText(r.sets)));
+      }).join("");
+      var madded = sortManualAddedSig === sortManualSig(plan);
+      html += '<button type="button" class="reset-btn sort-out-btn" id="sortManualWantedBtn"' + (madded ? ' disabled' : '') + '>'
+        + (madded ? 'Added to Wanted ✓' : 'Add all to Wanted list') + '</button>';
+    } else html += '<div class="sort-out-sub">None — every “Sell complete” set has its manual.</div>';
     // Pull from inventory
     var liveTotal = plan.pull.reduce(function (n, r) { return n + r.live.reduce(function (a, b) { return a + b; }, 0); }, 0);
     html += '<h3 class="sort-out-title">Pull from your inventory (' + plan.pull.reduce(function (n, r) { return n + r.live.length + r.free; }, 0) + (liveTotal > 0 ? ' · ' + sortMoney(liveTotal) + ' live' : '') + ')</h3>';
@@ -11187,6 +11222,16 @@
     }).catch(function () { /* lines just stay blank */ });
   }
 
+  function handleSortManualWanted() {
+    var plan = sortPlan();
+    if (!plan.manuals.length || sortManualAddedSig === sortManualSig(plan)) return;
+    plan.manuals.forEach(function (r) {
+      addToWantedListBank({ type: "INSTRUCTION", itemNo: r.setNo, colorId: 0, name: decodeHtmlEntities(r.name) + " (instructions)", quantity: r.qty }, "Sort List");
+    });
+    sortManualAddedSig = sortManualSig(plan);
+    renderSortOutputs();
+  }
+
   function handleSortBuyWanted() {
     var plan = sortPlan();
     if (!plan.buy.length || sortBuyAddedSig === sortBuySig(plan)) return;
@@ -11353,6 +11398,7 @@
         return;
       }
       if (t.id === "sortBuyWantedBtn") { handleSortBuyWanted(); return; }
+      if (t.id === "sortManualWantedBtn") { handleSortManualWanted(); return; }
       if (t.id === "sortMoveBtn") { handleSortMoveToStock(); return; }
       if (t.id === "sortToInventoryBtn") { handleSortToInventory(); return; }
       if (t.id === "sortRetryBtn") { sortLoadError = null; renderSortView(); return; }
