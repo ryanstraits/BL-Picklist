@@ -699,11 +699,16 @@ Token Secret as sensitive as an API key that can move money.
   Defaults (box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
   The recommendation is explained at the very bottom of a card's edit view in
-  a short "Recommendation" box: the pick and its profit/ROI, the numbers behind it
-  (what buying the missing figs costs against what they add, what parting out
-  would earn, the figs you have), whether demand tipped it, a note when your
-  Decision differs from the suggestion, and brief warnings (no manual, no Paid,
-  no price data). Once a Decision is picked, the card's verdict chip turns solid and shows it (the
+  a "Recommendation" box: the pick in large type with its profit/ROI, a one-sentence
+  "Reason" (what buying the missing figs costs against what they add, or which route
+  earns more, or that demand tipped it), then smaller supporting lines (what parting out
+  would earn, the figs you have, the manual), a note when your Decision differs from
+  the suggestion, and brief warnings (no Paid, no price data). A set with Manual 0
+  carries the estimated price of buying a manual (the 25 cheapest US `INSTRUCTION`
+  listings) on both set routes — Sell complete and Sell as-is — since it isn't sold
+  without one; that cost is in the set's value/profit/ROI and the Manuals to buy list
+  covers Sell as-is sets too. It cancels out when choosing between complete and as-is,
+  and parting out is unaffected. Once a Decision is picked, the card's verdict chip turns solid and shows it (the
   app's own suggestion stays an outline). Each card also has a **Decision** dropdown (Sell complete / Sell as-is / Part out /
   Save for later — hold a partial set until a missing fig turns up in a future
   lot; held sets get a "Saving for later" list of what each is missing and
