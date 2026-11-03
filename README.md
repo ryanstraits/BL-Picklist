@@ -653,9 +653,10 @@ Token Secret as sensitive as an API key that can move money.
   buy a missing fig). Per set Ryan enters what he paid, completeness
   (% of the non-fig pieces), quality 0-10, box 0-10 and manual 0-10
   (0 = not present), and for each fig how many he has and their
-  condition. The card then compares two routes — sell the set ("Sell complete", buying
-  missing figs unless they'd cost more than the skip threshold's share of
-  the set's value, in which case it's "Sell as-is", with the figs on hand) and part out
+  condition. The card then compares three routes — "Sell complete" (buy the missing
+  figs, then sell the set), "Sell as-is" (sell it with the figs on hand; with figs
+  missing, complete is picked only when it earns more than as-is, a tie going to
+  as-is) and part out
   (figs sold singly, never worth less than their weight at the fig-parts
   $/lb, plus the leftover non-fig weight to bulk: general parts at the
   general $/lb, and a "loose accessories per fig" allowance, 4 g by default,
@@ -680,7 +681,7 @@ Token Secret as sensitive as an API key that can move money.
   themes blank until the device's copy was cleared). The same set can be on the
   list more than once. A
   card warns if another set already has the same ID. Every rate and
-  assumption (the three $/lb figures, skip threshold,
+  assumption (the three $/lb figures,
   box/manual premiums, quality floor, fig-condition factors) is editable
   in the page's "Rates & assumptions" block. Each fig row also says whether
   that fig is already in Ryan's own BrickLink inventory and at what price(s)
@@ -695,9 +696,14 @@ Token Secret as sensitive as an API key that can move money.
   stored in the same Blobs store as everything else under the pick-state
   keys `sortList` and `sortSettings`; a failed load never falls back to an
   empty list, since the next save would then overwrite the real one.
-  Defaults (skip 35%, box +15%, manual +5%, quality floor 60%, fig
+  Defaults (box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
-  Once a Decision is picked, the card's verdict chip turns solid and shows it (the
+  The recommendation is explained at the very bottom of a card's edit view in
+  a short "Recommendation" box: the pick and its profit/ROI, the numbers behind it
+  (what buying the missing figs costs against what they add, what parting out
+  would earn, the figs you have), whether demand tipped it, a note when your
+  Decision differs from the suggestion, and brief warnings (no manual, no Paid,
+  no price data). Once a Decision is picked, the card's verdict chip turns solid and shows it (the
   app's own suggestion stays an outline). Each card also has a **Decision** dropdown (Sell complete / Sell as-is / Part out /
   Save for later — hold a partial set until a missing fig turns up in a future
   lot; held sets get a "Saving for later" list of what each is missing and

@@ -717,7 +717,12 @@
   .sort-demand { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-secondary); }
   .sort-demand.high { color: var(--success); border-color: var(--success); }
   .sort-demand.mid { color: var(--info); border-color: var(--info); }
-  .sort-detail { margin-top: 6px; }
+  .sort-why { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
+  .sort-why-head { font-weight: 700; }
+  .sort-why-note { margin-top: 4px; color: var(--warning); font-weight: 600; }
+  .sort-why ul { margin: 6px 0 0; padding-left: 18px; }
+  .sort-why li { margin: 3px 0; }
+  .sort-why-flags { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
   .sort-breakdown { margin-top: 8px; font-size: 12.5px; }
   .sort-breakdown-line { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
   .sort-breakdown-line b { color: var(--text); }
@@ -9510,7 +9515,6 @@
     genRate: 7.34,          // $/lb, general parts
     figRate: 369.83,        // $/lb, fig parts
     accessoryG: 4,          // g of loose fig accessories (hair, hats, tools…) per fig in the set, in the leftover
-    skipPct: 35,            // missing figs costing more than this % of the set's value aren't bought
     boxPremiumPct: 15,      // value added by a perfect (10/10) box
     manualPremiumPct: 5,    // value added by a perfect (10/10) manual
     qualityFloorPct: 60,    // share of value kept by a 0/10-quality set
@@ -9530,7 +9534,6 @@
     { key: "genRate", label: "General parts", suffix: "$/lb", step: "0.01" },
     { key: "figRate", label: "Fig parts", suffix: "$/lb", step: "0.01" },
     { key: "accessoryG", label: "Loose accessories per fig", suffix: "g", step: "0.1" },
-    { key: "skipPct", label: "Don't buy missing figs above", suffix: "% of set value", step: "1" },
     { key: "boxPremiumPct", label: "Box premium at 10/10", suffix: "%", step: "1" },
     { key: "manualPremiumPct", label: "Manual premium at 10/10", suffix: "%", step: "1" },
     { key: "qualityFloorPct", label: "Value kept at quality 0", suffix: "%", step: "1" },
@@ -9921,20 +9924,23 @@
     var brickFull = Math.max(setValue - figsAll, 0);
     var brickAdj = brickFull * (completeness / 100) * qualityF * premium;
 
-    // Route 1 — sell as a set
+    // Route 1 — sell the set. With figs missing there are two ways: buy them
+    // and sell it complete, or sell it as-is with the figs on hand. Complete
+    // is picked only when it earns more than as-is (what the figs add in
+    // value, less what they cost to get); a tie goes to as-is.
     var completeValue = brickAdj + ownedValue + missingValue;
-    var shareMissing = completeValue > 0 ? missingBuy / completeValue : 0;
-    var buyMissing = missingCount > 0 && shareMissing <= st.skipPct / 100;
+    var asIsNet = brickAdj + ownedValue;
+    var fullNet = completeValue - missingBuy;
+    var buyMissing = missingCount > 0 && fullNet > asIsNet;
     var setRoute;
     if (missingCount === 0 || buyMissing) {
       setRoute = {
         key: "set", variant: "complete", label: "Sell complete",
         value: completeValue, cost: buyMissing ? missingBuy : 0,
-        net: completeValue - (buyMissing ? missingBuy : 0),
+        net: fullNet,
       };
     } else {
-      var asIs = brickAdj + ownedValue;
-      setRoute = { key: "set", variant: "asis", label: "Sell as-is", value: asIs, cost: 0, net: asIs };
+      setRoute = { key: "set", variant: "asis", label: "Sell as-is", value: asIsNet, cost: 0, net: asIsNet };
     }
 
     // Route 2 — figs listed singly, everything else to bulk. The set's
@@ -9958,8 +9964,6 @@
     });
     // The set as it stands today vs. complete with every missing fig bought
     // (whether or not the skip threshold would actually buy them).
-    var asIsNet = brickAdj + ownedValue;
-    var fullNet = completeValue - missingBuy;
     var scenario = function (net) {
       return { net: net, profit: net - paid, roi: paidKnown && paid > 0 ? (net - paid) / paid : null };
     };
@@ -9986,27 +9990,22 @@
     var plainBest = routes.reduce(function (top, r) { return r.profit > top.profit ? r : top; }, routes[0]);
 
     var hasData = setValue > 0 || figs.some(function (f) { return sortFigUnitValue(f) > 0; });
+    // Short warnings only; the reasoning behind the pick is in sortWhyHtml.
     var flags = [];
-    if (e.status === "ready" && !hasData) flags.push("No price data.");
-    if (!paidKnown) flags.push("Add Paid for profit & ROI.");
-    if (missingCount > 0 && !buyMissing) flags.push("Cost to buy the " + missingCount + " missing fig" + (missingCount === 1 ? "" : "s") + ": " + sortMoney(missingBuy) + " — " + Math.round(shareMissing * 100) + "% of the set’s value (limit " + st.skipPct + "%), so not bought.");
-    if (missingCount > 0 && buyMissing) flags.push("Cost to buy the " + missingCount + " missing fig" + (missingCount === 1 ? "" : "s") + ": " + sortMoney(missingBuy) + " (" + Math.round(shareMissing * 100) + "% of the set’s value)" + (ownLiveUsed + ownFreeUsed ? ", using " + (ownLiveUsed + ownFreeUsed) + " of your own" : "") + ".");
-    if (ownedCount > 0) flags.push("Value of the " + ownedCount + " fig" + (ownedCount === 1 ? "" : "s") + " you have: " + sortMoney(ownedValue) + " if sold singly.");
-    if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? "" : "s") + ": no price.");
-    if (ownedValue > brickAdj && ownedCount > 0) flags.push("Figs > Set");
-    if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No set weight — bulk $0.");
-    if (best !== plainBest) {
-      flags.push("Demand tips this to " + best.label + " (set demand " + (setDem === null ? "unknown" : Math.round(setDem)) + " vs. rarity of the figs you have " + (figDem === null ? "unknown" : Math.round(figDem)) + "); on profit alone it would be " + plainBest.label + ".");
-    }
-    if (sortNum(e.manual) === 0) flags.push("No manual — you likely won’t sell it as a set.");
+    if (e.status === "ready" && !hasData) flags.push("No price data yet");
+    if (!paidKnown) flags.push("Add Paid for profit and ROI");
+    if (sortNum(e.manual) === 0) flags.push("No manual — you likely won’t sell it as a set");
+    if (missingNoPrice > 0) flags.push(missingNoPrice + " missing fig" + (missingNoPrice === 1 ? "" : "s") + " with no price");
+    if (!(e.setWeightG > 0) && e.status === "ready") flags.push("No set weight, so bulk counts as $0");
+    var demandTip = best !== plainBest ? { setDem: setDem, figDem: figDem, plain: plainBest } : null;
 
     return {
       routes: routes, best: best, paid: paid, paidKnown: paidKnown, now: nowCase, complete: completeCase,
       profit: best.profit, roi: paidKnown && paid > 0 ? best.profit / paid : null,
       value: best.net,
-      flags: flags, hasData: hasData,
+      flags: flags, hasData: hasData, demandTip: demandTip, buyMissing: buyMissing,
       parts: { setValue: setValue, figsAll: figsAll, brickFull: brickFull, brickAdj: brickAdj, qualityF: qualityF, premium: premium,
-        ownedValue: ownedValue, ownedCount: ownedCount, missingCount: missingCount, missingBuy: missingBuy, missingValue: missingValue, remainderG: remainderG, generalG: generalG, figPartsG: figPartsG, bulkParts: bulkParts },
+        ownedValue: ownedValue, ownedCount: ownedCount, ownUsed: ownLiveUsed + ownFreeUsed, missingCount: missingCount, missingBuy: missingBuy, missingValue: missingValue, remainderG: remainderG, generalG: generalG, figPartsG: figPartsG, bulkParts: bulkParts },
     };
   }
 
@@ -10417,33 +10416,10 @@
     } else if (e.status === "error" && !(e.figs && e.figs.length)) {
       summary = '<div class="sort-summary sort-neg">' + escapeHtml(e.error || "Couldn’t load this set.") + '</div>';
     } else {
-      var roiTxt = a.roi === null ? "—" : Math.round(a.roi * 100) + "%";
-      // The list shows the bare numbers; the full wording is for the edit view.
-      var expanded = !!sortExpanded[e.id];
-      var figBits = [];
-      if (a.parts.missingCount > 0) figBits.push('Figs to buy <b>' + sortMoney(a.parts.missingBuy) + '</b>');
-      if (a.parts.ownedCount > 0) figBits.push('Figs on hand <b>' + sortMoney(a.parts.ownedValue) + '</b>');
-      var caseBit = function (label, c) {
-        return '<span>' + label + ' <b class="' + (a.paidKnown && c.profit < 0 ? 'sort-neg' : '') + '">'
-          + (a.paidKnown ? sortMoney(c.profit) + (c.roi === null ? '' : ' · ' + Math.round(c.roi * 100) + '%') : sortMoney(c.net)) + '</b></span>';
-      };
-      var gapLine = a.parts.missingCount > 0
-        ? '<div class="sort-summary">' + caseBit('As is', a.now) + caseBit('Complete', a.complete) + '<span>' + (a.paidKnown ? '(profit · ROI)' : '(value)') + '</span></div>'
-        : '';
-      // Front of the card: just the numbers that decide where a set sits.
-      // Everything else (route, paid, as-is vs complete, fig money, demand
-      // detail, notes) shows once the card is opened for editing.
+      // The front of the card is just the numbers; the reasoning behind the
+      // pick (sortWhyHtml) sits at the very bottom of the edit view.
       summary = (sortIsCompact(e) ? sortCompactHtml(e, a) : sortFrontHtml(e, a))
-        + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '')
-        + (expanded
-          ? '<div class="sort-detail">'
-            + '<div class="sort-summary"><span><b>' + escapeHtml(a.best.label) + '</b></span><span>Paid <b>' + (a.paidKnown ? sortMoney(a.paid) : "—") + '</b></span></div>'
-            + gapLine
-            + (figBits.length ? '<div class="sort-summary">' + figBits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '')
-            + sortDemandLine(e)
-            + a.flags.map(function (f) { return '<div class="sort-flag">' + escapeHtml(f) + '</div>'; }).join("")
-            + '</div>'
-          : "");
+        + (e.error ? '<div class="sort-flag sort-neg">' + escapeHtml(e.error) + '</div>' : '');
     }
     return '<div class="item-line1">'
       + '<span class="item-no mono">' + escapeHtml(sortIdComplete(e) ? sortEntryId(e) : e.setNo) + '</span>'
@@ -10493,6 +10469,48 @@
       + '</div>';
   }
 
+  // The recommendation in plain words: what the app picked, the numbers
+  // that decided it, and short warnings. Shown at the very bottom of the edit
+  // view.
+  function sortWhyHtml(e, a) {
+    if (e.status !== "ready" && !(e.figs && e.figs.length)) return "";
+    var p = a.parts, best = a.best, setR = a.routes[0], partR = a.routes[1];
+    var money = sortMoney;
+    var amt = function (r) { return a.paidKnown ? money(r.profit) + " profit" : money(r.net) + " value"; };
+    var figsWord = function (n) { return n + " fig" + (n === 1 ? "" : "s"); };
+    var why = [];
+    if (best.key === "set") {
+      if (p.missingCount > 0) {
+        var gain = a.complete.net - a.now.net;
+        if (best.variant === "complete") {
+          why.push("Buying the " + p.missingCount + " missing fig" + (p.missingCount === 1 ? "" : "s") + " costs " + money(p.missingBuy) + " and adds " + money(p.missingValue) + " in value, so completing earns " + money(gain) + " more than selling as-is.");
+        } else {
+          why.push("Buying the " + p.missingCount + " missing fig" + (p.missingCount === 1 ? "" : "s") + " would cost " + money(p.missingBuy) + " but add only " + money(p.missingValue) + ", so selling as-is earns " + money(-gain) + " more.");
+        }
+      }
+      why.push("Parting out would earn " + amt(partR) + " (" + money(partR.figsValue) + " in figs, " + money(partR.bulkValue) + " in bulk).");
+    } else {
+      why.push("Figs sell for " + money(partR.figsValue) + " on their own and the rest goes to bulk for " + money(partR.bulkValue) + ".");
+      why.push("Selling the set (" + setR.label.toLowerCase() + ") would earn " + amt(setR) + ".");
+    }
+    if (p.ownedCount > 0) why.push("You have " + figsWord(p.ownedCount) + ", worth " + money(p.ownedValue) + " if sold singly.");
+    if (a.demandTip) {
+      var d = a.demandTip;
+      why.push("Demand tips the pick (set " + (d.setDem === null ? "unknown" : Math.round(d.setDem)) + " vs. fig rarity " + (d.figDem === null ? "unknown" : Math.round(d.figDem)) + "); on profit alone it would be " + d.plain.label + ".");
+    }
+    var chosen = { set: "complete", asis: "asis", part: "part" }[e.decision];
+    var suggested = best.key === "part" ? "part" : best.variant;
+    var decidedLine = chosen && chosen !== suggested
+      ? '<div class="sort-why-note">You chose ' + escapeHtml(SORT_DECISIONS.filter(function (d) { return d.key === e.decision; })[0].label) + "; the app suggests " + escapeHtml(best.label) + ".</div>"
+      : "";
+    return '<div class="sort-why">'
+      + '<div class="sort-why-head">Recommendation: ' + escapeHtml(best.label) + ' — ' + escapeHtml(amt(best)) + (a.roi !== null ? ', ' + Math.round(a.roi * 100) + '% ROI' : '') + '</div>'
+      + decidedLine
+      + '<ul>' + why.map(function (w) { return '<li>' + escapeHtml(w) + '</li>'; }).join("") + '</ul>'
+      + (a.flags.length ? '<div class="sort-why-flags">' + a.flags.map(function (f) { return '<span>' + escapeHtml(f) + '</span>'; }).join("") + '</div>' : '')
+      + '</div>';
+  }
+
   function sortMathHtml(e) {
     var a = analyzeSortEntry(e, sortSettings);
     var p = a.parts;
@@ -10515,7 +10533,8 @@
       + sortBreakdownLine('Rest, adjusted', sortMoney(p.brickAdj))
       + '</div>'
       + sortDemandBreakdownHtml(e)
-      + sortQuickBreakdownHtml(e);
+      + sortQuickBreakdownHtml(e)
+      + sortWhyHtml(e, a);
   }
 
   // Whether this fig is already in Ryan's own BrickLink inventory, and at
@@ -10609,20 +10628,6 @@
   // months): pieces if reported, else the number of sales.
   function sortFigSold(f) {
     return f.soldQty > 0 ? f.soldQty : (f.soldCount || 0);
-  }
-
-  // One line of demand numbers, set vs figs, to weigh selling complete
-  // against parting out.
-  function sortDemandLine(e) {
-    var bits = [];
-    var setSold = e.setSoldQty > 0 ? e.setSoldQty : (e.setSoldCount || 0);
-    if (setSold > 0) bits.push('set <b>' + setSold + '</b>');
-    var figs = (e.figs || []).map(sortFigSold);
-    if (figs.some(function (n) { return n > 0; })) {
-      var avg = Math.round(figs.reduce(function (a, b) { return a + b; }, 0) / figs.length);
-      bits.push('figs avg <b>' + avg + '</b>, low <b>' + Math.min.apply(null, figs) + '</b>');
-    }
-    return bits.length ? '<div class="sort-summary"><span>Sold (6 mo):</span>' + bits.map(function (b) { return '<span>' + b + '</span>'; }).join("") + '</div>' : '';
   }
 
   function sortFigRowHtml(f) {
