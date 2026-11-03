@@ -703,12 +703,12 @@ Token Secret as sensitive as an API key that can move money.
   "Reason" (what buying the missing figs costs against what they add, or which route
   earns more, or that demand tipped it), then smaller supporting lines (what parting out
   would earn, the figs you have, the manual), a note when your Decision differs from
-  the suggestion, and brief warnings (no Paid, no price data). A set with Manual 0
-  carries the estimated price of buying a manual (the 25 cheapest US `INSTRUCTION`
-  listings) on both set routes — Sell complete and Sell as-is — since it isn't sold
-  without one; that cost is in the set's value/profit/ROI and the Manuals to buy list
-  covers Sell as-is sets too. It cancels out when choosing between complete and as-is,
-  and parting out is unaffected. Once a Decision is picked, the card's verdict chip turns solid and shows it (the
+  the suggestion, and brief warnings (no Paid, no price data). Selling complete includes buying
+  the manual for a set with Manual 0: its estimated price (the 25 cheapest US
+  `INSTRUCTION` listings) is a cost of that route, in the set's value/profit/ROI and
+  the "Manuals to buy" list, and counts against Sell complete when it's compared with
+  Sell as-is. Sell as-is means nothing more is bought — no figs, no manual — and
+  carries no manual cost; part out has none either. Once a Decision is picked, the card's verdict chip turns solid and shows it (the
   app's own suggestion stays an outline). Each card also has a **Decision** dropdown (Sell complete / Sell as-is / Part out /
   Save for later — hold a partial set until a missing fig turns up in a future
   lot; held sets get a "Saving for later" list of what each is missing and
