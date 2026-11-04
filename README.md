@@ -698,8 +698,9 @@ Token Secret as sensitive as an API key that can move money.
   empty list, since the next save would then overwrite the real one.
   Defaults (box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
-  The recommendation is explained at the very bottom of a card's edit view in
-  a "Recommendation" box: the pick in large type with its profit/ROI, a one-sentence
+  The recommendation is explained in a "Recommendation" box under the tiles of
+  the open card (so it shows as soon as a card is expanded, and stays at the top in
+  the edit view, where the fields, figs and the detailed breakdowns follow): the pick in large type with its profit/ROI, a one-sentence
   "Reason" (what buying the missing figs costs against what they add, or which route
   earns more, or that demand tipped it), then smaller supporting lines (what parting out
   would earn, the figs you have, the manual), a note when your Decision differs from

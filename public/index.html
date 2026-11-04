@@ -10412,7 +10412,8 @@
       + '</div>'
       + '<div class="sort-tiles">' + SORT_TILE_ORDER.filter(function (k) { return k !== key; }).map(function (k) {
         return '<div class="sort-tile"><div class="sort-tile-label">' + metrics[k].label + '</div><div class="sort-tile-val ' + metrics[k].cls + '">' + metrics[k].text + '</div></div>';
-      }).join("") + '</div>';
+      }).join("") + '</div>'
+      + sortWhyHtml(e, a);
   }
 
   function sortHeadBodyHtml(e) {
@@ -10551,8 +10552,7 @@
       + sortBreakdownLine('Rest, adjusted', sortMoney(p.brickAdj))
       + '</div>'
       + sortDemandBreakdownHtml(e)
-      + sortQuickBreakdownHtml(e)
-      + sortWhyHtml(e, a);
+      + sortQuickBreakdownHtml(e);
   }
 
   // Whether this fig is already in Ryan's own BrickLink inventory, and at
