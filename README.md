@@ -700,8 +700,11 @@ Token Secret as sensitive as an API key that can move money.
   condition 100/80/60%) were picked as starting points, not measured.
   Below the Recommendation box the open card (not the edit view) has two small
   boxes, "Figs kept" (the figs checked off) and "Figs needed" (the ones still to
-  buy), each a row of minifig pictures with the part number under them and a count
-  badge where there's more than one copy; the edit view has the full checklist.
+  buy), each a row of minifig pictures with the part number and a price under them
+  (the average of the fig's 25 cheapest US listings, or — shown in blue — the price
+  typed into that fig's "Your cost to buy, each" box in the edit view, which takes
+  precedence for the figs still needed) and a count badge where there's more than
+  one copy; the edit view has the full checklist.
   The recommendation is explained in a "Recommendation" box under the tiles of
   the open card (so it shows as soon as a card is expanded, and stays at the top in
   the edit view, where the fields, figs and the detailed breakdowns follow): the pick in large type with its profit/ROI, a one-sentence
