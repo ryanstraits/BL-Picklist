@@ -698,6 +698,10 @@ Token Secret as sensitive as an API key that can move money.
   empty list, since the next save would then overwrite the real one.
   Defaults (box +15%, manual +5%, quality floor 60%, fig
   condition 100/80/60%) were picked as starting points, not measured.
+  Below the Recommendation box the open card (not the edit view) has two small
+  boxes, "Figs kept" (the figs checked off) and "Figs needed" (the ones still to
+  buy), each a row of minifig pictures with the part number under them and a count
+  badge where there's more than one copy; the edit view has the full checklist.
   The recommendation is explained in a "Recommendation" box under the tiles of
   the open card (so it shows as soon as a card is expanded, and stays at the top in
   the edit view, where the fields, figs and the detailed breakdowns follow): the pick in large type with its profit/ROI, a one-sentence

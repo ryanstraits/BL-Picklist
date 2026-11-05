@@ -717,6 +717,13 @@
   .sort-demand { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-secondary); }
   .sort-demand.high { color: var(--success); border-color: var(--success); }
   .sort-demand.mid { color: var(--info); border-color: var(--info); }
+  .sort-figbox { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); }
+  .sort-figbox-title { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; }
+  .sort-figbox-empty { font-size: 12.5px; color: var(--text-secondary); }
+  .sort-figgrid { display: flex; flex-wrap: wrap; gap: 10px 8px; }
+  .sort-figtile { width: 62px; text-align: center; }
+  .sort-figtile .item-thumb { width: 56px; height: 56px; margin: 0 auto; }
+  .sort-figtile-no { margin-top: 3px; font-size: 10.5px; color: var(--text-secondary); word-break: break-all; }
   .sort-why { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
   .sort-why-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-secondary); margin-top: 8px; }
   .sort-why-label:first-child { margin-top: 0; }
@@ -10402,6 +10409,34 @@
       + '</span></div>';
   }
 
+  // The open card's two fig boxes: the ones you're keeping (checked off) and
+  // the ones still needed, as small pictures with the part number beneath.
+  // Detail for any fig is in the edit view.
+  function sortFigTileHtml(f, n) {
+    return '<div class="sort-figtile">'
+      + '<div class="item-thumb">' + thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" })
+      + (n > 1 ? '<span class="qty-chip multi">' + n + '</span>' : '') + '</div>'
+      + '<div class="sort-figtile-no mono">' + escapeHtml(f.itemNo) + '</div>'
+      + '</div>';
+  }
+  function sortFigBoxesHtml(e) {
+    var figs = (e.figs || []).slice().sort(function (x, y) { return sortFigUnitValue(y) - sortFigUnitValue(x); });
+    if (!figs.length) return "";
+    var kept = [], needed = [], keptN = 0, neededN = 0;
+    figs.forEach(function (f) {
+      var qty = f.qty || 1, have = sortClamp(f.have || 0, 0, qty);
+      if (have > 0) { kept.push(sortFigTileHtml(f, have)); keptN += have; }
+      if (qty - have > 0) { needed.push(sortFigTileHtml(f, qty - have)); neededN += qty - have; }
+    });
+    var box = function (title, count, tiles, empty) {
+      return '<div class="sort-figbox"><div class="sort-figbox-title">' + title + ' (' + count + ')</div>'
+        + (tiles.length ? '<div class="sort-figgrid">' + tiles.join("") + '</div>' : '<div class="sort-figbox-empty">' + empty + '</div>')
+        + '</div>';
+    };
+    return box("Figs kept", keptN, kept, "None checked off yet.")
+      + box("Figs needed", neededN, needed, "None — every fig is accounted for.");
+  }
+
   function sortFrontHtml(e, a) {
     var metrics = sortMetrics(e, a);
     var key = SORT_FEATURE_FOR_RANK[sortRankKey] || "value";
@@ -10413,7 +10448,8 @@
       + '<div class="sort-tiles">' + SORT_TILE_ORDER.filter(function (k) { return k !== key; }).map(function (k) {
         return '<div class="sort-tile"><div class="sort-tile-label">' + metrics[k].label + '</div><div class="sort-tile-val ' + metrics[k].cls + '">' + metrics[k].text + '</div></div>';
       }).join("") + '</div>'
-      + sortWhyHtml(e, a);
+      + sortWhyHtml(e, a)
+      + (sortExpanded[e.id] ? "" : sortFigBoxesHtml(e));
   }
 
   function sortHeadBodyHtml(e) {
@@ -10741,7 +10777,7 @@
     var card = sortListView.querySelector('.sort-card[data-id="' + id + '"]');
     if (!e || !card) return;
     var head = card.querySelector(".sort-head-body");
-    if (head) head.innerHTML = sortHeadBodyHtml(e);
+    if (head) { head.innerHTML = sortHeadBodyHtml(e); wireThumbLinks(head); }
     var math = card.querySelector(".sort-math");
     if (math) math.innerHTML = sortMathHtml(e);
     // The theme box (and its category note) follow an automatic guess as it
