@@ -10303,6 +10303,10 @@
 
     return fetchJSON("/api/item-lookup?type=SET&no=" + encodeURIComponent(e.setNo)).then(function (r) {
       var item = (r && r.item) || {};
+      // An answer with no name in it is BrickLink not really being there (it
+      // does this while it's coming back) — treat it as a failed lookup so the
+      // Brickset / Rebrickable fallback runs, not as a set with nothing in it.
+      if (!item.name) throw new Error("BrickLink returned no data for this set");
       if (item.name) e.name = decodeHtmlEntities(item.name);
       e.setWeightG = item.weightG || 0;
       e.categoryId = item.categoryId || 0;
@@ -10412,8 +10416,19 @@
       patchSortCard(e.id, true); // the fig checklist can be filled in now; prices follow
       return runPool(tasks, 3);
     }).then(function () {
+      if (e.figs && e.figs.length) return null;
+      return sortLoadRbFigs().then(function (d) {
+        var list = d && d.sets && d.sets[e.setNo];
+        if (list && list.length) e.figs = sortProvisionalFigs(list);
+      }).catch(function () { /* none to add */ });
+    }).then(function () {
       e.status = "ready";
       if (!warnings) e.needsBL = false;
+      // Brickset fills whatever BrickLink left blank (name, weight, pieces,
+      // theme code).
+      sortApplyBrickset(e);
+      // Figs that came from Rebrickable aren't BrickLink's yet.
+      if ((e.figs || []).some(function (f) { return f.rb; })) e.needsBL = true;
       e.fetchedAt = new Date().toISOString();
       if (!manageInventoryRows) refreshSortFigStock();
       if (wasNeeding && !e.needsBL && currentView === "sort-list") renderSortList();

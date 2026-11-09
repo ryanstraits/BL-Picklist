@@ -849,7 +849,11 @@ Token Secret as sensitive as an API key that can move money.
   Rebrickable picture, marked "pending", and left out of the Wanted / Add Inventory
   hand-offs. "Fetch missing data" later replaces them with BrickLink's and carries the
   ticks, condition and your own cost over by matching names within the set (at least
-  half the words in common). Prices still need BrickLink (or hand entry).
+  half the words in common). Prices still need BrickLink (or hand entry). BrickLink
+  answering with an empty item (no name — it does that while recovering) counts as a
+  failed lookup, so the fallback runs then too; and whenever BrickLink leaves a set's
+  name, weight, piece count or theme code blank, Brickset fills it, and if BrickLink
+  lists no minifigs but Rebrickable knows some, Rebrickable's are used provisionally.
 - **Picture fallback (Nov 9, 2026)** — every thumbnail that comes through BrickLink
   (`/api/item-image`) now has a second address tried when it won't load: for a set,
   Rebrickable's picture (`cdn.rebrickable.com/media/sets/{set number}.jpg`, so every
