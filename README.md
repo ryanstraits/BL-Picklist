@@ -823,6 +823,14 @@ Token Secret as sensitive as an API key that can move money.
   never runs into the pick checkmark). Otherwise just the price.
   `order-items` now passes `unitPriceFinal` through. Not yet checked against a
   live discounted order from this sandbox.
+- **Sets that can't load (BrickLink down)** — if BrickLink doesn't answer when a
+  set is added, it stays on the Sort list as a card marked "Needs BrickLink data —
+  filled in by hand" instead of failing. Its edit view has Set name, Set value ($)
+  and Weight (g) boxes next to the usual fields, and the ranking, recommendation and
+  lists all work from what's typed. A "Fetch missing data (N)" button in the list
+  header re-fetches just those sets once BrickLink is back, replacing the hand-typed
+  values with real ones and clearing the marker. (Figs can't be added by hand yet; a
+  Rebrickable fallback for them is planned.)
 - **Box sizes removed (Nov 1, 2026)** — the "Box used" picker on order pages and
   the "Box choices logged" tally on Sales Stats are gone. The saved per-order
   `boxChoice` data in the `actions` blob is left in place (and still synced), just
