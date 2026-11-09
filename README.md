@@ -831,6 +831,25 @@ Token Secret as sensitive as an API key that can move money.
   header re-fetches just those sets once BrickLink is back, replacing the hand-typed
   values with real ones and clearing the marker. (Figs can't be added by hand yet; a
   Rebrickable fallback for them is planned.)
+- **Brickset and Rebrickable behind the Sort List (Nov 9, 2026)** — built during
+  BrickLink's outage, and Brickset's counts now also feed Demand with BrickLink up.
+  `netlify/functions/brickset-set.js` looks a set up on Brickset's v3 API (needs the
+  `BRICKSET_API_KEY` env var in Netlify; written from Brickset's docs and not yet run
+  against the live service): name, year, theme, pieces, weight and `ownedBy` /
+  `wantedBy`. The Sort List keeps that on the set (refreshed at most every two weeks,
+  since Brickset limits calls) and the **Demand** score's set half is now
+  wanted / (wanted + owned) — Ryan's spreadsheet measure — falling back to
+  BrickLink's sold-vs-listed when Brickset has nothing. When BrickLink doesn't answer
+  for a new set, the card is filled from Brickset (name, theme code, pieces, weight)
+  and its minifigs come from Rebrickable's CSV data,
+  `public/data/rebrickable-set-figs.json` (9,457 sets; rebuilt with
+  `python3 tools/build-rebrickable-figs.py`, which downloads Rebrickable's public CSV
+  files — check their Downloads page for terms), not their overloaded API. Rebrickable's
+  figs have their own numbers (`fig-004002`), so they're provisional: shown by name and
+  Rebrickable picture, marked "pending", and left out of the Wanted / Add Inventory
+  hand-offs. "Fetch missing data" later replaces them with BrickLink's and carries the
+  ticks, condition and your own cost over by matching names within the set (at least
+  half the words in common). Prices still need BrickLink (or hand entry).
 - **Box sizes removed (Nov 1, 2026)** — the "Box used" picker on order pages and
   the "Box choices logged" tally on Sales Stats are gone. The saved per-order
   `boxChoice` data in the `actions` blob is left in place (and still synced), just

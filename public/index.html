@@ -3621,6 +3621,17 @@
       + "&v=2";
   }
 
+  // Same as thumbHtml but for an image at a known address (Rebrickable's own
+  // pictures, for figs that don't have a BrickLink number yet).
+  function thumbHtmlUrl(url, type) {
+    return '<span class="thumb-link" data-img-url="' + escapeHtml(url) + '">'
+      + '<span class="thumb-fallback">' + thumbSvg(type) + '</span>'
+      + '<img src="' + escapeHtml(url) + '" alt="" referrerpolicy="no-referrer" style="display:none" '
+      + 'onload="this.previousElementSibling.style.display=\'none\'; this.style.display=\'block\';" '
+      + 'onerror="this.remove();">'
+      + '</span>';
+  }
+
   function thumbHtml(item) {
     var url = catalogImageUrl(item);
     return '<span class="thumb-link" data-img-url="' + escapeHtml(url) + '">'
@@ -10142,6 +10153,89 @@
     return (sortList || []).filter(function (e) { return e.id === id; })[0] || null;
   }
 
+  // ---- Brickset and Rebrickable (when BrickLink can't be reached) ----
+
+  var SORT_BRICKSET_MAX_AGE_MS = 14 * 24 * 3600 * 1000;
+  // Brickset's name/theme/pieces/weight and member counts for a set, kept on
+  // the entry and re-fetched at most every two weeks (Brickset limits calls).
+  function sortBricksetFetch(e) {
+    if (e.bs && e.bsAt && Date.now() - e.bsAt < SORT_BRICKSET_MAX_AGE_MS) return Promise.resolve(e.bs);
+    return fetchJSON("/api/brickset-set?no=" + encodeURIComponent(e.setNo)).then(function (r) {
+      e.bs = r;
+      e.bsAt = Date.now();
+      return r;
+    });
+  }
+
+  // Fills only what's still blank from Brickset's answer.
+  function sortApplyBrickset(e) {
+    var b = e.bs;
+    if (!b) return;
+    if (!e.name && b.name) e.name = decodeHtmlEntities(b.name);
+    if (!(e.setWeightG > 0) && b.weightG > 0) e.setWeightG = b.weightG;
+    if (!(e.pieces > 0) && b.pieces > 0) e.pieces = b.pieces;
+    var names = [];
+    [b.themeGroup, b.theme, b.subtheme].forEach(function (n) { if (n && names.indexOf(n) === -1) names.push(n); });
+    if (names.length) {
+      if (!e.categoryPath) e.categoryPath = names.join(" › ");
+      if (e.themeAuto) e.theme = sortGuessTheme(names);
+    }
+  }
+
+  // Rebrickable's set → minifigs list, built from their CSV downloads
+  // (tools/build-rebrickable-figs.py) and served as a static file.
+  var sortRbFigs = null;
+  function sortLoadRbFigs() {
+    if (sortRbFigs) return Promise.resolve(sortRbFigs);
+    return fetchJSON("/data/rebrickable-set-figs.json").then(function (d) { sortRbFigs = d || { sets: {} }; return sortRbFigs; });
+  }
+
+  // Figs from Rebrickable have their own numbers (fig-004002), not BrickLink's,
+  // so they're provisional: shown by name and picture until BrickLink data
+  // replaces them (and the ones already ticked off carry over).
+  function sortProvisionalFigs(list) {
+    return list.map(function (r) {
+      return {
+        itemNo: r[0], rb: true, name: r[1], qty: r[2] || 1, have: 0, cond: "good", buyCost: null,
+        img: "https://cdn.rebrickable.com/media/sets/" + r[0] + ".jpg",
+        soldAvg: 0, soldCount: 0, soldQty: 0, stockQty: 0, yearReleased: 0, setCount: null,
+        stockMin: 0, stockAvg25: 0, stockN: 0, weightG: 0,
+      };
+    });
+  }
+
+  function sortLoadFallback(e) {
+    var steps = [
+      sortBricksetFetch(e).then(function () { sortApplyBrickset(e); }).catch(function () { /* no Brickset data */ }),
+    ];
+    if (!(e.figs && e.figs.length)) {
+      steps.push(sortLoadRbFigs().then(function (d) {
+        var list = d && d.sets && d.sets[e.setNo];
+        if (list && list.length) e.figs = sortProvisionalFigs(list);
+      }).catch(function () { /* no Rebrickable list */ }));
+    }
+    return Promise.all(steps);
+  }
+
+  // Matches a BrickLink fig to one of the provisional ones by name (words in
+  // common), so ticks, condition and your own cost carry across.
+  function sortNameTokens(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(function (w) { return w.length > 1 && w !== "the" && w !== "and"; });
+  }
+  function sortMatchProvisional(list, x) {
+    var xt = sortNameTokens(x.name), best = null, bestScore = 0;
+    list.forEach(function (f) {
+      if (f._used) return;
+      var ft = sortNameTokens(f.name), inter = 0;
+      ft.forEach(function (t) { if (xt.indexOf(t) !== -1) inter++; });
+      var union = ft.length + xt.length - inter;
+      var score = union ? inter / union : 0;
+      if (score > bestScore) { best = f; bestScore = score; }
+    });
+    if (best && bestScore >= 0.5) { best._used = true; return best; }
+    return null;
+  }
+
   function loadSortEntryData(e) {
     e.status = "loading";
     e.error = "";
@@ -10171,13 +10265,14 @@
     }).then(function (data) {
       var old = {};
       (e.figs || []).forEach(function (f) { old[f.itemNo] = f; });
+      var oldProvisional = (e.figs || []).filter(function (f) { return f.rb; });
       var byNo = {};
       var pieces = 0;
       ((data && data.entries) || []).forEach(function (x) {
         if (x.type === "PART" && !x.isAlternate && !x.isCounterpart) pieces += x.quantity || 0;
         if (x.type !== "MINIFIG" || x.isAlternate || x.isCounterpart) return;
         if (byNo[x.itemNo]) { byNo[x.itemNo].qty += x.quantity || 1; return; }
-        var prev = old[x.itemNo] || {};
+        var prev = old[x.itemNo] || sortMatchProvisional(oldProvisional, x) || {};
         byNo[x.itemNo] = {
           itemNo: x.itemNo, name: decodeHtmlEntities(x.name || ""), qty: x.quantity || 1,
           have: prev.have || 0, cond: prev.cond || "good", buyCost: prev.buyCost > 0 ? prev.buyCost : null,
@@ -10196,6 +10291,10 @@
           e.setSoldCount = p.unitQuantity || 0;
           e.setSoldQty = p.totalQuantity || 0;
         }).catch(function () { warnings++; }).then(tick);
+      });
+      // Brickset's want/own counts for the Demand score (kept for two weeks).
+      tasks.push(function () {
+        return sortBricksetFetch(e).catch(function () { /* optional */ }).then(tick);
       });
       // The set's instruction manual: what one costs to buy (average of the 25
       // cheapest US listings). Optional — a failure just leaves no price.
@@ -10268,21 +10367,25 @@
       saveSortList();
       patchSortCard(e.id, true);
     }).catch(function (err) {
-      // BrickLink didn't answer (or doesn't know the number). A set with
-      // nothing loaded yet stays on the list as a card to fill in by hand,
-      // marked so one tap can fetch it properly later; one that already has
-      // data just keeps it.
-      e.status = "ready";
-      if (!(e.figs && e.figs.length) && !(e.setSoldAvg > 0)) {
-        e.needsBL = true;
-        e.error = "";
-      } else {
-        e.error = "Couldn’t reach BrickLink — your saved numbers are unchanged.";
-      }
-      e.blNote = err && err.message ? err.message : "";
-      saveSortList();
-      if (currentView === "sort-list" && (e.needsBL || wasNeeding)) renderSortList();
-      else patchSortCard(e.id, true);
+      // BrickLink didn't answer (or doesn't know the number). Brickset and
+      // Rebrickable fill what they can; a set still without real data stays on
+      // the list as a card to fill in by hand, marked so one tap can fetch it
+      // properly later. One that already has data just keeps it.
+      var blMsg = err && err.message ? err.message : "";
+      return sortLoadFallback(e).then(function () {
+        e.status = "ready";
+        var real = (e.figs || []).some(function (f) { return !f.rb; }) || e.setSoldAvg > 0;
+        if (!real) {
+          e.needsBL = true;
+          e.error = "";
+        } else {
+          e.error = "Couldn’t reach BrickLink — your saved numbers are unchanged.";
+        }
+        e.blNote = blMsg;
+        saveSortList();
+        if (currentView === "sort-list" && (e.needsBL || wasNeeding)) renderSortList();
+        else patchSortCard(e.id, true);
+      });
     });
   }
 
@@ -10357,11 +10460,7 @@
     if (key === "demand") {
       var d = sortDemand(e);
       if (!d) return ["No data yet"];
-      if (d.setD !== null) {
-        var sold = e.setSoldQty > 0 ? e.setSoldQty : (e.setSoldCount || 0);
-        var listed = e.setListedAll > 0 ? e.setListedAll : (e.setStockQty || 0);
-        lines.push("Set " + sortDemandWord(d.setD, "hot", "slow") + " · " + sold + " sold / " + listed + " listed");
-      }
+      if (d.setD !== null) lines.push(sortSetDemandText(e, d));
       if (d.figD !== null) lines.push("Figs " + sortDemandWord(d.figD, "rare", "common") + " · rarity " + Math.round(d.figD));
     } else if (key === "roi") {
       lines.push(a.paidKnown ? "Profit " + sortMoney(a.profit) + " · paid " + sortMoney(a.paid) : "Add Paid");
@@ -10436,7 +10535,7 @@
   // edit view, which takes precedence (override).
   function sortFigTileHtml(f, n, price, override) {
     return '<div class="sort-figtile">'
-      + '<div class="item-thumb">' + thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" })
+      + '<div class="item-thumb">' + sortFigThumb(f)
       + (n > 1 ? '<span class="qty-chip multi">' + n + '</span>' : '') + '</div>'
       + '<div class="sort-figtile-no mono">' + escapeHtml(f.itemNo) + '</div>'
       + '<div class="sort-figtile-cost' + (override ? ' override' : '') + '"' + (override ? ' title="Your cost"' : '') + '>' + (price > 0 ? sortMoney(price) : '—') + '</div>'
@@ -10497,7 +10596,7 @@
       + '<span class="item-no mono">' + escapeHtml(sortIdComplete(e) ? sortEntryId(e) : e.setNo) + '</span>'
       + '<span class="item-line1-right sort-right-stack">' + sortVerdictHtml(e, a) + sortFigCountHtml(e) + '</span>'
       + '</div>'
-      + (e.needsBL ? '<div class="sort-desc sort-needs-bl">Needs BrickLink data — filled in by hand</div>' : '')
+      + (e.needsBL ? '<div class="sort-desc sort-needs-bl">Needs BrickLink data — ' + (e.bs || (e.figs || []).some(function (f) { return f.rb; }) ? 'from Brickset / Rebrickable, prices by hand' : 'filled in by hand') + '</div>' : '')
       + (e.categoryPath ? '<div class="sort-desc">' + escapeHtml(e.categoryPath) + '</div>' : '')
       + '<div class="sort-name-row"><div class="item-name">' + escapeHtml(e.name || (e.needsBL ? "(no name yet)" : "(name loading…)")) + '</div>'
       + (sortExpanded[e.id] || (e.status === "error" && !(e.figs && e.figs.length)) ? ''
@@ -10518,9 +10617,12 @@
     if (!d) return "";
     var sold = e.setSoldQty > 0 ? e.setSoldQty : (e.setSoldCount || 0);
     var listed = e.setListedAll > 0 ? e.setListedAll : (e.setStockQty || 0);
+    var setLabel = sortSetWantShare(e) !== null
+      ? 'Set: ' + sortK(e.bs.wantedBy) + ' want vs ' + sortK(e.bs.ownedBy) + ' own (Brickset)'
+      : 'Set: ' + sold + ' sold vs ' + listed + ' listed';
     return '<div class="sort-breakdown">'
       + sortBreakdownLine('<b>Demand</b>', Math.round(d.score) + '/100')
-      + (d.setD !== null ? sortBreakdownLine('Set: ' + sold + ' sold vs ' + listed + ' listed', Math.round(d.setD)) : '')
+      + (d.setD !== null ? sortBreakdownLine(setLabel, Math.round(d.setD)) : '')
       + (d.figD !== null ? sortBreakdownLine('Figs: rarity, by value', Math.round(d.figD)) : '')
       + (d.setD !== null && d.figD !== null ? sortBreakdownLine('Blend weights (rest / figs)', sortMoney(d.wSet) + ' / ' + sortMoney(d.wFig)) : '')
       + '</div>';
@@ -10624,7 +10726,14 @@
   // what price(s) — the same matching and wording the Lookup page uses
   // (quantity on hand, each distinct listed price, any stock room). Blank
   // until the inventory has loaded; refreshSortFigStock() fills it in then.
+  function sortFigThumb(f) {
+    return f.rb && f.img ? thumbHtmlUrl(f.img, "MINIFIG") : thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" });
+  }
+
   function sortFigStockHtml(f) {
+    // From Rebrickable: no BrickLink number yet, so nothing to match against
+    // the inventory until BrickLink data loads.
+    if (f.rb) return '<div class="item-color sort-fig-stock">From Rebrickable — BrickLink number pending</div>';
     if (!manageInventoryRows) return "";
     var m = setFigLookupMatch({ itemNo: f.itemNo, colorId: 0, type: "MINIFIG" });
     if (!m.haveQty) return '<div class="item-color sort-fig-stock">Not in your inventory</div>';
@@ -10666,7 +10775,27 @@
   //        (age = years since release, at least 1).
   // A card's number blends the two, weighted by how much of the set's value
   // each is — the rest of the set vs. its figs.
+  // Brickset's member counts, when this set has them: wanted / (wanted + owned),
+  // the same measure as Ryan's spreadsheet.
+  function sortSetWantShare(e) {
+    var o = e.bs && e.bs.ownedBy, w = e.bs && e.bs.wantedBy;
+    if (typeof o !== "number" || typeof w !== "number" || !(o + w > 0)) return null;
+    return 100 * w / (w + o);
+  }
+  function sortK(n) {
+    return n >= 10000 ? Math.round(n / 1000) + "k" : n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n);
+  }
+  function sortSetDemandText(e, d) {
+    if (sortSetWantShare(e) !== null) {
+      return "Set " + sortDemandWord(d.setD, "hot", "slow") + " · " + sortK(e.bs.wantedBy) + " want / " + sortK(e.bs.ownedBy) + " own";
+    }
+    var sold = e.setSoldQty > 0 ? e.setSoldQty : (e.setSoldCount || 0);
+    var listed = e.setListedAll > 0 ? e.setListedAll : (e.setStockQty || 0);
+    return "Set " + sortDemandWord(d.setD, "hot", "slow") + " · " + sold + " sold / " + listed + " listed";
+  }
   function sortSetDemand(e) {
+    var share = sortSetWantShare(e);
+    if (share !== null) return share;
     var sold = e.setSoldQty > 0 ? e.setSoldQty : (e.setSoldCount || 0);
     var listed = e.setListedAll > 0 ? e.setListedAll : (e.setStockQty || 0);
     if (!(sold + listed > 0)) return null;
@@ -10721,7 +10850,7 @@
         + (f.stockAvg25 > 0 ? ' · low-' + f.stockN + ' avg ' + sortMoney(f.stockAvg25) : (f.stockMin > 0 ? ' · cheapest ' + sortMoney(f.stockMin) : ''))
       : 'no price data';
     return '<div class="item-row sort-fig-row' + ((f.have || 0) >= qty ? ' sort-fig-all' : '') + '" data-fig="' + escapeHtml(f.itemNo) + '">'
-      + '<div class="item-thumb">' + thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" }) + '</div>'
+      + '<div class="item-thumb">' + sortFigThumb(f) + '</div>'
       + '<div class="item-body">'
       + '<div class="item-line1"><span class="item-no mono">' + escapeHtml(f.itemNo) + '</span><span class="item-line1-right">×' + qty + '</span></div>'
       + '<div class="item-name">' + escapeHtml(f.name || "") + '</div>'
@@ -10850,7 +10979,7 @@
     var manualMap = {};
     var buyMap = {}, pullMap = {}, pools = {};
     function bump(map, f, label) {
-      var row = map[f.itemNo] || (map[f.itemNo] = { itemNo: f.itemNo, name: f.name || "", qty: 0, free: 0, live: [], price: 0, total: 0, sets: {} });
+      var row = map[f.itemNo] || (map[f.itemNo] = { itemNo: f.itemNo, name: f.name || "", rb: !!f.rb, qty: 0, free: 0, live: [], price: 0, total: 0, sets: {} });
       row.sets[label] = (row.sets[label] || 0) + 1;
       return row;
     }
@@ -10932,7 +11061,7 @@
         figs.forEach(function (f) {
           var have = sortClamp(f.have || 0, 0, f.qty || 1);
           if (!have) return;
-          listed.push({ itemNo: f.itemNo, name: f.name || "", qty: have, cond: f.cond || "good", unit: sortFigUnitValue(f), value: sortFigUnitValue(f) * sortCondFactor(f.cond, sortSettings) });
+          listed.push({ rb: !!f.rb, itemNo: f.itemNo, name: f.name || "", qty: have, cond: f.cond || "good", unit: sortFigUnitValue(f), value: sortFigUnitValue(f) * sortCondFactor(f.cond, sortSettings) });
         });
         plan.bulk.push({
           label: label, name: e.name || "", figs: listed,
@@ -11052,6 +11181,9 @@
         return sortOutRow('<span class="mono">' + escapeHtml(r.itemNo) + '</span> ×' + r.qty + ' ' + escapeHtml(r.name),
           r.price > 0 ? sortMoney(r.total) : "no price", (r.price > 0 ? '~' + sortMoney(r.price) + ' ea · ' : '') + 'for ' + escapeHtml(sortSetsText(r.sets)));
       }).join("");
+      if (plan.buy.some(function (r) { return r.rb; })) {
+        html += '<div class="sort-out-sub">Figs numbered fig-… come from Rebrickable and have no BrickLink number yet, so they\u2019re left out of Add to Wanted until BrickLink data loads.</div>';
+      }
       var added = sortBuyAddedSig === sortBuySig(plan);
       html += '<button type="button" class="reset-btn sort-out-btn" id="sortBuyWantedBtn"' + (added ? ' disabled' : '') + '>'
         + (added ? 'Added to Wanted ✓' : 'Add all to Wanted list') + '</button>';
@@ -11289,6 +11421,7 @@
     var byFig = {};
     plan.bulk.forEach(function (b) {
       b.figs.forEach(function (f) {
+        if (f.rb) return; // no BrickLink number yet — can't be listed
         var row = byFig[f.itemNo] || (byFig[f.itemNo] = { itemNo: f.itemNo, name: f.name, qty: 0, unit: f.unit });
         row.qty += f.qty;
       });
@@ -11332,6 +11465,7 @@
     var plan = sortPlan();
     if (!plan.buy.length || sortBuyAddedSig === sortBuySig(plan)) return;
     plan.buy.forEach(function (r) {
+      if (r.rb) return; // from Rebrickable: no BrickLink number to want yet
       addToWantedListBank({ type: "MINIFIG", itemNo: r.itemNo, colorId: 0, name: decodeHtmlEntities(r.name), quantity: r.qty }, "Sort List");
     });
     sortBuyAddedSig = sortBuySig(plan);

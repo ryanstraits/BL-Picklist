@@ -146,3 +146,8 @@
   to = "/.netlify/functions/item-lookup"
   status = 200
 
+[[redirects]]
+  from = "/api/brickset-set"
+  to = "/.netlify/functions/brickset-set"
+  status = 200
+
