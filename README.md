@@ -850,6 +850,15 @@ Token Secret as sensitive as an API key that can move money.
   hand-offs. "Fetch missing data" later replaces them with BrickLink's and carries the
   ticks, condition and your own cost over by matching names within the set (at least
   half the words in common). Prices still need BrickLink (or hand entry).
+- **Picture fallback (Nov 9, 2026)** — every thumbnail that comes through BrickLink
+  (`/api/item-image`) now has a second address tried when it won't load: for a set,
+  Rebrickable's picture (`cdn.rebrickable.com/media/sets/{set number}.jpg`, so every
+  set page in the app gets it), and for a minifig, the picture of its Rebrickable twin.
+  The twin is found by matching names within the set against
+  `rebrickable-set-figs.json` (at least half the words in common), done once per page
+  load for figs on the Sort list that haven't been tried (and for sets as they're
+  added or refreshed), and saved on the fig (`img`) so it works offline. Figs without
+  a match, and parts, keep the plain placeholder.
 - **Box sizes removed (Nov 1, 2026)** — the "Box used" picker on order pages and
   the "Box choices logged" tally on Sales Stats are gone. The saved per-order
   `boxChoice` data in the `actions` blob is left in place (and still synced), just

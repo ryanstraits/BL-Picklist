@@ -3632,13 +3632,29 @@
       + '</span>';
   }
 
-  function thumbHtml(item) {
+  // Pictures come through BrickLink; when one won't load (BrickLink down, or
+  // no image) a second address is tried before falling back to the plain
+  // placeholder: Rebrickable's picture for a set (its address is just the set
+  // number), or for a minifig whose Rebrickable twin has been matched.
+  var figImageFallback = {}; // BrickLink fig number -> Rebrickable picture
+  function imageFallbackUrl(item) {
+    if (item.type === "SET" && item.itemNo) {
+      var no = String(item.itemNo);
+      return "https://cdn.rebrickable.com/media/sets/" + (/-\d+$/.test(no) ? no : no + "-1") + ".jpg";
+    }
+    if (item.type === "MINIFIG") return figImageFallback[item.itemNo] || "";
+    return "";
+  }
+
+  function thumbHtml(item, fb) {
     var url = catalogImageUrl(item);
+    fb = fb || imageFallbackUrl(item);
     return '<span class="thumb-link" data-img-url="' + escapeHtml(url) + '">'
       + '<span class="thumb-fallback">' + thumbSvg(item.type) + '</span>'
       + '<img src="' + escapeHtml(url) + '" alt="" referrerpolicy="no-referrer" style="display:none" '
+      + (fb ? 'data-fb="' + escapeHtml(fb) + '" ' : '')
       + 'onload="this.previousElementSibling.style.display=\'none\'; this.style.display=\'block\';" '
-      + 'onerror="this.remove();">'
+      + 'onerror="var f=this.getAttribute(\'data-fb\'); if (f && !this.getAttribute(\'data-tried\')) { this.setAttribute(\'data-tried\', \'1\'); this.src = f; } else { this.remove(); }">'
       + '</span>';
   }
 
@@ -9765,6 +9781,9 @@
         if (e.status === "error" && !(e.figs && e.figs.length)) { e.status = "ready"; e.error = ""; e.needsBL = true; }
       });
       sortList = list;
+      list.forEach(function (e) {
+        (e.figs || []).forEach(function (f) { if (f.img && !f.rb) figImageFallback[f.itemNo] = f.img; });
+      });
       updateSortListBadge();
       var saved = res[1] && typeof res[1] === "object" ? res[1] : {};
       sortSettings = {};
@@ -10236,6 +10255,43 @@
     return null;
   }
 
+  // Gives each BrickLink fig in a set the picture of its Rebrickable twin
+  // (matched by name within the set), kept on the fig so it works offline.
+  // Returns true if anything changed.
+  function sortAttachRbImages(e, rb) {
+    var list = rb && rb.sets && rb.sets[e.setNo];
+    var changed = false;
+    var cands = (list || []).map(function (r) { return { name: r[1], no: r[0] }; });
+    (e.figs || []).forEach(function (f) {
+      if (f.rb || f.img || f.imgTried) return;
+      var m = list ? sortMatchProvisional(cands, f) : null;
+      f.imgTried = true;
+      changed = true;
+      if (m) {
+        f.img = "https://cdn.rebrickable.com/media/sets/" + m.no + ".jpg";
+        figImageFallback[f.itemNo] = f.img;
+      }
+    });
+    return changed;
+  }
+
+  // Once per page load, for sets already on the list that haven't had it done.
+  var sortImagesAttached = false;
+  function sortAttachAllRbImages() {
+    if (sortImagesAttached || !sortList) return;
+    var todo = sortList.filter(function (e) { return (e.figs || []).some(function (f) { return !f.rb && !f.img && !f.imgTried; }); });
+    if (!todo.length) { sortImagesAttached = true; return; }
+    sortLoadRbFigs().then(function (rb) {
+      sortImagesAttached = true;
+      var changed = false;
+      todo.forEach(function (e) { if (sortAttachRbImages(e, rb)) changed = true; });
+      if (changed) {
+        saveSortList();
+        if (currentView === "sort-list") renderSortList();
+      }
+    }).catch(function () { /* pictures just stay as they are */ });
+  }
+
   function loadSortEntryData(e) {
     e.status = "loading";
     e.error = "";
@@ -10361,6 +10417,9 @@
       e.fetchedAt = new Date().toISOString();
       if (!manageInventoryRows) refreshSortFigStock();
       if (wasNeeding && !e.needsBL && currentView === "sort-list") renderSortList();
+      sortLoadRbFigs().then(function (rb) {
+        if (sortAttachRbImages(e, rb)) { saveSortList(); if (currentView === "sort-list") renderSortList(); }
+      }).catch(function () { /* optional */ });
       if (warnings) e.error = warnings + " price lookup" + (warnings === 1 ? "" : "s") + " failed — tap Refresh prices to retry.";
       // A failed lookup shouldn't be cached as a real zero.
       (e.figs || []).forEach(function (f) { if (warnings && !(f.soldAvg > 0) && !(f.stockMin > 0) && !(f.stockAvg25 > 0)) delete sortFigCache[f.itemNo]; });
@@ -10727,7 +10786,7 @@
   // (quantity on hand, each distinct listed price, any stock room). Blank
   // until the inventory has loaded; refreshSortFigStock() fills it in then.
   function sortFigThumb(f) {
-    return f.rb && f.img ? thumbHtmlUrl(f.img, "MINIFIG") : thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" });
+    return f.rb && f.img ? thumbHtmlUrl(f.img, "MINIFIG") : thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" }, f.img);
   }
 
   function sortFigStockHtml(f) {
@@ -11580,6 +11639,7 @@
       renderSortList();
       reguessSortThemes();
       refreshSortFigStock();
+      sortAttachAllRbImages();
     }).catch(function () {
       if (currentView !== "sort-list") return;
       sortListView.innerHTML = '<div id="sortListWrap"></div>';
