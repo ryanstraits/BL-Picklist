@@ -11154,7 +11154,7 @@
         plan.hold.push({ label: label, name: e.name || "", missing: missing });
       } else if (e.decision === "asis") {
         // Sold with the figs it has: ready now, no figs to buy or pull.
-        if (e.status === "ready") plan.ready.push({ qt: sortQuickTurn(e).score, label: label, name: e.name || "", value: a.now.net, paid: a.paidKnown ? a.paid : null, asis: a.parts.missingCount });
+        if (e.status === "ready") plan.ready.push({ qt: sortQuickTurn(e).score, label: label, setNo: e.setNo, name: e.name || "", value: a.now.net, listPrice: a.now.net, complete: false, paid: a.paidKnown ? a.paid : null, asis: a.parts.missingCount });
         else plan.waiting++;
       } else if (e.decision === "set") {
         // Selling complete includes the manual: one to buy per copy without one.
@@ -11197,7 +11197,7 @@
           }
         });
         if (!incomplete && e.status === "ready") {
-          plan.ready.push({ qt: sortQuickTurn(e).score, label: label, name: e.name || "", value: a.complete.net, paid: a.paidKnown ? a.paid : null, asis: 0 });
+          plan.ready.push({ qt: sortQuickTurn(e).score, label: label, setNo: e.setNo, name: e.name || "", value: a.complete.net, listPrice: a.complete.net + a.parts.missingBuy + a.parts.manualCost, complete: sortNum(e.completeness) >= 100, paid: a.paidKnown ? a.paid : null, asis: 0 });
         } else {
           plan.waiting++;
         }
@@ -11319,6 +11319,7 @@
           r.paid !== null ? 'paid ' + sortMoney(r.paid) : ''].filter(Boolean).join(' · '));
     }).join("") : '<div class="sort-out-sub">None yet.</div>';
     if (plan.waiting) html += '<div class="sort-out-sub">' + plan.waiting + ' more “Sell complete” waiting on figs.</div>';
+    if (plan.ready.length) html += '<button type="button" class="reset-btn sort-out-btn" id="sortReadyToInventoryBtn">Send these sets to Add Inventory…</button>';
     // Figs to buy
     var buyQty = plan.buy.reduce(function (n, r) { return n + r.qty; }, 0);
     html += '<h3 class="sort-out-title">Figs to buy (' + buyQty + ' · ' + sortMoney(sortBuyTotal(plan)) + ')</h3>';
@@ -11556,6 +11557,41 @@
       if (currentView === "sort-list") { renderSortList(); renderSortOutputs(); }
       window.alert(report.join("\n"));
     });
+  }
+
+  // The Ready to sell sets, as rows waiting in Add Inventory for Ryan to
+  // review and submit — nothing reaches BrickLink until he does there. Each
+  // row is a Used set at the estimated sale price, Complete when every fig is
+  // there and the pieces are complete (otherwise Incomplete), with the sort ID
+  // (e.g. 75342-3_SW) in the private remarks. A set already handed over isn't
+  // added twice.
+  function handleSortReadyToInventory() {
+    var plan = sortPlan();
+    if (!plan.ready.length) return;
+    var waiting = {};
+    (inventoryRows || []).forEach(function (r) { if (r.fromSortSet) waiting[r.fromSortSet] = true; });
+    var fresh = plan.ready.filter(function (r) { return !waiting[r.label]; });
+    if (!fresh.length) {
+      window.alert("Those sets are already waiting in Add Inventory.");
+      goToInventory();
+      return;
+    }
+    if (!window.confirm("Add " + fresh.length + " set" + (fresh.length === 1 ? "" : "s") + " to Add Inventory for review?\nNothing goes to BrickLink until you submit there.")) return;
+    if (!inventoryRows) inventoryRows = [];
+    fresh.slice().reverse().forEach(function (r) {
+      var row = csvObjToInventoryRow({
+        ITEMTYPE: "S", ITEMID: r.setNo, COLOR: "0", COLORNAME: "", ITEMNAME: r.name, QTY: "1",
+        CONDITION: "U", PRICE: r.listPrice > 0 ? r.listPrice : "", REMARKS: "", DESCRIPTION: "",
+      });
+      row.completeness = r.complete ? "C" : "B";
+      row.remarks = r.label;
+      row.fromSortSet = r.label;
+      inventoryRows.unshift(row);
+    });
+    goToInventory();
+    ensureManageInventoryLoaded().then(function () {
+      if (currentView === "inventory") patchItemStockCounts(inventoryView);
+    }).catch(function () { /* lines just stay blank */ });
   }
 
   // Figs from the sets going to bulk, as rows waiting in Add Inventory for
@@ -11796,6 +11832,7 @@
       if (t.id === "sortManualWantedBtn") { handleSortManualWanted(); return; }
       if (t.id === "sortMoveBtn") { handleSortMoveToStock(); return; }
       if (t.id === "sortToInventoryBtn") { handleSortToInventory(); return; }
+      if (t.id === "sortReadyToInventoryBtn") { handleSortReadyToInventory(); return; }
       if (t.id === "sortRetryBtn") { sortLoadError = null; renderSortView(); return; }
       if (t.classList.contains("sort-check")) { handleSortFigCheck(t); return; }
       if (t.classList.contains("sort-variant")) { handleSortVariant(t); return; }

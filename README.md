@@ -831,6 +831,14 @@ Token Secret as sensitive as an API key that can move money.
   header re-fetches just those sets once BrickLink is back, replacing the hand-typed
   values with real ones and clearing the marker. (Figs can't be added by hand yet; a
   Rebrickable fallback for them is planned.)
+- **Ready to sell → Add Inventory** — a "Send these sets to Add Inventory…" button
+  under the Ready to sell list puts each set there as a row to review (confirmation
+  first; nothing reaches BrickLink until it's submitted in Add Inventory). Each row is a
+  Used set (qty 1) at the estimated sale price (what the set is worth before the cost
+  of figs/manual to buy), Complete when every fig is there and the pieces are 100%
+  complete and Incomplete otherwise (Sell as-is sets with figs missing), with the sort
+  ID (e.g. `75342-3_SW`) in the private remarks. A set already handed over isn't added
+  twice. This sits beside the existing "Send figs to Add Inventory…" for part-outs.
 - **Alternate figs (Nov 15, 2026)** — BrickLink's set parts list groups figs that can
   stand in for each other (a set's sw1334a / sw1334b) under one match number;
   `item-subsets` now passes it through (`matchNo`). The Sort List used to drop the
