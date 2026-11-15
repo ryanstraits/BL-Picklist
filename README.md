@@ -831,6 +831,19 @@ Token Secret as sensitive as an API key that can move money.
   header re-fetches just those sets once BrickLink is back, replacing the hand-typed
   values with real ones and clearing the marker. (Figs can't be added by hand yet; a
   Rebrickable fallback for them is planned.)
+- **Alternate figs (Nov 15, 2026)** — BrickLink's set parts list groups figs that can
+  stand in for each other (a set's sw1334a / sw1334b) under one match number;
+  `item-subsets` now passes it through (`matchNo`). The Sort List used to drop the
+  alternates and keep only the main version. Now the alternates hang off the main fig
+  (`alts`) and count as one fig: its row has a "which do you have?" chooser with each
+  version's price, tapping one says that's the one you have (and ticks the fig; tapping
+  it again clears it), and `variant` remembers the choice across refreshes. A fig you
+  have is valued at the version you chose (the row, "Figs kept", part-out value and
+  weight all follow it); one you don't have yet is bought at the cheapest version (the
+  "Figs needed" tile, the cost, Figs to buy and its Wanted list entry show that
+  version), and its value in the set is the average of the versions' prices until you
+  choose. Every version's prices are fetched. Limitation: your own inventory copies
+  (the Pull list) are still looked up under the main version's number only.
 - **Brickset and Rebrickable behind the Sort List (Nov 9, 2026)** — built during
   BrickLink's outage, and Brickset's counts now also feed Demand with BrickLink up.
   `netlify/functions/brickset-set.js` looks a set up on Brickset's v3 API (needs the

@@ -45,6 +45,9 @@ exports.handler = requireAuth(async (event) => {
           quantity: e.quantity,
           isAlternate: !!e.is_alternate,
           isCounterpart: !!e.is_counterpart,
+          // Entries that can stand in for each other share a match number (a
+          // fig's a/b versions, say) — the Sort page groups them by it.
+          matchNo: group.match_no,
         });
       });
     });

@@ -719,6 +719,11 @@
   .sort-demand { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-secondary); }
   .sort-demand.high { color: var(--success); border-color: var(--success); }
   .sort-demand.mid { color: var(--info); border-color: var(--info); }
+  .sort-variants { margin-top: 6px; }
+  .sort-variants-label { font-size: 11.5px; color: var(--text-secondary); }
+  .sort-variants-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .sort-variant { font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; }
+  .sort-variant.on { background: var(--success); border-color: var(--success); color: #fff; }
   .sort-figbox { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); }
   .sort-figbox-title { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; }
   .sort-figbox-empty { font-size: 12.5px; color: var(--text-secondary); }
@@ -9880,6 +9885,33 @@
     return 0;
   }
 
+  // A fig with alternates (a / b versions that count as one fig) keeps the
+  // main version's fields plus `alts`, the others; `variant` is the number of
+  // the one Ryan says he has. The analysis values what he has at that version,
+  // and a fig he doesn't have yet at the cheapest version to buy.
+  function sortFigVariants(f) { return [f].concat(f.alts || []); }
+  function sortFigActive(f) {
+    if (!f.variant || f.variant === f.itemNo) return f;
+    return (f.alts || []).filter(function (a) { return a.itemNo === f.variant; })[0] || f;
+  }
+  // Worth, with no version chosen yet: the average of the versions with a price.
+  function sortFigUnit(f) {
+    if (f.alts && f.alts.length && !f.variant) {
+      var vals = sortFigVariants(f).map(sortFigUnitValue).filter(function (n) { return n > 0; });
+      return vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) / vals.length : 0;
+    }
+    return sortFigUnitValue(sortFigActive(f));
+  }
+  // The version to buy: the cheapest by its low-25 average (or cheapest listing).
+  function sortFigBuyTarget(f, unit) {
+    var best = null;
+    sortFigVariants(f).forEach(function (v) {
+      var price = v.stockAvg25 > 0 ? v.stockAvg25 : (v.stockMin > 0 ? v.stockMin : 0);
+      if (price > 0 && (!best || price < best.price)) best = { fig: v, price: price };
+    });
+    return best || { fig: f, price: unit > 0 ? unit : sortFigUnitValue(f) };
+  }
+
   function sortCondFactor(cond, st) {
     return (cond === "poor" ? st.condPoor : cond === "fair" ? st.condFair : st.condGood) / 100;
   }
@@ -9915,7 +9947,7 @@
     // A price Ryan typed in for this set (a listing he found) replaces the
     // estimate and means he's buying those copies — none of his own get used.
     if (f.buyCost > 0) return { total: miss * f.buyCost, ownLive: 0, ownFree: 0 };
-    var buy = f.stockAvg25 > 0 ? f.stockAvg25 : (f.stockMin > 0 ? f.stockMin : unit);
+    var buy = sortFigBuyTarget(f, unit).price;
     var own = sortOwnFigUnits(f.itemNo);
     var total = 0, usedLive = 0, usedFree = 0;
     for (var i = 0; i < miss; i++) {
@@ -9935,18 +9967,19 @@
     var ownedValue = 0, ownedWeightG = 0, ownedCount = 0, partOutFigs = 0;
     var missingCount = 0, missingValue = 0, missingBuy = 0, missingNoPrice = 0, ownLiveUsed = 0, ownFreeUsed = 0;
     figs.forEach(function (f) {
-      var unit = sortFigUnitValue(f);
+      var fa = sortFigActive(f);
+      var unit = sortFigUnit(f);
       var qty = f.qty || 1;
       var have = sortClamp(f.have || 0, 0, qty);
       var miss = qty - have;
       var cf = sortCondFactor(f.cond, st);
       figsAll += unit * qty;
-      figsWeightG += (f.weightG || 0) * qty;
+      figsWeightG += (fa.weightG || 0) * qty;
       ownedValue += have * unit * cf;
-      ownedWeightG += have * (f.weightG || 0);
+      ownedWeightG += have * (fa.weightG || 0);
       ownedCount += have;
       // Sold singly, a fig is never worth less than its parts by weight.
-      partOutFigs += have * Math.max(unit * cf, lb(f.weightG || 0) * st.figRate);
+      partOutFigs += have * Math.max(unit * cf, lb(fa.weightG || 0) * st.figRate);
       if (miss) {
         missingCount += miss;
         missingValue += miss * unit;
@@ -10328,16 +10361,34 @@
       var oldProvisional = (e.figs || []).filter(function (f) { return f.rb; });
       var byNo = {};
       var pieces = 0;
+      var groups = {}, altEntries = [];
       ((data && data.entries) || []).forEach(function (x) {
         if (x.type === "PART" && !x.isAlternate && !x.isCounterpart) pieces += x.quantity || 0;
-        if (x.type !== "MINIFIG" || x.isAlternate || x.isCounterpart) return;
+        if (x.type !== "MINIFIG" || x.isCounterpart) return;
+        if (x.isAlternate) { altEntries.push(x); return; }
         if (byNo[x.itemNo]) { byNo[x.itemNo].qty += x.quantity || 1; return; }
         var prev = old[x.itemNo] || sortMatchProvisional(oldProvisional, x) || {};
         byNo[x.itemNo] = {
           itemNo: x.itemNo, name: decodeHtmlEntities(x.name || ""), qty: x.quantity || 1,
           have: prev.have || 0, cond: prev.cond || "good", buyCost: prev.buyCost > 0 ? prev.buyCost : null,
-          soldAvg: 0, soldCount: 0, stockMin: 0, stockAvg25: 0, stockN: 0, weightG: 0,
+          alts: [], variant: prev.variant || "",
+          soldAvg: 0, soldCount: 0, soldQty: 0, stockQty: 0, yearReleased: 0, setCount: null, stockMin: 0, stockAvg25: 0, stockN: 0, weightG: 0,
         };
+        if (x.matchNo !== undefined && x.matchNo !== null) groups[x.matchNo] = byNo[x.itemNo];
+      });
+      // The other versions of a fig (a / b) hang off the main one: one fig to
+      // have, with a choice of which.
+      altEntries.forEach(function (x) {
+        var main = groups[x.matchNo];
+        if (!main || main.itemNo === x.itemNo || main.alts.some(function (a) { return a.itemNo === x.itemNo; })) return;
+        main.alts.push({
+          itemNo: x.itemNo, name: decodeHtmlEntities(x.name || ""),
+          soldAvg: 0, soldCount: 0, soldQty: 0, stockQty: 0, yearReleased: 0, setCount: null, stockMin: 0, stockAvg25: 0, stockN: 0, weightG: 0,
+        });
+      });
+      Object.keys(byNo).forEach(function (k) {
+        var f = byNo[k];
+        if (f.variant && f.variant !== f.itemNo && !f.alts.some(function (a) { return a.itemNo === f.variant; })) f.variant = "";
       });
       e.figs = Object.keys(byNo).map(function (k) { return byNo[k]; });
       if (pieces > 0) e.pieces = pieces;
@@ -10376,7 +10427,9 @@
           e.setStockQty = p.totalQuantity || 0;
         }).catch(function () { warnings++; }).then(tick);
       });
-      e.figs.forEach(function (f) {
+      var priceTargets = [];
+      e.figs.forEach(function (f0) { priceTargets.push(f0); (f0.alts || []).forEach(function (a) { priceTargets.push(a); }); });
+      priceTargets.forEach(function (f) {
         var cached = sortFigCache[f.itemNo];
         if (cached) {
           f.soldAvg = cached.soldAvg; f.soldCount = cached.soldCount; f.soldQty = cached.soldQty; f.stockQty = cached.stockQty; f.yearReleased = cached.yearReleased; f.setCount = cached.setCount; f.stockMin = cached.stockMin; f.stockAvg25 = cached.stockAvg25; f.stockN = cached.stockN; f.weightG = cached.weightG;
@@ -10621,11 +10674,12 @@
     var kept = [], needed = [], keptN = 0, neededN = 0;
     figs.forEach(function (f) {
       var qty = f.qty || 1, have = sortClamp(f.have || 0, 0, qty);
-      var est = sortFigBuyEstimate(f);
-      if (have > 0) { kept.push(sortFigTileHtml(f, have, est, false)); keptN += have; }
+      var act = sortFigActive(f);
+      var tgt = sortFigBuyTarget(f, sortFigUnit(f));
+      if (have > 0) { kept.push(sortFigTileHtml(act, have, sortFigBuyTarget(act, sortFigUnitValue(act)).price, false)); keptN += have; }
       if (qty - have > 0) {
         var mine = f.buyCost > 0;
-        needed.push(sortFigTileHtml(f, qty - have, mine ? f.buyCost : est, mine));
+        needed.push(sortFigTileHtml(tgt.fig, qty - have, mine ? f.buyCost : tgt.price, mine));
         neededN += qty - have;
       }
     });
@@ -10804,7 +10858,7 @@
     return f.rb && f.img ? thumbHtmlUrl(f.img, "MINIFIG") : thumbHtml({ type: "MINIFIG", itemNo: f.itemNo, colorId: 0, newOrUsed: "U" }, f.img);
   }
 
-  function sortFigStockHtml(f) {
+  function sortFigStockHtml(f) { // f: the version being shown
     // From Rebrickable: no BrickLink number yet, so nothing to match against
     // the inventory until BrickLink data loads.
     if (f.rb) return '<div class="item-color sort-fig-stock">From Rebrickable — BrickLink number pending</div>';
@@ -10836,7 +10890,7 @@
 
   // The estimate used for a missing fig when no price has been typed in.
   function sortFigBuyEstimate(f) {
-    return f.stockAvg25 > 0 ? f.stockAvg25 : (f.stockMin > 0 ? f.stockMin : sortFigUnitValue(f));
+    return sortFigBuyTarget(f, sortFigUnit(f)).price;
   }
 
   // ---- Demand (0–100, higher = more in demand) ----
@@ -10876,6 +10930,7 @@
     return 100 * sold / (sold + listed);
   }
   function sortFigRarity(f) {
+    f = sortFigActive(f);
     if (!(f.yearReleased > 0) || !(f.setCount > 0)) return null;
     var age = Math.max(1, new Date().getFullYear() - f.yearReleased);
     var x = age / f.setCount;
@@ -10916,18 +10971,33 @@
     return f.soldQty > 0 ? f.soldQty : (f.soldCount || 0);
   }
 
-  function sortFigRowHtml(f) {
-    var qty = f.qty || 1;
+  // "Which one do you have?" for a fig with alternates. Tapping a version says
+  // it's the one you have (and ticks the fig); tapping it again clears it.
+  function sortFigVariantsHtml(f) {
+    if (!(f.alts && f.alts.length)) return "";
+    var have = sortClamp(f.have || 0, 0, f.qty || 1);
+    return '<div class="sort-variants"><div class="sort-variants-label">Alternates count as one fig — which do you have?</div>'
+      + '<div class="sort-variants-row">' + sortFigVariants(f).map(function (v) {
+        var price = sortFigUnitValue(v);
+        return '<button type="button" class="sort-variant' + (have > 0 && f.variant === v.itemNo ? ' on' : '') + '" data-fig="' + escapeHtml(f.itemNo) + '" data-variant="' + escapeHtml(v.itemNo) + '">'
+          + escapeHtml(v.itemNo) + ' · ' + (price > 0 ? sortMoney(price) : '—') + '</button>';
+      }).join("") + '</div></div>';
+  }
+
+  function sortFigRowHtml(f0) {
+    var f = sortFigActive(f0); // what's shown: the version he has, else the main one
+    var qty = f0.qty || 1;
     var unit = sortFigUnitValue(f);
     var priceTxt = unit > 0
       ? (f.soldAvg > 0 ? 'sold avg ' + sortMoney(f.soldAvg) : 'no sales')
         + (f.stockAvg25 > 0 ? ' · low-' + f.stockN + ' avg ' + sortMoney(f.stockAvg25) : (f.stockMin > 0 ? ' · cheapest ' + sortMoney(f.stockMin) : ''))
       : 'no price data';
-    return '<div class="item-row sort-fig-row' + ((f.have || 0) >= qty ? ' sort-fig-all' : '') + '" data-fig="' + escapeHtml(f.itemNo) + '">'
+    return '<div class="item-row sort-fig-row' + ((f0.have || 0) >= qty ? ' sort-fig-all' : '') + '" data-fig="' + escapeHtml(f0.itemNo) + '">'
       + '<div class="item-thumb">' + sortFigThumb(f) + '</div>'
       + '<div class="item-body">'
       + '<div class="item-line1"><span class="item-no mono">' + escapeHtml(f.itemNo) + '</span><span class="item-line1-right">×' + qty + '</span></div>'
       + '<div class="item-name">' + escapeHtml(f.name || "") + '</div>'
+      + sortFigVariantsHtml(f0)
       + '<div class="item-color">' + escapeHtml(priceTxt) + '</div>'
       + (sortFigSold(f) > 0 || f.stockQty > 0
         ? '<div class="item-color">' + escapeHtml('Demand: ' + sortFigSold(f) + ' sold (6 mo)' + (f.soldCount && f.soldQty && f.soldCount !== f.soldQty ? ' in ' + f.soldCount + ' sales' : '')
@@ -10938,13 +11008,13 @@
         : '')
       + sortFigStockHtml(f)
       + '<div class="sort-fig-buy"><label>Your cost to buy, each ($)</label>'
-      + '<input type="number" inputmode="decimal" min="0" step="0.01" data-fig="' + escapeHtml(f.itemNo) + '" data-figf="buyCost" placeholder="est. ' + sortMoney(sortFigBuyEstimate(f)).replace("$", "") + '" value="' + (f.buyCost > 0 ? escapeHtml(f.buyCost) : '') + '"></div>'
+      + '<input type="number" inputmode="decimal" min="0" step="0.01" data-fig="' + escapeHtml(f0.itemNo) + '" data-figf="buyCost" placeholder="est. ' + sortMoney(sortFigBuyEstimate(f0)).replace("$", "") + '" value="' + (f0.buyCost > 0 ? escapeHtml(f0.buyCost) : '') + '"></div>'
       + '<div class="sort-fig-controls">'
-      + '<div class="sort-checks">' + sortFigChecksHtml(f) + '</div>'
-      + '<select class="sort-fig-cond" data-fig="' + escapeHtml(f.itemNo) + '" data-figf="cond" aria-label="Condition">'
-      + '<option value="good"' + (f.cond === "good" ? ' selected' : '') + '>Good</option>'
-      + '<option value="fair"' + (f.cond === "fair" ? ' selected' : '') + '>Fair</option>'
-      + '<option value="poor"' + (f.cond === "poor" ? ' selected' : '') + '>Poor</option>'
+      + '<div class="sort-checks">' + sortFigChecksHtml(f0) + '</div>'
+      + '<select class="sort-fig-cond" data-fig="' + escapeHtml(f0.itemNo) + '" data-figf="cond" aria-label="Condition">'
+      + '<option value="good"' + (f0.cond === "good" ? ' selected' : '') + '>Good</option>'
+      + '<option value="fair"' + (f0.cond === "fair" ? ' selected' : '') + '>Fair</option>'
+      + '<option value="poor"' + (f0.cond === "poor" ? ' selected' : '') + '>Poor</option>'
       + '</select>'
       + '</div>'
       + '</div>'
@@ -11099,12 +11169,13 @@
           var miss = qty - sortClamp(f.have || 0, 0, qty);
           if (!miss) return;
           incomplete = true;
-          var unit = sortFigUnitValue(f);
-          var buyPrice = f.stockAvg25 > 0 ? f.stockAvg25 : (f.stockMin > 0 ? f.stockMin : unit);
+          var unit = sortFigUnit(f);
+          var tgt = sortFigBuyTarget(f, unit);
+          var buyPrice = tgt.price;
           var pool = pools[f.itemNo] || (pools[f.itemNo] = { own: sortOwnFigUnits(f.itemNo), free: 0, live: 0 });
           for (var i = 0; i < miss; i++) {
             if (f.buyCost > 0) {
-              var own = bump(buyMap, f, label);
+              var own = bump(buyMap, tgt.fig, label);
               own.qty++;
               own.total += f.buyCost;
               continue;
@@ -11119,7 +11190,7 @@
               pool.live++;
               bump(pullMap, f, label).live.push(livePrice);
             } else {
-              var b = bump(buyMap, f, label);
+              var b = bump(buyMap, tgt.fig, label);
               b.qty++;
               b.total += buyPrice;
             }
@@ -11135,7 +11206,8 @@
         figs.forEach(function (f) {
           var have = sortClamp(f.have || 0, 0, f.qty || 1);
           if (!have) return;
-          listed.push({ rb: !!f.rb, itemNo: f.itemNo, name: f.name || "", qty: have, cond: f.cond || "good", unit: sortFigUnitValue(f), value: sortFigUnitValue(f) * sortCondFactor(f.cond, sortSettings) });
+          var fa = sortFigActive(f);
+          listed.push({ rb: !!f.rb, itemNo: fa.itemNo, name: fa.name || "", qty: have, cond: f.cond || "good", unit: sortFigUnit(f), value: sortFigUnit(f) * sortCondFactor(f.cond, sortSettings) });
         });
         plan.bulk.push({
           label: label, name: e.name || "", figs: listed,
@@ -11535,6 +11607,20 @@
     renderSortOutputs();
   }
 
+  // Which version of an alternates fig Ryan has.
+  function handleSortVariant(btn) {
+    var card = btn.closest(".sort-card");
+    var e = card && sortFindEntry(card.getAttribute("data-id"));
+    var fig = e && (e.figs || []).filter(function (f) { return f.itemNo === btn.getAttribute("data-fig"); })[0];
+    if (!fig) return;
+    var v = btn.getAttribute("data-variant");
+    var have = sortClamp(fig.have || 0, 0, fig.qty || 1);
+    if (fig.variant === v && have > 0) { fig.have = 0; fig.variant = ""; }
+    else { fig.variant = v; if (have < 1) fig.have = 1; }
+    saveSortList();
+    patchSortCard(e.id, true);
+  }
+
   function handleSortBuyWanted() {
     var plan = sortPlan();
     if (!plan.buy.length || sortBuyAddedSig === sortBuySig(plan)) return;
@@ -11712,6 +11798,7 @@
       if (t.id === "sortToInventoryBtn") { handleSortToInventory(); return; }
       if (t.id === "sortRetryBtn") { sortLoadError = null; renderSortView(); return; }
       if (t.classList.contains("sort-check")) { handleSortFigCheck(t); return; }
+      if (t.classList.contains("sort-variant")) { handleSortVariant(t); return; }
       var act = t.getAttribute("data-act");
       if (!act) return;
       if (act === "figinv") {
