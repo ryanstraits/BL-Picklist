@@ -11134,15 +11134,18 @@
       figs.forEach(function (f) {
         var qty = f.qty || 1, have = sortClamp(f.have || 0, 0, qty);
         if (qty - have > 0) {
-          var nm = decodeHtmlEntities(sortFigActive(f).name || "").split(",")[0].trim();
-          missing.push(nm + (qty - have > 1 ? " ×" + (qty - have) : ""));
+          // The fig number (all its versions, for alternates) and BrickLink's
+          // full description: "sw0927 Han Solo, Tan Legs, Mid-Length Parted Hair".
+          var nums = sortFigVariants(f).map(function (v) { return v.itemNo; }).join("/");
+          var nm = decodeHtmlEntities(f.name || "").trim();
+          missing.push(nums + (nm ? " " + nm : "") + (qty - have > 1 ? " ×" + (qty - have) : ""));
         }
         if (have > 0) worst = Math.max(worst, f.cond === "poor" ? 2 : f.cond === "fair" ? 1 : 0);
       });
       if (!missing.length) {
         first += " with all figs accounted for in " + ["great", "good", "fair"][worst] + " condition overall";
       } else {
-        first += ". Missing figs: " + missing.join(", ");
+        first += ". Missing figs: " + missing.join("; ");
       }
     }
     first += ".";
