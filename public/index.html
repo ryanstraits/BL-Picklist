@@ -733,6 +733,13 @@
   .sort-figtile-cost { font-size: 11.5px; font-weight: 600; margin-top: 1px; }
   .sort-figtile-cost.override { color: var(--info); }
   .sort-figtile-no { margin-top: 3px; font-size: 10.5px; color: var(--text-secondary); word-break: break-all; }
+  .sort-combo { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; }
+  .sort-combo-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .sort-combo-title { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px; }
+  .sort-combo-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-family: inherit; font-size: 12.5px; padding: 7px 8px; margin-top: 4px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; }
+  .sort-combo-row.on { border-color: var(--success); }
+  .sort-combo-check { flex: none; width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; color: var(--success); font-weight: 800; }
+  .sort-combo-note { color: var(--info); font-weight: 600; }
   .sort-why { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
   .sort-why-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-secondary); margin-top: 8px; }
   .sort-why-label:first-child { margin-top: 0; }
@@ -9568,6 +9575,8 @@
     condGood: 100,          // % of a fig's market value by condition
     condFair: 80,
     condPoor: 60,
+    completenessPower: 1,   // value of an incomplete set = completeness^this × full value (1 = proportional; 2+ = incomplete sets sell for much less)
+    comboMinGain: 10,       // suggest combining copies of a set when it earns at least this much more
     demandWeightPct: 20,    // how far demand can tip a route's value: ±this % at the extremes (0 = ignore demand)
     // Where a card's numbers turn green (at or above "Good") and yellow (at or
     // above "OK"); below OK is red.
@@ -9587,6 +9596,8 @@
     { key: "condGood", label: "Fig worth, Good", suffix: "%", step: "1" },
     { key: "condFair", label: "Fig worth, Fair", suffix: "%", step: "1" },
     { key: "condPoor", label: "Fig worth, Poor", suffix: "%", step: "1" },
+    { key: "completenessPower", label: "Incomplete-set value curve", suffix: "power (1 = proportional)", step: "0.1" },
+    { key: "comboMinGain", label: "Suggest combining when it earns at least", suffix: "$ more", step: "1" },
     { key: "demandWeightPct", label: "Demand tips the pick by up to", suffix: "% of a route’s value", step: "1" },
     { key: "bandValueGood", label: "Value: green at", suffix: "$", step: "1" },
     { key: "bandValueOk", label: "Value: yellow at", suffix: "$", step: "1" },
@@ -9615,6 +9626,7 @@
     { key: "set", label: "Sell complete" },
     { key: "asis", label: "Sell as-is" },
     { key: "part", label: "Part out" },
+    { key: "combine", label: "Combine" },
     { key: "hold", label: "Save for later" },
     { key: "keep", label: "Add to collection" },
   ];
@@ -10001,7 +10013,10 @@
     // brick-and-everything-else share; completeness, quality and box/manual
     // adjust that share (figs carry their own per-fig condition).
     var brickFull = Math.max(setValue - figsAll, 0);
-    var brickAdj = brickFull * (completeness / 100) * qualityF * premium;
+    // An incomplete set is worth less than its completeness share (buyers want
+    // complete sets): the share is raised to the "value curve" power, 1 = no
+    // extra discount.
+    var brickAdj = brickFull * Math.pow(completeness / 100, st.completenessPower > 0 ? st.completenessPower : 1) * qualityF * premium;
 
     // Route 1 — sell the set. With figs missing there are two ways: buy them
     // and sell it complete, or sell it as-is with the figs on hand. Complete
@@ -10704,7 +10719,15 @@
         return '<div class="sort-tile"><div class="sort-tile-label">' + metrics[k].label + '</div><div class="sort-tile-val ' + metrics[k].cls + '">' + metrics[k].text + '</div></div>';
       }).join("") + '</div>'
       + sortWhyHtml(e, a)
+      + sortComboHtml(e)
       + (sortExpanded[e.id] ? "" : sortFigBoxesHtml(e));
+  }
+
+  function sortComboNoteHtml(e) {
+    if (e.decision !== "combine") return "";
+    var group = sortComboGroups().filter(function (g) { return g.members.indexOf(e) !== -1; })[0];
+    if (!group) return '<div class="sort-desc sort-combo-note">Combine — pick another copy</div>';
+    return '<div class="sort-desc sort-combo-note">Combined with ' + group.members.filter(function (m) { return m !== e; }).map(function (m) { return escapeHtml(sortSetLabel(m)); }).join(", ") + '</div>';
   }
 
   function sortHeadBodyHtml(e) {
@@ -10724,6 +10747,7 @@
       + '<span class="item-no mono">' + escapeHtml(sortIdComplete(e) ? sortEntryId(e) : e.setNo) + '</span>'
       + '<span class="item-line1-right sort-right-stack">' + sortVerdictHtml(e, a) + sortFigCountHtml(e) + '</span>'
       + '</div>'
+      + sortComboNoteHtml(e)
       + (e.needsBL ? '<div class="sort-desc sort-needs-bl">Needs BrickLink data — ' + (e.bs || (e.figs || []).some(function (f) { return f.rb; }) ? 'from Brickset / Rebrickable, prices by hand' : 'filled in by hand') + '</div>' : '')
       + (e.categoryPath ? '<div class="sort-desc">' + escapeHtml(e.categoryPath) + '</div>' : '')
       + '<div class="sort-name-row"><div class="item-name">' + escapeHtml(e.name || (e.needsBL ? "(no name yet)" : "(name loading…)")) + '</div>'
@@ -11173,6 +11197,175 @@
     return first + " " + second + " Fast shipping!";
   }
 
+  // ---- Combining copies of the same set ----
+  //
+  // Copies of one set number marked "Combine" with the same group id are built
+  // into one set. The combined set is worked out, never stored: its figs are
+  // everyone's checked-off figs pooled (up to the set's quantity count toward
+  // the set, extras are surplus figs sold singly), its pieces are estimated as
+  // if each copy's missing pieces were different (1 − Π(1 − completeness)),
+  // quality is the completeness-weighted average, box and manual the best of
+  // the copies. Whether combining is worth it is the combined total (the set,
+  // surplus figs and leftover bulk, less anything still to buy) against what
+  // the copies would earn separately; what was paid is the same either way and
+  // cancels. What was paid is split across the outputs by market value.
+  function sortNewComboId() {
+    return "cb" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  }
+
+  function sortComboGroups() {
+    var by = {}, order = [];
+    (sortList || []).forEach(function (e) {
+      if (e.decision === "combine" && e.combo) {
+        if (!by[e.combo]) { by[e.combo] = []; order.push(e.combo); }
+        by[e.combo].push(e);
+      }
+    });
+    var groups = [];
+    order.forEach(function (k) {
+      var ms = by[k].filter(function (m) { return m.setNo === by[k][0].setNo; });
+      if (ms.length >= 2) groups.push({ id: k, members: ms });
+    });
+    return groups;
+  }
+
+  function sortPaidOf(m) {
+    return m.paid === null || m.paid === undefined || m.paid === "" ? null : sortNum(m.paid);
+  }
+
+  function sortComboResult(group) {
+    var st = sortSettings, ms = group.members;
+    var lb = function (g) { return g / GRAMS_PER_LB; };
+    var base = ms.filter(function (m) { return m.figs && m.figs.length; })[0] || ms[0];
+    var rank = { good: 0, fair: 1, poor: 2 };
+    var ce = {
+      id: "combo-" + group.id, setNo: base.setNo, name: base.name, status: "ready", decision: "set",
+      theme: ms[0].theme, themeAuto: false, categoryPath: base.categoryPath,
+      setSoldAvg: base.setSoldAvg, setSoldCount: base.setSoldCount, setSoldQty: base.setSoldQty,
+      setStockAvg: base.setStockAvg, setStockQty: base.setStockQty, setListedAll: base.setListedAll,
+      setWeightG: base.setWeightG, pieces: base.pieces, bs: base.bs, manualPrice: base.manualPrice,
+      figs: [],
+    };
+    // pieces: independent missing parts
+    var stillMissing = 1;
+    ms.forEach(function (m) { stillMissing *= 1 - sortClamp(sortNum(m.completeness), 0, 100) / 100; });
+    ce.completeness = Math.round(100 * (1 - stillMissing));
+    var cw = 0, cq = 0;
+    ms.forEach(function (m) { var c = sortClamp(sortNum(m.completeness), 0, 100); cw += c; cq += c * sortClamp(sortNum(m.quality), 0, 10); });
+    ce.quality = cw > 0 ? Math.round(cq / cw) : Math.round(ms.reduce(function (n, m) { return n + sortNum(m.quality); }, 0) / ms.length);
+    ce.box = Math.max.apply(null, ms.map(function (m) { return sortClamp(sortNum(m.box), 0, 10); }));
+    ce.manual = Math.max.apply(null, ms.map(function (m) { return sortClamp(sortNum(m.manual), 0, 10); }));
+    var paids = ms.map(sortPaidOf).filter(function (v) { return v !== null; });
+    ce.paid = paids.length ? paids.reduce(function (a, b) { return a + b; }, 0) : null;
+    ce.copyNo = sortNextCopyNo(base.setNo);
+
+    // figs: pool everyone's, best condition first
+    var surplus = [];
+    (base.figs || []).forEach(function (bf) {
+      var q = bf.qty || 1, copies = [];
+      ms.forEach(function (m) {
+        var mf = (m.figs || []).filter(function (x) { return x.itemNo === bf.itemNo; })[0];
+        if (!mf) return;
+        var h = sortClamp(mf.have || 0, 0, mf.qty || q);
+        for (var k = 0; k < h; k++) copies.push({ cond: mf.cond || "good", variant: mf.variant || "" });
+      });
+      copies.sort(function (x, y) { return rank[x.cond] - rank[y.cond]; });
+      var used = copies.slice(0, q), extra = copies.slice(q);
+      var worst = used.reduce(function (w, c) { return rank[c.cond] > rank[w] ? c.cond : w; }, "good");
+      var variant = (used.filter(function (c) { return c.variant; })[0] || {}).variant || "";
+      ce.figs.push(Object.assign({}, bf, { have: used.length, cond: worst, variant: variant }));
+      extra.forEach(function (c) { surplus.push({ fig: bf, variant: c.variant, cond: c.cond }); });
+    });
+
+    var a = analyzeSortEntry(ce, st);
+    var setR = a.routes[0];
+    ce.decision = setR.variant === "complete" ? "set" : "asis";
+
+    // surplus figs sold singly (never worth less than their parts by weight)
+    var surplusList = [], surplusValue = 0;
+    surplus.forEach(function (sx) {
+      var probe = Object.assign({}, sx.fig, { variant: sx.variant });
+      var fa = sortFigActive(probe), unit = sortFigUnit(probe), cf = sortCondFactor(sx.cond, st);
+      var val = Math.max(unit * cf, lb(fa.weightG || 0) * st.figRate);
+      surplusValue += val;
+      var row = surplusList.filter(function (r) { return r.itemNo === fa.itemNo; })[0];
+      if (row) row.qty++;
+      else surplusList.push({ rb: !!sx.fig.rb, itemNo: fa.itemNo, name: fa.name || "", qty: 1, cond: sx.cond, unit: unit, value: val });
+    });
+    var surplusCount = surplus.length;
+
+    // leftover pieces: what the copies have beyond the combined set, to bulk
+    var figsW = 0;
+    ce.figs.forEach(function (f) { figsW += (sortFigActive(f).weightG || 0) * (f.qty || 1); });
+    var nonFig = Math.max((base.setWeightG || 0) - figsW, 0);
+    var sumC = 0;
+    ms.forEach(function (m) { sumC += sortClamp(sortNum(m.completeness), 0, 100) / 100; });
+    var leftoverG = Math.max(0, nonFig * (sumC - ce.completeness / 100));
+    var leftoverValue = lb(leftoverG) * st.genRate;
+
+    var baseline = ms.reduce(function (n, m) { return n + analyzeSortEntry(m, st).best.net; }, 0);
+    var total = setR.net + surplusValue + leftoverValue;
+    var paid = ce.paid || 0;
+    var gross = setR.value + surplusValue + leftoverValue;
+    var share = function (g) { return gross > 0 ? paid * g / gross : 0; };
+    return {
+      group: group, members: ms, ce: ce, a: a, setR: setR, label: sortSetLabel(ce),
+      surplusList: surplusList, surplusCount: surplusCount, surplusValue: surplusValue,
+      leftoverG: leftoverG, leftoverValue: leftoverValue,
+      baseline: baseline, total: total, gain: total - baseline,
+      paid: paid, paidKnown: ce.paid !== null, profit: total - paid, roi: paid > 0 ? (total - paid) / paid : null,
+      alloc: { set: share(setR.value), figs: share(surplusValue), bulk: share(leftoverValue) },
+    };
+  }
+
+  // Other copies of this set that could be combined with it, best first, each
+  // with what combining the pair would earn and how many of this copy's missing
+  // figs the other has.
+  function sortComboCandidates(e) {
+    var groups = sortComboGroups();
+    return (sortList || []).filter(function (x) {
+      return x !== e && x.setNo === e.setNo && x.status === "ready"
+        && !(x.decision === "combine" && x.combo && x.combo !== e.combo && groups.some(function (g) { return g.members.indexOf(x) !== -1; }));
+    }).map(function (x) {
+      var r = sortComboResult({ id: "pair", members: [e, x] });
+      var fills = 0;
+      (e.figs || []).forEach(function (f) {
+        var miss = (f.qty || 1) - sortClamp(f.have || 0, 0, f.qty || 1);
+        var xf = (x.figs || []).filter(function (g) { return g.itemNo === f.itemNo; })[0];
+        if (miss > 0 && xf) fills += Math.min(miss, sortClamp(xf.have || 0, 0, xf.qty || 1));
+      });
+      return { entry: x, gain: r.gain, fills: fills };
+    }).sort(function (u, v) { return v.gain - u.gain; });
+  }
+
+  function sortComboHtml(e) {
+    if (e.status !== "ready") return "";
+    var groups = sortComboGroups();
+    var group = groups.filter(function (g) { return g.members.indexOf(e) !== -1; })[0];
+    var cands = sortComboCandidates(e);
+    if (e.decision === "combine") {
+      var rows = cands.map(function (c) {
+        var on = c.entry.decision === "combine" && c.entry.combo === e.combo;
+        var have = 0, need = 0;
+        (c.entry.figs || []).forEach(function (f) { need += f.qty || 1; have += sortClamp(f.have || 0, 0, f.qty || 1); });
+        return '<button type="button" class="sort-combo-row' + (on ? ' on' : '') + '" data-act="combo-toggle" data-id="' + escapeHtml(e.id) + '" data-with="' + escapeHtml(c.entry.id) + '">'
+          + '<span class="sort-combo-check">' + (on ? '✓' : '') + '</span>'
+          + '<span>' + escapeHtml(sortSetLabel(c.entry)) + ' · ' + have + '/' + need + ' figs · ' + Math.round(sortNum(c.entry.completeness)) + '% pieces'
+          + (sortPaidOf(c.entry) !== null ? ' · paid ' + sortMoney(sortPaidOf(c.entry)) : '') + '</span></button>';
+      }).join("");
+      return '<div class="sort-combo"><div class="sort-combo-title">Combine with other copies of ' + escapeHtml(e.setNo) + '</div>'
+        + (rows || '<div class="sort-figbox-empty">No other copies of this set on your list.</div>')
+        + (group ? '<div class="sort-flag">In a group of ' + group.members.length + ' — see “Combined sets” below the list.</div>' : '<div class="sort-flag">Tick a copy to combine it with this one.</div>')
+        + '</div>';
+    }
+    // a hint when combining with one other copy would clearly pay
+    var best = cands[0];
+    if (!best || best.gain < sortSettings.comboMinGain) return "";
+    return '<div class="sort-combo sort-combo-hint"><div>Could combine with <b>' + escapeHtml(sortSetLabel(best.entry)) + '</b>: <b class="sort-good">+' + sortMoney(best.gain) + '</b>'
+      + (best.fills > 0 ? ' (fills ' + best.fills + ' of your missing fig' + (best.fills === 1 ? '' : 's') + ')' : '') + '</div>'
+      + '<button type="button" class="reset-btn" data-act="combo-hint" data-id="' + escapeHtml(e.id) + '" data-with="' + escapeHtml(best.entry.id) + '">Combine</button></div>';
+  }
+
   function sortPlan() {
     var plan = { ready: [], waiting: 0, buy: [], manuals: [], pull: [], bulk: [], hold: [], keep: [], decided: 0 };
     var manualMap = {};
@@ -11182,7 +11375,19 @@
       row.sets[label] = (row.sets[label] || 0) + 1;
       return row;
     }
-    (sortList || []).forEach(function (e) {
+    // Combined groups stand in for their members: each is worked as one
+    // "Sell complete" / "Sell as-is" set (so its missing figs, manual and
+    // readiness feed the lists), and its surplus figs and leftover pieces go
+    // to the bulk list.
+    var comboGroups = sortComboGroups();
+    var comboResults = comboGroups.map(sortComboResult);
+    plan.combos = comboResults;
+    var fromByLabel = {};
+    comboResults.forEach(function (r) { fromByLabel[r.label] = r.members.map(sortSetLabel); });
+    var planEntries = (sortList || []).filter(function (e) {
+      return !comboGroups.some(function (g) { return g.members.indexOf(e) !== -1; });
+    }).concat(comboResults.map(function (r) { return r.ce; }));
+    planEntries.forEach(function (e) {
       if (e.decision !== "set" && e.decision !== "asis" && e.decision !== "part" && e.decision !== "hold" && e.decision !== "keep") return;
       if (e.decision === "keep") {
         // Staying in Ryan's own collection — complete or not, one copy or
@@ -11274,6 +11479,15 @@
     function toList(map) {
       return Object.keys(map).map(function (k) { return map[k]; }).sort(function (x, y) { return x.itemNo < y.itemNo ? -1 : x.itemNo > y.itemNo ? 1 : 0; });
     }
+    comboResults.forEach(function (r) {
+      if (r.surplusList.length || r.leftoverG > 0) {
+        plan.bulk.push({
+          label: "Leftovers of " + r.label, name: r.ce.name || "", figs: r.surplusList,
+          generalLb: r.leftoverG / GRAMS_PER_LB, figPartsLb: 0, hasWeight: r.ce.setWeightG > 0,
+        });
+      }
+    });
+    plan.ready.forEach(function (x) { if (fromByLabel[x.label]) x.from = fromByLabel[x.label]; });
     // Ready to sell goes quickest first.
     plan.ready.sort(function (x, y) { return y.qt - x.qt; });
     plan.manuals = Object.keys(manualMap).map(function (k) { return manualMap[k]; }).sort(function (x, y) { return x.setNo < y.setNo ? -1 : x.setNo > y.setNo ? 1 : 0; });
@@ -11299,6 +11513,13 @@
     out.push("READY TO SELL (" + plan.ready.length + ")");
     plan.ready.forEach(function (r) { out.push(r.label + " " + r.name + " - QT " + Math.round(r.qt) + " - est " + sortMoney(r.value) + (r.asis ? " (as-is, " + r.asis + " fig" + (r.asis === 1 ? "" : "s") + " missing)" : "")); });
     if (plan.waiting) out.push("(" + plan.waiting + " more waiting on figs)");
+    if (plan.combos && plan.combos.length) {
+      out.push("");
+      out.push("COMBINED SETS (" + plan.combos.length + ")");
+      plan.combos.forEach(function (r) {
+        out.push(r.label + " " + (r.ce.name || "") + " - from " + r.members.map(sortSetLabel).join(" + ") + " - " + sortMoney(r.total) + " (" + (r.gain >= 0 ? "+" : "") + sortMoney(r.gain) + " vs separately)");
+      });
+    }
     out.push("");
     out.push("FIGS TO BUY (" + plan.buy.reduce(function (n, r) { return n + r.qty; }, 0) + ", est " + sortMoney(sortBuyTotal(plan)) + ")");
     plan.buy.forEach(function (r) {
@@ -11375,6 +11596,25 @@
     }).join("") : '<div class="sort-out-sub">None yet.</div>';
     if (plan.waiting) html += '<div class="sort-out-sub">' + plan.waiting + ' more “Sell complete” waiting on figs.</div>';
     if (plan.ready.length) html += '<button type="button" class="reset-btn sort-out-btn" id="sortReadyToInventoryBtn">Send these sets to Add Inventory…</button>';
+    // Combined sets
+    if (plan.combos && plan.combos.length) {
+      var gainTotal = plan.combos.reduce(function (n, r) { return n + r.gain; }, 0);
+      html += '<h3 class="sort-out-title">Combined sets (' + plan.combos.length + ' · ' + (gainTotal >= 0 ? '+' : '') + sortMoney(gainTotal) + ' vs. separately)</h3>';
+      html += plan.combos.map(function (r) {
+        var need = 0, have = 0;
+        r.ce.figs.forEach(function (f) { need += f.qty || 1; have += sortClamp(f.have || 0, 0, f.qty || 1); });
+        var lines = [
+          'From ' + r.members.map(function (m) { return escapeHtml(sortSetLabel(m)); }).join(' + '),
+          have + '/' + need + ' figs · about ' + r.ce.completeness + '% of the pieces · quality ' + r.ce.quality + '/10 · manual ' + r.ce.manual + ' · box ' + r.ce.box,
+          r.setR.label + ' ' + sortMoney(r.setR.net) + ' + ' + r.surplusCount + ' surplus fig' + (r.surplusCount === 1 ? '' : 's') + ' ' + sortMoney(r.surplusValue) + ' + leftover bulk ' + sortMoney(r.leftoverValue) + ' (' + sortLbs(r.leftoverG / GRAMS_PER_LB) + ')',
+          'Separately they’d earn ' + sortMoney(r.baseline) + ' — combining is <b class="' + (r.gain >= 0 ? 'sort-good' : 'sort-bad') + '">' + (r.gain >= 0 ? '+' : '') + sortMoney(r.gain) + '</b>',
+        ];
+        if (r.paidKnown) lines.push('Paid ' + sortMoney(r.paid) + ' → profit ' + sortMoney(r.profit) + (r.roi !== null ? ' (' + Math.round(r.roi * 100) + '% ROI)' : '') + '. Cost split: set ' + sortMoney(r.alloc.set) + ' · figs ' + sortMoney(r.alloc.figs) + ' · bulk ' + sortMoney(r.alloc.bulk));
+        return '<div class="sort-out-row"><div class="sort-out-main"><span><span class="mono">' + escapeHtml(r.label) + '</span> ' + escapeHtml(r.ce.name || '') + '</span><b>' + sortMoney(r.total) + '</b></div>'
+          + lines.map(function (l) { return '<div class="sort-out-sub">' + l + '</div>'; }).join("")
+          + '<button type="button" class="reset-btn sort-out-btn sort-combo-break" data-combo="' + escapeHtml(r.group.id) + '">Break up</button></div>';
+      }).join("");
+    }
     // Figs to buy
     var buyQty = plan.buy.reduce(function (n, r) { return n + r.qty; }, 0);
     html += '<h3 class="sort-out-title">Figs to buy (' + buyQty + ' · ' + sortMoney(sortBuyTotal(plan)) + ')</h3>';
@@ -11454,7 +11694,17 @@
   // no price data yet aren't counted.
   function sortTally() {
     var t = { complete: { n: 0, decided: 0, value: 0 }, asis: { n: 0, decided: 0, value: 0 }, part: { n: 0, decided: 0 }, figs: { n: 0, value: 0 }, bulk: { lbs: 0, value: 0 }, hold: 0, keep: 0, skipped: 0 };
+    var comboGroups = sortComboGroups();
+    var comboCount = 0;
+    comboGroups.map(sortComboResult).forEach(function (r) {
+      comboCount++;
+      if (r.setR.variant === "asis") { t.asis.n++; t.asis.decided++; t.asis.value += r.setR.net; }
+      else { t.complete.n++; t.complete.decided++; t.complete.value += r.setR.net; }
+      t.figs.n += r.surplusCount; t.figs.value += r.surplusValue;
+      t.bulk.value += r.leftoverValue; t.bulk.lbs += r.leftoverG / GRAMS_PER_LB;
+    });
     (sortList || []).forEach(function (e) {
+      if (comboGroups.some(function (g) { return g.members.indexOf(e) !== -1; })) return;
       if (e.decision === "keep") { t.keep++; return; }
       if (e.status === "loading" || (e.status === "error" && !(e.figs && e.figs.length))) { t.skipped++; return; }
       if (e.decision === "hold") { t.hold++; return; }
@@ -11475,6 +11725,7 @@
         if (decided) t.part.decided++;
       }
     });
+    t.combos = comboCount;
     return t;
   }
 
@@ -11486,6 +11737,7 @@
     };
     var decidedTxt = function (d, n) { return d + ' of ' + n + ' decided'; };
     var foot = [];
+    if (t.combos) foot.push(t.combos + ' combined set' + (t.combos === 1 ? '' : 's') + ' counted above');
     if (t.keep) foot.push(t.keep + ' in your collection');
     if (t.hold) foot.push(t.hold + ' saved for later');
     if (t.skipped) foot.push(t.skipped + ' not counted yet (no prices)');
@@ -11641,7 +11893,7 @@
       });
       row.completeness = r.complete ? "C" : "B";
       row.description = r.desc || row.description;
-      row.remarks = r.label;
+      row.remarks = r.label + (r.from ? " (from " + r.from.join(", ") + ")" : "");
       row.fromSortSet = r.label;
       inventoryRows.unshift(row);
     });
@@ -11885,6 +12137,13 @@
         });
         return;
       }
+      if (t.classList.contains("sort-combo-break")) {
+        var cid = t.getAttribute("data-combo");
+        sortList.forEach(function (x) { if (x.combo === cid) { x.decision = ""; x.combo = ""; } });
+        saveSortList();
+        renderSortList();
+        return;
+      }
       if (t.id === "sortBuyWantedBtn") { handleSortBuyWanted(); return; }
       if (t.id === "sortManualWantedBtn") { handleSortManualWanted(); return; }
       if (t.id === "sortMoveBtn") { handleSortMoveToStock(); return; }
@@ -11914,6 +12173,21 @@
         setFigLookupCameFromSort = true;
         runSetFigLookup();
         goToSetFigLookup();
+        return;
+      }
+      if (act === "combo-hint" || act === "combo-toggle") {
+        var other = sortFindEntry(t.getAttribute("data-with"));
+        if (!other) return;
+        sortKeepAnchored(e.id, function () {
+          if (act === "combo-hint" || !(other.decision === "combine" && other.combo === e.combo)) {
+            if (e.decision !== "combine" || !e.combo) { e.decision = "combine"; e.combo = sortNewComboId(); }
+            other.decision = "combine"; other.combo = e.combo;
+          } else {
+            other.decision = ""; other.combo = "";
+          }
+          saveSortList();
+          renderSortList();
+        });
         return;
       }
       if (act === "open") {
@@ -11970,7 +12244,12 @@
           e[field] = n;
           if (field === "setSoldAvg" && !(e.setSoldCount > 0)) e.setSoldCount = 0;
         } else if (field === "decision") {
-          e.decision = el.value === "set" || el.value === "asis" || el.value === "part" || el.value === "hold" || el.value === "keep" ? el.value : "";
+          var prevDecision = e.decision;
+          e.decision = el.value === "set" || el.value === "asis" || el.value === "part" || el.value === "combine" || el.value === "hold" || el.value === "keep" ? el.value : "";
+          // "Combine" starts (or joins) a group of copies of the same set; any
+          // other decision takes the copy out of its group.
+          if (e.decision === "combine") { if (!e.combo) e.combo = sortNewComboId(); } else e.combo = "";
+          if (e.decision === "combine" || prevDecision === "combine") { saveSortList(); renderSortList(); return; }
         } else if (field === "completeness") {
           e.completeness = sortClamp(Math.round(sortNum(el.value)), 0, 100);
         } else {

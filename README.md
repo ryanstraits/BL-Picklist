@@ -831,6 +831,31 @@ Token Secret as sensitive as an API key that can move money.
   header re-fetches just those sets once BrickLink is back, replacing the hand-typed
   values with real ones and clearing the marker. (Figs can't be added by hand yet; a
   Rebrickable fallback for them is planned.)
+- **Combining copies of a set (Nov 16, 2026)** — copies of the *same set number* on the
+  Sort list (75292-1, -2, -3) can be built into one. A card with another copy that
+  would earn at least "Suggest combining when it earns at least" ($10) more combined
+  shows a hint with a one-tap **Combine** button; or choose **Combine** in the Decision
+  dropdown and tick the copies to include (the panel under the Recommendation box;
+  `combo` is the group id kept on each copy, `decision` is `combine`). The combined set
+  is worked out and never stored (`sortComboResult`): the copies' checked-off figs are
+  pooled (up to the set's quantity they count; extras are surplus figs, best condition
+  used first), pieces are estimated as if each copy's missing pieces were different
+  (1 − Π(1 − completeness)), quality is the completeness-weighted average, box and
+  manual the best of the copies, and paid is the sum. The combined set then goes through
+  the normal lists as one Sell complete / Sell as-is set (its missing figs and manual feed
+  Figs/Manuals to buy; if ready it appears in Ready to sell under the next free copy
+  number, e.g. `75192-3_SW`, and Add Inventory gets "(from 75192-1_SW, 75192-2_SW)" in
+  the remarks), its surplus figs and leftover pieces go to "Sets going to bulk" as
+  "Leftovers of …", and the tally counts it once (the copies drop out of the lists).
+  A **Combined sets** section under Ready to sell shows each one: the sources, figs,
+  pieces/quality/manual/box, the set + surplus figs + leftover bulk, what the copies
+  would earn separately and the gain, what was paid with profit/ROI, and the paid split
+  across the set, figs and bulk by market value; "Break up" undoes it. The decision to
+  combine compares the combined total with the copies' separate best routes (what was
+  paid cancels). Because the app values an incomplete set in proportion to its
+  completeness, combining would almost never pay, so there's a new setting, **Incomplete-set
+  value curve** (default 1 = unchanged): completeness is raised to this power, so 2–3 makes
+  partial sets worth much less than their share (and combining worth more).
 - **Ready to sell → Add Inventory** — a "Send these sets to Add Inventory…" button
   under the Ready to sell list puts each set there as a row to review (confirmation
   first; nothing reaches BrickLink until it's submitted in Add Inventory). Each row is a
