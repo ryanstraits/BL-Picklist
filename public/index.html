@@ -11130,17 +11130,29 @@
     if (comp < 100) first += ", approximately " + comp + "% of the pieces";
 
     if (figs.length) {
-      var missing = [], worst = 0;
+      var missing = [], worst = 0, missingCopies = 0;
       figs.forEach(function (f) {
         var qty = f.qty || 1, have = sortClamp(f.have || 0, 0, qty);
-        if (qty - have > 0) {
-          // The fig number (all its versions, for alternates) and BrickLink's
-          // full description: "sw0927 Han Solo, Tan Legs, Mid-Length Parted Hair".
-          var nums = sortFigVariants(f).map(function (v) { return v.itemNo; }).join("/");
-          var nm = decodeHtmlEntities(f.name || "").trim();
-          missing.push(nums + (nm ? " " + nm : "") + (qty - have > 1 ? " ×" + (qty - have) : ""));
-        }
+        if (qty - have > 0) missingCopies += qty - have;
         if (have > 0) worst = Math.max(worst, f.cond === "poor" ? 2 : f.cond === "fair" ? 1 : 0);
+      });
+      // Up to three missing figs get their number (all versions, for
+      // alternates) and BrickLink's full description — "sw0927 Han Solo, Tan
+      // Legs, Mid-Length Parted Hair". More than that, just the short names, to
+      // keep the listing readable.
+      var brief = missingCopies > 3;
+      figs.forEach(function (f) {
+        var qty = f.qty || 1, miss = qty - sortClamp(f.have || 0, 0, qty);
+        if (miss <= 0) return;
+        var full = decodeHtmlEntities(f.name || "").trim();
+        var text;
+        if (brief) {
+          text = full.split(",")[0].trim() || sortFigVariants(f).map(function (v) { return v.itemNo; }).join("/");
+        } else {
+          var nums = sortFigVariants(f).map(function (v) { return v.itemNo; }).join("/");
+          text = nums + (full ? " " + full : "");
+        }
+        missing.push(text + (miss > 1 ? " ×" + miss : ""));
       });
       if (!missing.length) {
         first += " with all figs accounted for in " + ["great", "good", "fair"][worst] + " condition overall";
