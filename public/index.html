@@ -11118,6 +11118,46 @@
     return sortIdComplete(e) ? sortEntryId(e) : e.setNo;
   }
 
+  // The buyer-facing description for a set going to Add Inventory, written from
+  // what's logged on its Sort entry: condition (Quality 0–10), how complete the
+  // pieces are, the minifigs (all there and how they look, or which are
+  // missing), the manual and the box (their 0–10 ratings, 0 = not included).
+  function sortSetDescription(e) {
+    var q = sortClamp(Math.round(sortNum(e.quality)), 0, 10);
+    var comp = sortClamp(Math.round(sortNum(e.completeness)), 0, 100);
+    var figs = e.figs || [];
+    var first = "Set in " + q + "/10 condition";
+    if (comp < 100) first += ", approximately " + comp + "% of the pieces";
+
+    if (figs.length) {
+      var missing = [], worst = 0;
+      figs.forEach(function (f) {
+        var qty = f.qty || 1, have = sortClamp(f.have || 0, 0, qty);
+        if (qty - have > 0) {
+          var nm = decodeHtmlEntities(sortFigActive(f).name || "").split(",")[0].trim();
+          missing.push(nm + (qty - have > 1 ? " ×" + (qty - have) : ""));
+        }
+        if (have > 0) worst = Math.max(worst, f.cond === "poor" ? 2 : f.cond === "fair" ? 1 : 0);
+      });
+      if (!missing.length) {
+        first += " with all figs accounted for in " + ["great", "good", "fair"][worst] + " condition overall";
+      } else {
+        first += ". Missing figs: " + missing.join(", ");
+      }
+    }
+    first += ".";
+
+    var manual = sortClamp(Math.round(sortNum(e.manual)), 0, 10);
+    var box = sortClamp(Math.round(sortNum(e.box)), 0, 10);
+    var second;
+    if (manual > 0 && box > 0) second = "Manual included (" + manual + "/10) and box (" + box + "/10).";
+    else if (manual > 0) second = "Manual included (" + manual + "/10) with no box.";
+    else if (box > 0) second = "No manual; box included (" + box + "/10).";
+    else second = "No manual or box.";
+
+    return first + " " + second + " Fast shipping!";
+  }
+
   function sortPlan() {
     var plan = { ready: [], waiting: 0, buy: [], manuals: [], pull: [], bulk: [], hold: [], keep: [], decided: 0 };
     var manualMap = {};
@@ -11154,7 +11194,7 @@
         plan.hold.push({ label: label, name: e.name || "", missing: missing });
       } else if (e.decision === "asis") {
         // Sold with the figs it has: ready now, no figs to buy or pull.
-        if (e.status === "ready") plan.ready.push({ qt: sortQuickTurn(e).score, label: label, setNo: e.setNo, name: e.name || "", value: a.now.net, listPrice: a.now.net, complete: false, paid: a.paidKnown ? a.paid : null, asis: a.parts.missingCount });
+        if (e.status === "ready") plan.ready.push({ qt: sortQuickTurn(e).score, label: label, setNo: e.setNo, name: e.name || "", value: a.now.net, listPrice: a.now.net, complete: false, desc: sortSetDescription(e), paid: a.paidKnown ? a.paid : null, asis: a.parts.missingCount });
         else plan.waiting++;
       } else if (e.decision === "set") {
         // Selling complete includes the manual: one to buy per copy without one.
@@ -11197,7 +11237,7 @@
           }
         });
         if (!incomplete && e.status === "ready") {
-          plan.ready.push({ qt: sortQuickTurn(e).score, label: label, setNo: e.setNo, name: e.name || "", value: a.complete.net, listPrice: a.complete.net + a.parts.missingBuy + a.parts.manualCost, complete: sortNum(e.completeness) >= 100, paid: a.paidKnown ? a.paid : null, asis: 0 });
+          plan.ready.push({ qt: sortQuickTurn(e).score, label: label, setNo: e.setNo, name: e.name || "", value: a.complete.net, listPrice: a.complete.net + a.parts.missingBuy + a.parts.manualCost, complete: sortNum(e.completeness) >= 100, desc: sortSetDescription(e), paid: a.paidKnown ? a.paid : null, asis: 0 });
         } else {
           plan.waiting++;
         }
@@ -11562,8 +11602,9 @@
   // The Ready to sell sets, as rows waiting in Add Inventory for Ryan to
   // review and submit — nothing reaches BrickLink until he does there. Each
   // row is a Used set at the estimated sale price, Complete when every fig is
-  // there and the pieces are complete (otherwise Incomplete), with the sort ID
-  // (e.g. 75342-3_SW) in the private remarks. A set already handed over isn't
+  // there and the pieces are complete (otherwise Incomplete), with a
+  // description written from its Sort entry (sortSetDescription) and the sort
+  // ID (e.g. 75342-3_SW) in the private remarks. A set already handed over isn't
   // added twice.
   function handleSortReadyToInventory() {
     var plan = sortPlan();
@@ -11584,6 +11625,7 @@
         CONDITION: "U", PRICE: r.listPrice > 0 ? r.listPrice : "", REMARKS: "", DESCRIPTION: "",
       });
       row.completeness = r.complete ? "C" : "B";
+      row.description = r.desc || row.description;
       row.remarks = r.label;
       row.fromSortSet = r.label;
       inventoryRows.unshift(row);

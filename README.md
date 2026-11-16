@@ -837,7 +837,13 @@ Token Secret as sensitive as an API key that can move money.
   Used set (qty 1) at the estimated sale price (what the set is worth before the cost
   of figs/manual to buy), Complete when every fig is there and the pieces are 100%
   complete and Incomplete otherwise (Sell as-is sets with figs missing), with the sort
-  ID (e.g. `75342-3_SW`) in the private remarks. A set already handed over isn't added
+  ID (e.g. `75342-3_SW`) in the private remarks and a description written from the
+  Sort entry (`sortSetDescription`): "Set in {Quality}/10 condition", then either
+  "with all figs accounted for in great/good/fair condition overall" (from the worst fig
+  condition you set) or "Missing figs: names", "approximately N% of the pieces" when
+  Completeness is under 100, then the manual and box ("Manual included (7/10) with no
+  box." / "...and box (6/10)." / "No manual; box included (6/10)." / "No manual or box.")
+  and "Fast shipping!". It's editable in Add Inventory before submitting. A set already handed over isn't added
   twice. This sits beside the existing "Send figs to Add Inventory…" for part-outs.
 - **Alternate figs (Nov 15, 2026)** — BrickLink's set parts list groups figs that can
   stand in for each other (a set's sw1334a / sw1334b) under one match number;
