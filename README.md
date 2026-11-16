@@ -842,9 +842,9 @@ Token Secret as sensitive as an API key that can move money.
   "with all figs accounted for in great/good/fair condition overall" (from the worst fig
   condition you set) or "Missing figs: sw0927 Han Solo, Tan Legs; sw0215 …" (each missing
   fig's number — both versions for alternates, "sw1334a/sw1334b" — and BrickLink's full
-  description, separated by semicolons, with ×N for more than one; with more than three
-  figs missing it's just their short names — "Han Solo; Luke Skywalker; Stormtrooper ×2;
-  Princess Leia"), "approximately N% of the pieces" when
+  description, separated by semicolons, with ×N for more than one; with three or more
+  figs missing (copies counted) it's just their numbers — "sw0927, sw0215, sw0100 ×2"),
+  "approximately N% of the pieces" when
   Completeness is under 100, then the manual and box ("Manual included (7/10) with no
   box." / "...and box (6/10)." / "No manual; box included (6/10)." / "No manual or box.")
   and "Fast shipping!". It's editable in Add Inventory before submitting. A set already handed over isn't added

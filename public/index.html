@@ -11136,18 +11136,18 @@
         if (qty - have > 0) missingCopies += qty - have;
         if (have > 0) worst = Math.max(worst, f.cond === "poor" ? 2 : f.cond === "fair" ? 1 : 0);
       });
-      // Up to three missing figs get their number (all versions, for
+      // One or two missing figs get their number (all versions, for
       // alternates) and BrickLink's full description — "sw0927 Han Solo, Tan
-      // Legs, Mid-Length Parted Hair". More than that, just the short names, to
+      // Legs, Mid-Length Parted Hair". Three or more, just the numbers, to
       // keep the listing readable.
-      var brief = missingCopies > 3;
+      var brief = missingCopies >= 3;
       figs.forEach(function (f) {
         var qty = f.qty || 1, miss = qty - sortClamp(f.have || 0, 0, qty);
         if (miss <= 0) return;
         var full = decodeHtmlEntities(f.name || "").trim();
         var text;
         if (brief) {
-          text = full.split(",")[0].trim() || sortFigVariants(f).map(function (v) { return v.itemNo; }).join("/");
+          text = sortFigVariants(f).map(function (v) { return v.itemNo; }).join("/");
         } else {
           var nums = sortFigVariants(f).map(function (v) { return v.itemNo; }).join("/");
           text = nums + (full ? " " + full : "");
@@ -11157,7 +11157,7 @@
       if (!missing.length) {
         first += " with all figs accounted for in " + ["great", "good", "fair"][worst] + " condition overall";
       } else {
-        first += ". Missing figs: " + missing.join("; ");
+        first += ". Missing figs: " + missing.join(brief ? ", " : "; ");
       }
     }
     first += ".";
